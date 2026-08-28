@@ -1,0 +1,66 @@
+# Local development dependencies.
+#
+# Host ports are configurable because several stacks may run side by side on one
+# machine. Override in .env; container-internal ports never change.
+name: course-tutor
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: course_tutor
+      POSTGRES_USER: course_tutor
+      POSTGRES_PASSWORD: course_tutor
+    ports: ["${POSTGRES_HOST_PORT:-5432}:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U course_tutor -d course_tutor"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    ports:
+      - "${QDRANT_HOST_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_HOST_PORT:-6334}:6334"
+    volumes: ["qdrant-data:/qdrant/storage"]
+    healthcheck:
+      # The Qdrant image is distroless; use its own bundled healthcheck binary.
+      test: ["CMD", "/qdrant/qdrant", "--version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports: ["${REDIS_HOST_PORT:-6380}:6379"]
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: ["redis-data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-course-tutor}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-change-me-in-production}
+    ports:
+      - "${MINIO_HOST_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
+    volumes: ["minio-data:/data"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+  qdrant-data:
+  redis-data:
+  minio-data:
