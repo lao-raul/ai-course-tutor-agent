@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     # Fixes the Qdrant collection shape. A provider reporting a different width must
     # fail closed rather than silently index unusable vectors (function-spec §7.4).
     llm_embedding_dimension: int = Field(default=1024, gt=0)
+<<<<<<< HEAD
+=======
+    # Confirmed against the live host: qwen/qwen3.6-35b-a3b supports 262144 tokens.
+    # Used to bound prompt budgets and enforce max context (design-spec §5).
+    llm_chat_context_window: int = Field(default=262144, gt=0)
+>>>>>>> 39837ac (Phase 0: foundation, contracts, schema and health surface)
 
     # --- Course sources ---------------------------------------------------------
     # A local POSIX path only. SMB URLs are mounted by the host, never by the app.

@@ -19,6 +19,7 @@ The LM Studio host at `http://192.168.50.146:1234/v1` was probed directly.
 | Chat model | `qwen/qwen3.6-35b-a3b` |
 | Embedding model | `text-embedding-qwen3-embedding-0.6b` |
 | Embedding dimension | **1024** (measured, not assumed) |
+| Chat context window | **262144** tokens (verified against the live host) |
 
 `LLM_EMBEDDING_DIMENSION` is configuration, and `LMStudioProvider.embed()` **fails
 closed** when the provider returns a different width.
@@ -51,7 +52,7 @@ model is therefore a new collection plus a reindex, never an in-place mutation.
 
 ## Follow-up
 
-- Measure the chat model's context window and record it in configuration.
+- ~~Measure the chat model's context window and record it in configuration.~~ **Resolved** — 262144 tokens.
 - Benchmark `text-embedding-qwen3-embedding-0.6b` against
   `text-embedding-nomic-embed-text-v1.5` on the Phase 2 retrieval fixture before
   treating the choice as settled.
