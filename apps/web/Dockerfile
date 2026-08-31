@@ -4,13 +4,13 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 # Install dependencies first (layer cache)
-COPY package.json package-lock.json ./
+COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci
 
 # Copy source
-COPY vite.config.ts tsconfig*.json ./
-COPY src ./src
-COPY index.html .
+COPY apps/web/vite.config.ts apps/web/tsconfig.json apps/web/tsconfig.app.json apps/web/tsconfig.node.json ./
+COPY apps/web/src ./src
+COPY apps/web/index.html .
 
 # Build
 RUN npm run build

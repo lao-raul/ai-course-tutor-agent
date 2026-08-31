@@ -3,14 +3,34 @@ FROM python:3.12-slim AS base
 
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+RUN pip install --no-cache-dir uv
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev gcc \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml packages/ apps/api/pyproject.toml services/*/pyproject.toml ./
-RUN uv sync --frozen --no-install-project --all-packages --extra dev
+# Copy all source + per-package pyproject.toml + root workspace manifest + lockfile
+COPY apps/api/src ./apps/api/src
+COPY packages/contracts/src ./packages/contracts/src
+COPY packages/shared/src ./packages/shared/src
+COPY services/ingestion/src ./services/ingestion/src
+COPY services/retrieval/src ./services/retrieval/src
+COPY apps/api/pyproject.toml ./apps/api/pyproject.toml
+COPY packages/contracts/pyproject.toml ./packages/contracts/pyproject.toml
+COPY packages/shared/pyproject.toml ./packages/shared/pyproject.toml
+COPY services/ingestion/pyproject.toml ./services/ingestion/pyproject.toml
+COPY services/retrieval/pyproject.toml ./services/retrieval/pyproject.toml
+COPY pyproject.toml ./pyproject.toml
+COPY uv.lock ./uv.lock
+
+# Sync using existing lockfile — only packages needed by worker
+RUN uv sync --frozen \
+    course-tutor-api \
+    course-tutor-contracts \
+    course-tutor-shared \
+    course-tutor-ingestion \
+    course-tutor-retrieval \
+    --extra dev
 
 FROM base AS worker-build
 
@@ -19,8 +39,15 @@ COPY packages/contracts/src ./packages/contracts/src
 COPY packages/shared/src ./packages/shared/src
 COPY services/ingestion/src ./services/ingestion/src
 COPY services/retrieval/src ./services/retrieval/src
+COPY uv.lock ./uv.lock
 
-RUN uv sync --frozen --all-packages --extra dev
+RUN uv sync --frozen \
+    course-tutor-api \
+    course-tutor-contracts \
+    course-tutor-shared \
+    course-tutor-ingestion \
+    course-tutor-retrieval \
+    --extra dev
 
 # Runtime
 FROM base AS runtime
@@ -37,7 +64,7 @@ COPY --from=worker-build /app/services/retrieval/src /app/services/retrieval/src
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Wait for postgres + qdrant before starting
+# Wait for postgres before starting
 ENTRYPOINT ["/bin/bash", "-c", "\
     echo 'Waiting for postgres...' && \
     python -c 'import socket,os; s=socket.socket(); s.connect((os.environ[\"POSTGRES_HOST\"],int(os.environ[\"POSTGRES_PORT\"]))); s.close()' && \
