@@ -89,6 +89,7 @@ async def api_client(settings: Settings, fake_llm: FakeLLMProvider) -> AsyncIter
         redis=None,  # type: ignore[arg-type]
         http=http,
         llm=fake_llm,
+        qdrant_client=None,  # type: ignore[arg-type]
         _probes=[
             StubProbe("postgres"),
             StubProbe("redis"),

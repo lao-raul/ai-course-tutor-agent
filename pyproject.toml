@@ -22,7 +22,7 @@ dev = [
 
 [tool.uv.workspace]
 # services/* join the workspace as each is implemented (Phase 1 onward).
-members = ["apps/api", "packages/*", "services/ingestion"]
+members = ["apps/api", "packages/*", "services/ingestion", "services/retrieval"]
 
 [tool.uv.sources]
 course-tutor-api = { workspace = true }

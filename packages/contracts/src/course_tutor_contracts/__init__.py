@@ -24,10 +24,21 @@ from course_tutor_contracts.enums import (
     MemoryFactType,
     UserRole,
 )
+from course_tutor_contracts.retrieval import (
+    ChatCitation,
+    ChatRequest,
+    ChatResponse,
+    RetrievalQuery,
+    RetrievalResult,
+    RetrievedChunk,
+)
 
 __all__ = [
     "AccessLabel",
     "AnchorType",
+    "ChatCitation",
+    "ChatRequest",
+    "ChatResponse",
     "ChatSession",
     "Chunk",
     "ChunkClass",
@@ -39,7 +50,10 @@ __all__ = [
     "MemoryFact",
     "MemoryFactStatus",
     "MemoryFactType",
+    "RetrievalQuery",
+    "RetrievalResult",
     "RetrievalTrace",
+    "RetrievedChunk",
     "SourceDocument",
     "UserRole",
 ]

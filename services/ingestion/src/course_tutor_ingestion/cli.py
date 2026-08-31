@@ -3,7 +3,7 @@
 Usage:
     python -m course_tutor_ingestion.cli
 
-Polls the outbox for pending ingestion.scan events and processes them.
+Polls the outbox for pending ingestion.scan and ingestion.embed events and processes them.
 Designed to run as a sidecar or background worker, not inline with the API.
 """
 
@@ -26,6 +26,7 @@ async def main() -> None:
     # cli.py → course_tutor_api.dependencies → course_tutor_api.providers.lmstudio
     # has a transitive path that touches the ingestion package internals.
     from course_tutor_api.dependencies import get_dependencies
+    from course_tutor_ingestion.embed_jobs import run_pending_embedding_jobs
     from course_tutor_ingestion.jobs import run_pending_jobs
     from course_tutor_ingestion.object_store import MinioObjectStore
 
@@ -54,11 +55,24 @@ async def main() -> None:
         from sqlalchemy.ext.asyncio import AsyncSession
 
         async with AsyncSession(deps.engine, expire_on_commit=False) as session:
-            processed = await run_pending_jobs(session, max_batch=5, object_store=object_store)
-            if processed:
-                logger.info("ingestion_batch_complete", count=processed)
+            # Process scan jobs
+            processed_scans = await run_pending_jobs(
+                session, max_batch=5, object_store=object_store
+            )
+            if processed_scans:
+                logger.info("ingestion_batch_complete", count=processed_scans)
             else:
                 logger.debug("ingestion_worker_idle")
+
+            # Process embedding jobs (uses Qdrant + LM Studio for embeddings)
+            processed_embeds = await run_pending_embedding_jobs(
+                session,
+                max_batch=10,
+                qdrant_client=deps.qdrant_client,
+                embed_provider=deps.llm,
+            )
+            if processed_embeds:
+                logger.info("embedding_batch_complete", count=processed_embeds)
 
         if running:
             await asyncio.sleep(POLL_INTERVAL_SECONDS)

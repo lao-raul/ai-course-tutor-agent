@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from course_tutor_api.dependencies import get_dependencies
-from course_tutor_api.routes import admin, health
+from course_tutor_api.routes import admin, chat, health
 from course_tutor_shared import (
     CorrelationIdMiddleware,
     Settings,
@@ -53,4 +53,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(CorrelationIdMiddleware)
     app.include_router(health.router)
     app.include_router(admin.router)
+    app.include_router(chat.router)
     return app

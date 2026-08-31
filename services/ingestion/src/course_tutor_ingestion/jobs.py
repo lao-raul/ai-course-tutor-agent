@@ -93,6 +93,20 @@ class IngestionJob:
         for entry in entries:
             await self._process_file(entry, version.id)
 
+        # Emit an embedding job if any chunks were written.
+        if self._stats.chunks_written > 0:
+            embed_event = OutboxEvent(
+                id=uuid.uuid4(),
+                topic="ingestion.embed",
+                idempotency_key=f"embed:{version_id}",
+                payload={
+                    "version_id": str(version_id),
+                    "course_id": str(course_id),
+                },
+                attempts=0,
+            )
+            self._session.add(embed_event)
+
         self._event.processed_at = datetime.now(UTC).replace(tzinfo=None)
         await self._session.commit()
 

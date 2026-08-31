@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 import httpx
+from qdrant_client import QdrantClient
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.sql import text
@@ -112,6 +113,7 @@ class Dependencies:
     redis: Redis
     http: httpx.AsyncClient
     llm: LLMProvider
+    qdrant_client: QdrantClient
     _probes: list[Probe] = field(default_factory=list)
 
     def probes(self) -> list[Probe]:
@@ -138,12 +140,14 @@ class Dependencies:
 def get_dependencies(settings: Settings | None = None) -> Dependencies:
     settings = settings or get_settings()
     http = httpx.AsyncClient(timeout=httpx.Timeout(PROBE_TIMEOUT_SECONDS))
+    qdrant_client = QdrantClient(url=settings.qdrant_url)
     return Dependencies(
         settings=settings,
         engine=create_async_engine(settings.postgres_dsn, pool_pre_ping=True),
         redis=Redis.from_url(settings.redis_url, decode_responses=True),
         http=http,
         llm=LMStudioProvider(settings),
+        qdrant_client=qdrant_client,
     )
 
 
