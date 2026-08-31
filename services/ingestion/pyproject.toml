@@ -1,0 +1,35 @@
+[project]
+name = "course-tutor-ingestion"
+version = "0.1.0"
+description = "Course material scanning, parsing, chunking and indexing"
+requires-python = ">=3.12"
+dependencies = [
+    "course-tutor-contracts",
+    "course-tutor-shared",
+    "pypdf>=5.1",
+    "python-pptx>=1.0",
+    "python-docx>=1.1",
+    "markdown>=3.7",
+    # OCR for scanned PDFs. The tesseract binary must be installed separately on the host.
+    "pytesseract>=0.3",
+    "pdf2image>=1.17",
+    "boto3>=1.35",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+]
+
+[tool.uv.sources]
+course-tutor-contracts = { workspace = true }
+course-tutor-shared = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/course_tutor_ingestion"]

@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "course-tutor-api",
     "course-tutor-contracts",
+    "course-tutor-ingestion",
     "course-tutor-shared",
 ]
 
@@ -21,11 +22,12 @@ dev = [
 
 [tool.uv.workspace]
 # services/* join the workspace as each is implemented (Phase 1 onward).
-members = ["apps/api", "packages/*"]
+members = ["apps/api", "packages/*", "services/ingestion"]
 
 [tool.uv.sources]
 course-tutor-api = { workspace = true }
 course-tutor-contracts = { workspace = true }
+course-tutor-ingestion = { workspace = true }
 course-tutor-shared = { workspace = true }
 
 [tool.ruff]
@@ -40,7 +42,8 @@ ignore = ["S101"]  # assert is expected in tests
 known-first-party = ["course_tutor_api", "course_tutor_contracts", "course_tutor_shared", "tests"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S105", "S106"]
+"tests/**" = ["S105", "S106", "S608"]
+"tests/integration/test_ingestion_idempotency.py" = ["E501"]
 # Alembic revisions are generated; long inline SQL is expected and must not be reflowed.
 "apps/api/alembic/versions/**" = ["E501"]
 
