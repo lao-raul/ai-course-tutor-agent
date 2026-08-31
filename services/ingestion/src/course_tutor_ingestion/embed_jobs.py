@@ -104,19 +104,21 @@ async def _process_embed_event(
     chunk_dicts = []
     for chunk in chunks:
         source = await session.get(SourceDocument, chunk.source_id)
-        chunk_dicts.append({
-            "id": chunk.id,
-            "source_id": chunk.source_id,
-            "ordinal": chunk.ordinal,
-            "text": chunk.text,
-            "anchor_type": chunk.anchor_type,
-            "anchor_value": chunk.anchor_value,
-            "chunk_class": chunk.chunk_class,
-            "relative_path": source.relative_path if source else "unknown",
-            "mime_type": source.mime_type if source else "application/octet-stream",
-            "access_label": source.access_label if source else "enrolled",
-            "token_count": chunk.token_count,
-        })
+        chunk_dicts.append(
+            {
+                "id": chunk.id,
+                "source_id": chunk.source_id,
+                "ordinal": chunk.ordinal,
+                "text": chunk.text,
+                "anchor_type": chunk.anchor_type,
+                "anchor_value": chunk.anchor_value,
+                "chunk_class": chunk.chunk_class,
+                "relative_path": source.relative_path if source else "unknown",
+                "mime_type": source.mime_type if source else "application/octet-stream",
+                "access_label": source.access_label if source else "enrolled",
+                "token_count": chunk.token_count,
+            }
+        )
 
     # Resolve tenant_id
     tenant_id = uuid.UUID("00000000-0000-0000-0000-000000000000")

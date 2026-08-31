@@ -213,9 +213,7 @@ async def chat(
             headers={"Cache-Control": "no-cache"},
         )
 
-    citation_map: dict[int, ChatCitation] = {
-        i + 1: c for i, c in enumerate(citations)
-    }
+    citation_map: dict[int, ChatCitation] = {i + 1: c for i, c in enumerate(citations)}
 
     return StreamingResponse(
         _event_stream(
@@ -269,10 +267,7 @@ async def _event_stream(
             src_num = cit_data.get("source")
             if src_num and src_num in citation_map:
                 cit = citation_map[src_num]
-                yield (
-                    f"event: citation\ndata: "
-                    f"{json.dumps(cit.model_dump(mode='json'))}\n\n"
-                )
+                yield (f"event: citation\ndata: {json.dumps(cit.model_dump(mode='json'))}\n\n")
 
     except Exception as exc:
         logger.error("chat_stream_failed", course_id=str(course_id), exc=str(exc))
