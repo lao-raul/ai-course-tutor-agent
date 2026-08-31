@@ -40,9 +40,17 @@ make check                    # lint + mypy strict + 测试
 correlation ID、OTel 桩、核心实体契约与 ORM、可逆的初始 migration、LM Studio 适配器与确定性测试替身、
 health/readiness、CI（lint / mypy / 测试 / migration 往返 / 密钥扫描）。
 
+**Phase 1（课程摄取）已完成。** 扫描器、PDF/PPTX/DOCX/MD 解析器、OCR 降级、MinIO 存储、
+`content_version` 发布/回滚、admin API 已就绪。验证：14 个 Leeds 模块文件 → 8580 chunks，约 3 秒；
+二次扫描 → 0 个新 chunks（校验和幂等性）。
+
+**Phase 2（检索与 RAG 对话）已完成主要部分。** `POST /v1/courses/{id}/chat` SSE 流式响应、
+向量检索 + 关键词 boost、`RetrievalTrace` 记录已实现。嵌入管线通过 outbox 事件驱动。
+**剩余**：React UI（Phase 3）、Qdrant sparse index（需 server ≥ 1.19）、检索 benchmark 数据集。
+
 测试套件与 CI **不依赖 NAS 或 LM Studio**。
 
-下一步是 Phase 1（课程摄取），前置条件见下。
+下一步是 Phase 3（记忆与教学体验）。
 
 ## 端口约定
 

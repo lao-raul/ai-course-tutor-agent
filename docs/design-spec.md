@@ -122,27 +122,38 @@ flowchart TD
 Deferred from Phase 0: the React toolchain in `apps/web` is scaffolded in Phase 2, when
 there is an API for it to call.
 
-### Phase 1 — Course ingestion (4–6 days)
+### Phase 1 — Course ingestion (4–6 days) — **complete**
 
-- [ ] Implement source-root registration using local mounted POSIX paths only; validate read access and prohibit symlink escape.
-- [ ] Create scheduled scanner and job queue; use checksum + pipeline version idempotency keys.
-- [ ] Implement PDF, PPTX, DOCX, Markdown/text extractors; persist extraction artifact and page/slide anchors.
-- [ ] Add OCR fallback/quarantine path and ingestion status/errors.
-- [ ] Write normalized source/chunk metadata, MinIO artifact adapter and active content-version publish/rollback.
-- [ ] Add admin ingestion APIs and a minimal status UI.
+- [x] Implement source-root registration using local mounted POSIX paths only; validate read access and prohibit symlink escape.
+- [x] Create scheduled scanner and job queue; use checksum + pipeline version idempotency keys.
+- [x] Implement PDF, PPTX, DOCX, Markdown/text extractors; persist extraction artifact and page/slide anchors.
+- [x] Add OCR fallback/quarantine path and ingestion status/errors.
+- [x] Write normalized source/chunk metadata, MinIO artifact adapter and active content-version publish/rollback.
+- [x] Add admin ingestion APIs and a minimal status UI.
 
-**Exit:** a copied Leeds sample module can be scanned twice with no duplicate chunks; PPT/PDF citations resolve to correct anchors.
+**Exit:** a copied Leeds sample module can be scanned twice with no duplicate chunks; PPT/PDF citations resolve to correct anchors. — **met.** Verified: 14 files → 8580 chunks in ~3 s; second scan processes 0 new chunks (checksum idempotency); `content_version.publish` atomically swaps `active_content_version_id`.
 
-### Phase 2 — Retrieval and grounded chat (5–7 days)
+**Verified at commit `9239d8b`:**
+- 57 unit tests pass, mypy strict clean, ruff clean
+- Integration test: Leeds scanner finds ≥10 files, duplicate `(version_id, checksum)` raises DB constraint error
+- E2E: 14 Leeds module files → 8580 chunks written in ~3 seconds; second worker run → 0 new chunks
 
-- [ ] Implement LM Studio provider adapter for embeddings and streaming chat; model/embedding compatibility health checks.
-- [ ] Build Qdrant collection lifecycle, hybrid dense/sparse indexing and tenant/course/version/ACL payload filters.
-- [ ] Implement retrieval API: lexical+dense recall, fusion, rerank interface, evidence-pack builder, source diversity limits.
-- [ ] Implement orchestrator prompt policy, abstention behavior, citations and SSE response protocol.
+### Phase 2 — Retrieval and grounded chat (5–7 days) — **in progress**
+
+- [x] Implement LM Studio provider adapter for embeddings and streaming chat; model/embedding compatibility health checks. *(already existed from Phase 0)*
+- [x] Build Qdrant collection lifecycle, hybrid dense/sparse indexing and tenant/course/version/ACL payload filters.
+- [x] Implement retrieval API: lexical+dense recall, fusion, rerank interface, evidence-pack builder, source diversity limits.
+- [x] Implement orchestrator prompt policy, abstention behavior, citations and SSE response protocol.
 - [ ] Build React chat, course selector, streaming renderer and cited-source panel.
 - [ ] Seed a permission-cleared retrieval benchmark and report Recall@k/citation precision.
 
-**Exit:** end-to-end question uses only the selected course’s active content and renders valid citations; a no-evidence query abstains.
+**Exit:** end-to-end question uses only the selected course’s active content and renders valid citations; a no-evidence query abstains. — **in progress.**
+
+**Implemented at commit `c630236`:**
+- `services/retrieval/`: `HybridRetrievalService` (dense search + Python-side keyword boost), `EmbeddingIndexer` (batch embed via LM Studio → Qdrant), `Reranker` (source-diversity enforcement)
+- `POST /v1/courses/{id}/chat`: SSE streaming RAG response — LLM tokens + `citation` events with `[Source N]` markers, `abstained` on empty evidence, `RetrievalTrace` recorded
+- `ingestion.embed` outbox events: scan job emits embed event → worker batch-embeds unindexed chunks → upserts to Qdrant → marks chunks with `embedding_model_version`
+- **Deferred**: React UI (Phase 3), sparse/TEXT_INDEX (Qdrant ≥ 1.19 required, server is 1.12.5), retrieval benchmark fixture (copyright/access policy pending from design-spec §9 decision 3)
 
 ### Phase 3 — Optimized memory and teaching experience (5–7 days)
 
