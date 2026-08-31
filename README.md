@@ -17,21 +17,31 @@
 前置：`uv`、Docker、Python 3.12。
 
 ```bash
-cp .env.example .env      # 按需修改；.env 永不提交
-make install              # 安装 workspace 依赖
-make up                   # 启动 Postgres / Qdrant / Redis / MinIO
-make migrate              # 应用数据库 migration
-make api                  # 启动 API（http://localhost:8080）
+# 1. 安装 Python 依赖
+uv sync --extra dev
+
+# 2. 启动基础设施
+docker compose -f infra/docker/docker-compose.yml up -d postgres qdrant redis minio
+
+# 3. 启动 API（自动执行 alembic migration）
+uv run uvicorn course_tutor_api:create_app --factory --host 0.0.0.0 --port 8000
+
+# 4. 启动 ingestion worker（后台）
+uv run python -m course_tutor_ingestion
 ```
 
-或者一步到位：`make dev`。`make help` 列出全部目标。
+或使用完整生产栈（包括 Web UI）：
+
+```bash
+cd infra/docker
+cp ../../../.env.deploy .env
+docker compose up --build
+```
 
 验证：
 
 ```bash
-curl localhost:8080/healthz   # 存活，不触碰任何依赖
-curl localhost:8080/readyz    # 逐项报告 postgres / redis / qdrant / llm
-make check                    # lint + mypy strict + 测试
+curl http://localhost:8000/health
 ```
 
 ## 当前进度
@@ -44,9 +54,10 @@ health/readiness、CI（lint / mypy / 测试 / migration 往返 / 密钥扫描�
 `content_version` 发布/回滚、admin API 已就绪。验证：14 个 Leeds 模块文件 → 8580 chunks，约 3 秒；
 二次扫描 → 0 个新 chunks（校验和幂等性）。
 
-**Phase 2（检索与 RAG 对话）已完成主要部分。** `POST /v1/courses/{id}/chat` SSE 流式响应、
-向量检索 + 关键词 boost、`RetrievalTrace` 记录已实现。嵌入管线通过 outbox 事件驱动。
-**剩余**：React UI（Phase 3）、Qdrant sparse index（需 server ≥ 1.19）、检索 benchmark 数据集。
+**Phase 2（检索与 RAG 对话）已完成。** `POST /v1/courses/{id}/chat` SSE 流式响应（token/citation/abstained/done）、
+`HybridRetrievalService`（dense + Python 关键词 boost）、`EmbeddingIndexer`（LM Studio → Qdrant）、
+React chat UI（课程选择器、流式渲染、引用面板）、合成检索 benchmark 已就绪。
+Qdrant sparse index（TEXT_INDEX）因 server 1.12.5 不支持而跳过，已用 Python 层关键词 boost 替代。
 
 测试套件与 CI **不依赖 NAS 或 LM Studio**。
 
@@ -54,11 +65,60 @@ health/readiness、CI（lint / mypy / 测试 / migration 往返 / 密钥扫描�
 
 ## 端口约定
 
-本机可能同时跑多个 stack，因此 compose 的宿主端口全部可配。Redis 默认用 **6380**
-（6379 常被占用）。冲突时改 `.env` 里的 `*_HOST_PORT` 即可。
+| 服务 | 默认端口 | 说明 |
+|---|---|---|
+| API | 8000 | FastAPI |
+| Web UI | 3000 → 80 | Vite dev (3000) / nginx prod (80) |
+| PostgreSQL | 5432 | |
+| Qdrant | 6333 (REST) / 6334 (gRPC) | |
+| Redis | 6380 | 6379 常被占用 |
+| MinIO | 9000 (API) / 9001 (Console) | |
+
+所有宿主端口可通过 `.env` 中的 `*_HOST_PORT` 变量覆盖。
 
 ## NAS 说明
 
 `smb://L-NAS` 是客户端挂载地址，不是应用路径。必须先由操作系统以只读服务账号挂载，
 再把 `COURSE_SOURCE_PATH` 指向挂载后的绝对 POSIX 路径（macOS 形如
 `/Volumes/L-NAS/...`），服务只读取本地路径。配置层会拒绝 URL 形式与相对路径。
+
+## 部署架构
+
+```
+┌─────────────────────────────────────────────┐
+│  nginx (:80)  ← Web 浏览器                  │
+│  ├── /           → React SPA (静态文件)     │
+│  ├── /v1/*      → API (:8000)              │
+│  └── /admin/*   → API admin (:8000)        │
+├─────────────────────────────────────────────┤
+│  FastAPI (:8000)                            │
+│  ├── /v1/courses/{id}/chat  (SSE流式回答)   │
+│  ├── /v1/courses                      │
+│  ├── /admin/ingest                    │
+│  └── /health                          │
+├─────────────────────────────────────────────┤
+│  Ingestion Worker (后台)                    │
+│  ├── 扫描任务 (scan)                       │
+│  └── 嵌入任务 (embed → Qdrant)             │
+├─────────────────────────────────────────────┤
+│  Postgres  Redis  Qdrant  MinIO            │
+└─────────────────────────────────────────────┘
+```
+
+### Docker 部署
+
+```bash
+# 完整生产栈（API + Web + Worker + 依赖）
+cd infra/docker
+cp ../../../.env.deploy .env   # 修改密码和 LM Studio URL
+docker compose up --build
+
+# 仅启动依赖服务（本地开发）
+docker compose -f infra/docker/docker-compose.yml up -d postgres qdrant redis minio
+```
+
+验证：
+```bash
+curl http://localhost:8000/health
+open http://localhost:3000    # Web UI
+```
