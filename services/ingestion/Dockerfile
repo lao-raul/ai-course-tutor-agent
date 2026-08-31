@@ -23,14 +23,8 @@ COPY services/retrieval/pyproject.toml ./services/retrieval/pyproject.toml
 COPY pyproject.toml ./pyproject.toml
 COPY uv.lock ./uv.lock
 
-# Sync using existing lockfile — only packages needed by worker
-RUN uv sync --frozen \
-    course-tutor-api \
-    course-tutor-contracts \
-    course-tutor-shared \
-    course-tutor-ingestion \
-    course-tutor-retrieval \
-    --extra dev
+# Sync using existing lockfile
+RUN uv sync --frozen --no-install-project --extra dev
 
 FROM base AS worker-build
 
@@ -41,13 +35,7 @@ COPY services/ingestion/src ./services/ingestion/src
 COPY services/retrieval/src ./services/retrieval/src
 COPY uv.lock ./uv.lock
 
-RUN uv sync --frozen \
-    course-tutor-api \
-    course-tutor-contracts \
-    course-tutor-shared \
-    course-tutor-ingestion \
-    course-tutor-retrieval \
-    --extra dev
+RUN uv sync --frozen --no-install-project --extra dev
 
 # Runtime
 FROM base AS runtime
