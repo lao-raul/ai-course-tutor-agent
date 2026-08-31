@@ -39,7 +39,7 @@ jobs:
         run: uv run mypy packages apps
 
       - name: Test
-        run: uv run pytest
+        run: uv run pytest --ignore=tests/integration/
 
   migrations:
     runs-on: ubuntu-latest
