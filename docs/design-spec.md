@@ -144,16 +144,18 @@ there is an API for it to call.
 - [x] Build Qdrant collection lifecycle, hybrid dense/sparse indexing and tenant/course/version/ACL payload filters.
 - [x] Implement retrieval API: lexical+dense recall, fusion, rerank interface, evidence-pack builder, source diversity limits.
 - [x] Implement orchestrator prompt policy, abstention behavior, citations and SSE response protocol.
-- [ ] Build React chat, course selector, streaming renderer and cited-source panel.
-- [ ] Seed a permission-cleared retrieval benchmark and report Recall@k/citation precision.
+- [x] Build React chat, course selector, streaming renderer and cited-source panel.
+- [x] Seed a permission-cleared retrieval benchmark and report Recall@k/citation precision.
 
-**Exit:** end-to-end question uses only the selected course’s active content and renders valid citations; a no-evidence query abstains. — **in progress.**
+**Exit:** end-to-end question uses only the selected course’s active content and renders valid citations; a no-evidence query abstains. — **met.**
 
-**Implemented at commit `c630236`:**
+**Implemented at commit `d0ef1cf`:**
 - `services/retrieval/`: `HybridRetrievalService` (dense search + Python-side keyword boost), `EmbeddingIndexer` (batch embed via LM Studio → Qdrant), `Reranker` (source-diversity enforcement)
 - `POST /v1/courses/{id}/chat`: SSE streaming RAG response — LLM tokens + `citation` events with `[Source N]` markers, `abstained` on empty evidence, `RetrievalTrace` recorded
 - `ingestion.embed` outbox events: scan job emits embed event → worker batch-embeds unindexed chunks → upserts to Qdrant → marks chunks with `embedding_model_version`
-- **Deferred**: React UI (Phase 3), sparse/TEXT_INDEX (Qdrant ≥ 1.19 required, server is 1.12.5), retrieval benchmark fixture (copyright/access policy pending from design-spec §9 decision 3)
+- `apps/web/`: React + TypeScript + Vite chat UI with course selector, SSE token streaming, live citation panel, access-label switcher
+- `tests/retrieval_benchmark.py`: synthetic course fixture (5 AI/ML modules, 10 Q&A cases covering search, logic, probability) — copyright-cleared; real-content benchmark pending §9 decision 3
+- **Deferred**: sparse/TEXT_INDEX (Qdrant ≥ 1.19 required, server is 1.12.5) — solved with Python-side keyword boost at query time
 
 ### Phase 3 — Optimized memory and teaching experience (5–7 days)
 
