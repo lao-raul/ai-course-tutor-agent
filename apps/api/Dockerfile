@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy all source — needed so uv lock can resolve every workspace member
 COPY apps/api/src ./apps/api/src
 COPY apps/api/alembic ./apps/api/alembic
+COPY apps/api/alembic.ini ./apps/api/alembic.ini
 COPY packages/contracts/src ./packages/contracts/src
 COPY packages/shared/src ./packages/shared/src
 COPY services/ingestion/src ./services/ingestion/src
@@ -39,6 +40,7 @@ RUN uv lock && uv sync --frozen --no-install-project --extra dev
 # Copy source on top of whatever uv installed (overwrites stubs)
 COPY apps/api/src ./apps/api/src
 COPY apps/api/alembic ./apps/api/alembic
+COPY apps/api/alembic.ini ./apps/api/alembic.ini
 COPY packages/contracts/src ./packages/contracts/src
 COPY packages/shared/src ./packages/shared/src
 COPY services/ingestion/src ./services/ingestion/src
@@ -65,7 +67,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 RUN useradd --create-home --shell /bin/bash appuser
 USER appuser
 
-EXPOSE 8011
+EXPOSE 8000
 
 ENTRYPOINT ["/bin/bash", "-c", "\
     echo 'Waiting for postgres...' && \
@@ -73,5 +75,5 @@ ENTRYPOINT ["/bin/bash", "-c", "\
     echo 'Running migrations...' && \
     alembic -c apps/api/alembic.ini upgrade head && \
     echo 'Starting API...' && \
-    uvicorn 'course_tutor_api:create_app()' --factory --host 0.0.0.0 --port 8011 \
+    uvicorn 'course_tutor_api.app:create_app' --factory --host 0.0.0.0 --port 8000 \
 "]
