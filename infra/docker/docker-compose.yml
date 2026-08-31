@@ -63,9 +63,9 @@ services:
       context: ../..
       dockerfile: apps/api/Dockerfile
       target: runtime
-    ports: ["${API_HOST_PORT:-8000}:8000"]
+    ports: ["${API_HOST_PORT:-8011}:8000"]
     environment:
-      ENVIRONMENT: ${ENVIRONMENT:-production}
+      ENVIRONMENT: ${ENVIRONMENT:-local}
       # PostgreSQL
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -104,7 +104,7 @@ services:
     build:
       context: ../..
       dockerfile: apps/web/Dockerfile
-    ports: ["${WEB_HOST_PORT:-3000}:80"]
+    ports: ["${WEB_HOST_PORT:-3011}:80"]
     depends_on:
       api:
         condition: service_started
@@ -115,7 +115,7 @@ services:
       dockerfile: services/ingestion/Dockerfile
       target: runtime
     environment:
-      ENVIRONMENT: ${ENVIRONMENT:-production}
+      ENVIRONMENT: ${ENVIRONMENT:-local}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_DB: course_tutor

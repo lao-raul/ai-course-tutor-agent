@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Install dependencies first (layer cache)
 COPY apps/web/package.json apps/web/package-lock.json ./
-RUN npm ci
+RUN npm install
 
 # Copy source
 COPY apps/web/vite.config.ts apps/web/tsconfig.json apps/web/tsconfig.app.json apps/web/tsconfig.node.json ./
@@ -45,7 +45,7 @@ server {
 
     # Proxy API and V1 endpoints to API server
     location /v1/ {
-        proxy_pass http://api:8000/v1/;
+        proxy_pass http://api:8011/v1/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -58,7 +58,7 @@ server {
 
     # Also proxy /admin for ingestion admin endpoints
     location /admin/ {
-        proxy_pass http://api:8000/admin/;
+        proxy_pass http://api:8011/admin/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
