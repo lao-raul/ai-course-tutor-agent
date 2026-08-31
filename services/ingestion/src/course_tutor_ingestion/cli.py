@@ -42,7 +42,7 @@ async def main() -> None:
 
     running = True
 
-    def shutdown(signum, frame):
+    def shutdown(signum: int, frame: object) -> None:
         nonlocal running
         logger.info("ingestion_worker_shutdown_requested")
         running = False
