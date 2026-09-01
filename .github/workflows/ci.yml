@@ -66,13 +66,13 @@ jobs:
       - name: Migrations apply, reverse and re-apply
         working-directory: apps/api
         run: |
-          uv run --project ../.. alembic -c alembic.ini upgrade head
-          uv run --project ../.. alembic -c alembic.ini downgrade base
-          uv run --project ../.. alembic -c alembic.ini upgrade head
+          uv run --project ../.. alembic -c alembic.ini -s apps/api/alembic upgrade head
+          uv run --project ../.. alembic -c alembic.ini -s apps/api/alembic downgrade base
+          uv run --project ../.. alembic -c alembic.ini -s apps/api/alembic upgrade head
 
       - name: Models and migrations are in sync
         working-directory: apps/api
-        run: uv run --project ../.. alembic -c alembic.ini check
+        run: uv run --project ../.. alembic -c alembic.ini -s apps/api/alembic check
 
   secrets:
     runs-on: ubuntu-latest
