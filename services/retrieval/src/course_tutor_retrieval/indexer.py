@@ -29,8 +29,8 @@ class EmbeddingIndexer:
 
     async def index_chunks(
         self,
-        chunks: list[dict],
-        version: dict,
+        chunks: list[dict[str, object]],
+        version: dict[str, object],
     ) -> int:
         """Index a list of chunk dicts for a content version.
 

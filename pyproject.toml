@@ -46,6 +46,8 @@ known-first-party = ["course_tutor_api", "course_tutor_contracts", "course_tutor
 "tests/integration/test_ingestion_idempotency.py" = ["E501"]
 # Alembic revisions are generated; long inline SQL is expected and must not be reflowed.
 "apps/api/alembic/versions/**" = ["E501"]
+# FastAPI's Body(...)/Path(...) defaults are required markers, not mutable calls.
+"apps/api/src/course_tutor_api/routes/chat.py" = ["B008", "UP037"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

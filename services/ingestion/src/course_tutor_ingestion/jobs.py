@@ -12,19 +12,23 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from course_tutor_api.db import Chunk, ContentVersion, SourceDocument
+from course_tutor_api.db import Chunk as OrmChunk
+from course_tutor_api.db import ContentVersion, SourceDocument
 from course_tutor_api.db.models import OutboxEvent
 from course_tutor_contracts.enums import ExtractionStatus
 from course_tutor_ingestion.object_store import MinioObjectStore
 from course_tutor_ingestion.parsers import ParsedDocument, parse
 from course_tutor_ingestion.scanner import FileEntry, Scanner
 from course_tutor_ingestion.source_root import validate_path, validate_read_access
+
+if TYPE_CHECKING:
+    from course_tutor_ingestion.parsers import Chunk as ParserChunk
 
 logger = structlog.get_logger(__name__)
 
@@ -33,11 +37,11 @@ PIPELINE_VERSION = "1.1.0"
 
 
 def _coalesce_chunks(
-    fragments: list[Chunk],
+    fragments: list[ParserChunk],
     *,
     target_size: int = 1000,
     overlap: int = 200,
-) -> list[Chunk]:
+) -> list[ParserChunk]:
     """Coalesce small text fragments into target-size chunks with overlap.
 
     Chunks are built by accumulating fragment text until reaching *target_size*,
@@ -46,17 +50,17 @@ def _coalesce_chunks(
 
     The first chunk in a document starts fresh (no leading overlap).
     """
-    from course_tutor_ingestion.parsers import Chunk as ChunkFragment
+    from course_tutor_ingestion.parsers import Chunk as ParserChunk
 
     if not fragments:
         return []
 
-    result: list[ChunkFragment] = []
+    result: list[ParserChunk] = []
     current_text_parts: list[str] = []
     current_size = 0
     current_anchors: list[tuple[str, str]] = []  # (anchor_type, anchor_value)
 
-    def flush() -> ChunkFragment:
+    def flush() -> ParserChunk:
         """Emit the current accumulated chunk."""
         text = " ".join(current_text_parts)
         # Use the first anchor as the representative for this chunk.
@@ -70,7 +74,7 @@ def _coalesce_chunks(
             anchor_value = raw[:120]
         else:
             anchor_value = primary_anchor[1]
-        return ChunkFragment(
+        return ParserChunk(
             text=text,
             anchor_type=primary_anchor[0],
             anchor_value=anchor_value,
@@ -263,7 +267,7 @@ class IngestionJob:
 
         # Write chunks with ordinals.
         for ordinal, chunk in enumerate(coalesced):
-            orm_chunk = Chunk(
+            orm_chunk = OrmChunk(
                 source_id=doc.id,
                 ordinal=ordinal,
                 text=chunk.text,

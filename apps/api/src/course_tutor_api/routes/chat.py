@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import AsyncGenerator
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import structlog
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, status
@@ -20,6 +20,9 @@ from course_tutor_contracts.retrieval import (
     ChatRequest,
     RetrievedChunk,
 )
+
+if TYPE_CHECKING:
+    from course_tutor_api.providers.base import ChatMessage
 
 router = APIRouter(prefix="/v1/courses", tags=["chat"])
 logger = structlog.get_logger(__name__)
@@ -67,7 +70,7 @@ async def _build_evidence_pack(
         limit=20,
     )
     if not result.candidates:
-        return [], []
+        return [], {}
 
     reranked = reranker.rerank(result.candidates)
     evidence = reranked[:MAX_EVIDENCE_CHUNKS]
@@ -88,7 +91,7 @@ async def _build_evidence_pack(
     return evidence, citation_map
 
 
-def _build_prompt(query: str, evidence: list[RetrievedChunk]) -> list[ChatMessage]:
+def _build_prompt(query: str, evidence: list[RetrievedChunk]) -> list["ChatMessage"]:
     """Build the chat prompt with evidence context."""
     from course_tutor_api.providers.base import ChatMessage
 
@@ -180,8 +183,8 @@ async def _parse_stream(
 async def chat(
     session: Annotated[AsyncSession, Depends(get_session)],
     deps: Annotated[Dependencies, Depends(get_dependencies)],
-    body: ChatRequest = Body(...),
-    course_id: uuid.UUID = Path(...),
+    body: ChatRequest = Body(Ellipsis),
+    course_id: uuid.UUID = Path(Ellipsis),
 ) -> StreamingResponse:
     """Stream a RAG-grounded chat response with inline citations.
 
@@ -272,7 +275,7 @@ async def _event_stream(
 
     try:
         prompt_messages = _build_prompt(body.query, evidence)
-        stream = deps.llm.stream_chat(prompt_messages)  # type: ignore[arg-type]
+        stream = deps.llm.stream_chat(prompt_messages)
         full_text, citations_raw = await _parse_stream(stream, evidence)
 
         for char in full_text:

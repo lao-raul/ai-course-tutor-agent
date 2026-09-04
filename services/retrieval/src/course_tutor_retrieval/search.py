@@ -76,6 +76,8 @@ class HybridRetrievalService:
 
         for point in results.points:
             payload = point.payload
+            if payload is None:
+                continue
             label_str = payload.get("access_label", "enrolled")
             try:
                 label_enum = AccessLabel(label_str)
@@ -111,8 +113,9 @@ class HybridRetrievalService:
                 path_lower = path.lower()
                 for ref in unit_refs:
                     # Match "unitN" or "unit/N" style path segments
-                    if re.search(rf"(?:^|/)unit[_\s]*{re.escape(ref)}(?:[/_\s]|$)", path_lower) or \
-                       re.search(rf"(?:^|/)week[_\s]*{re.escape(ref)}(?:[/_\s]|$)", path_lower):
+                    if re.search(
+                        rf"(?:^|/)unit[_\s]*{re.escape(ref)}(?:[/_\s]|$)", path_lower
+                    ) or re.search(rf"(?:^|/)week[_\s]*{re.escape(ref)}(?:[/_\s]|$)", path_lower):
                         return 0.35  # strong enough to overcome embedding bias for overview content
                 return 0.0
 
