@@ -8,7 +8,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated, Any
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,7 +57,7 @@ async def _build_evidence_pack(
     version_id: uuid.UUID,
     access_label: AccessLabel,
     query: str,
-) -> tuple[list[RetrievedChunk], list[ChatCitation]]:
+) -> tuple[list[RetrievedChunk], dict[int, ChatCitation]]:
     """Run retrieval and return evidence chunks + built citations."""
     result = await retrieval_service.search(
         query=query,
@@ -72,35 +72,38 @@ async def _build_evidence_pack(
     reranked = reranker.rerank(result.candidates)
     evidence = reranked[:MAX_EVIDENCE_CHUNKS]
 
-    citations = []
-    for chunk in evidence:
-        citations.append(
-            ChatCitation(
-                chunk_id=chunk.chunk_id,
-                relative_path=chunk.relative_path,
-                anchor_type=chunk.anchor_type,
-                anchor_value=chunk.anchor_value,
-                text_excerpt=chunk.text[:200],
-            )
+    # Build citation_map from ALL retrieval candidates (not just reranked top-K)
+    # so that LLM references to [Source N] can always be resolved even when
+    # the reranker trims the prompt to < MAX_EVIDENCE_CHUNKS chunks.
+    citation_map: dict[int, ChatCitation] = {}
+    for i, chunk in enumerate(result.candidates):
+        citation_map[i + 1] = ChatCitation(
+            chunk_id=chunk.chunk_id,
+            relative_path=chunk.relative_path,
+            anchor_type=chunk.anchor_type,
+            anchor_value=chunk.anchor_value,
+            text_excerpt=chunk.text[:200],
         )
 
-    return evidence, citations
+    return evidence, citation_map
 
 
-def _build_prompt(query: str, evidence: list[RetrievedChunk]) -> list[dict[str, str]]:
+def _build_prompt(query: str, evidence: list[RetrievedChunk]) -> list[ChatMessage]:
     """Build the chat prompt with evidence context."""
+    from course_tutor_api.providers.base import ChatMessage
+
     if not evidence:
         return [
-            {
-                "role": "system",
-                "content": (
+            ChatMessage(
+                role="system",
+                content=(
                     "You are a helpful course teaching assistant. "
                     "Answer the student's question based only on the provided course material. "
                     "If the material does not contain enough information to answer, "
                     "say so clearly and suggest how the student might find the answer."
                 ),
-            },
-            {"role": "user", "content": query},
+            ),
+            ChatMessage(role="user", content=query),
         ]
 
     evidence_lines = []
@@ -125,11 +128,11 @@ def _build_prompt(query: str, evidence: list[RetrievedChunk]) -> list[dict[str, 
     )
 
     return [
-        {"role": "system", "content": system_msg},
-        {
-            "role": "user",
-            "content": f"Course material:\n{evidence_context}\n\nQuestion: {query}",
-        },
+        ChatMessage(role="system", content=system_msg),
+        ChatMessage(
+            role="user",
+            content=f"Course material:\n{evidence_context}\n\nQuestion: {query}",
+        ),
     ]
 
 
@@ -137,7 +140,14 @@ async def _parse_stream(
     stream: Any,
     evidence: list[RetrievedChunk],
 ) -> tuple[str, list[dict[str, Any]]]:
-    """Consume the token stream, extract citations, return full text + citation list."""
+    """Consume the token stream, extract citations, return full text + citation list.
+
+    Two citation formats are supported:
+    1. Structured JSON block:  CITATIONS:[{"source": 1, "chunk_id": "..."}]
+    2. Inline references:     [Source 1], [Source 2]   (emitted when LLM skips the JSON block)
+    """
+    import re
+
     full_text = ""
     buffer = ""
     citations_raw: list[dict[str, Any]] = []
@@ -157,15 +167,21 @@ async def _parse_stream(
             full_text = body
             break
 
+    # Fallback: if no structured block found, extract inline [Source N] references
+    if not citations_raw:
+        inline_refs = re.findall(r"\[Source\s+(\d+)\]", full_text)
+        if inline_refs:
+            citations_raw = [{"source": int(n)} for n in inline_refs]
+
     return full_text, citations_raw
 
 
 @router.post("/{course_id}/chat")
 async def chat(
-    course_id: uuid.UUID,
-    body: ChatRequest,
     session: Annotated[AsyncSession, Depends(get_session)],
     deps: Annotated[Dependencies, Depends(get_dependencies)],
+    body: ChatRequest = Body(...),
+    course_id: uuid.UUID = Path(...),
 ) -> StreamingResponse:
     """Stream a RAG-grounded chat response with inline citations.
 
@@ -213,7 +229,7 @@ async def chat(
             headers={"Cache-Control": "no-cache"},
         )
 
-    citation_map: dict[int, ChatCitation] = {i + 1: c for i, c in enumerate(citations)}
+    citation_map = citations  # now returns dict[int, ChatCitation] directly
 
     return StreamingResponse(
         _event_stream(

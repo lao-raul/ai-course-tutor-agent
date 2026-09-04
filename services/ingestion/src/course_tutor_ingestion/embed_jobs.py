@@ -90,10 +90,11 @@ async def _process_embed_event(
         .where(
             SourceDocument.version_id == version_id,
             (Chunk.embedding_model_version.is_(None))
+            | (Chunk.embedding_model_version == "pending")
             | (Chunk.embedding_model_version != pipeline_version),
         )
         .order_by(Chunk.source_id, Chunk.ordinal)
-        .limit(5000)
+        .limit(10000)
     )
     chunks = list(result.scalars().all())
     if not chunks:

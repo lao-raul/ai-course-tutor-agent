@@ -55,9 +55,15 @@ health/readiness、CI（lint / mypy / 测试 / migration 往返 / 密钥扫描�
 二次扫描 → 0 个新 chunks（校验和幂等性）。
 
 **Phase 2（检索与 RAG 对话）已完成。** `POST /v1/courses/{id}/chat` SSE 流式响应（token/citation/abstained/done）、
-`HybridRetrievalService`（dense + Python 关键词 boost）、`EmbeddingIndexer`（LM Studio → Qdrant）、
+`HybridRetrievalService`（dense + Python 关键词 boost + 显式 unit 路径 boost）、`EmbeddingIndexer`（LM Studio → Qdrant）、
 React chat UI（课程选择器、流式渲染、引用面板）、合成检索 benchmark 已就绪。
 Qdrant sparse index（TEXT_INDEX）因 server 1.12.5 不支持而跳过，已用 Python 层关键词 boost 替代。
+
+**关键修复记录：**
+- **Chunk 聚合（v1.1.0）**：target_size=1000 chars，overlap=200 chars；7564 tiny fragments → 699 semantic-rich chunks（约 500–600 chars each）， VARCHAR(128) anchor_value 截断至 120 chars
+- **Unit 路径 boost**：查询含 "unit N" / "week N" 时，对匹配路径的 chunk 额外 +0.35 分，解决 embedding 模型对 overview 内容的偏向问题
+- **Citation map 全量构建**：从全部 20 个 retrieval candidates 构建 citation_map（而非仅 reranked top-5），支持 LLM 引用 [Source N]（N>5）时正确解析
+- **验证**：`"unit3的主要内容"` → 返回 4 个 unit3 引用的实质性内容（Jacobian、Hessian、自动微分）
 
 测试套件与 CI **不依赖 NAS 或 LM Studio**。
 

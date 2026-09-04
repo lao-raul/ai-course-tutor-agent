@@ -12,19 +12,20 @@ interface Message {
 }
 
 const ACCESS_LABEL_OPTIONS = [
-  { value: 'public', label: 'Public' },
   { value: 'enrolled', label: 'Enrolled' },
+  { value: 'public', label: 'Public' },
 ] as const;
 
 export default function App() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<string>('');
   const [accessLabel, setAccessLabel] = useState<'public' | 'enrolled'>('enrolled');
-  const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [currentCitations, setCurrentCitations] = useState<ChatCitation[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const accessLabelRef = useRef<'public' | 'enrolled'>('enrolled');
+  const queryRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     listCourses()
@@ -39,16 +40,18 @@ export default function App() {
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!query.trim() || !selectedCourseId || streaming) return;
+      console.log('SUBMIT', queryRef.current?.value, selectedCourseId, streaming);
+      const q = queryRef.current?.value?.trim() ?? '';
+      if (!q || !selectedCourseId || streaming) return;
 
       const userMsg: Message = {
         id: crypto.randomUUID(),
         role: 'user',
-        text: query.trim(),
+        text: q,
         citations: [],
       };
       setMessages((prev) => [...prev, userMsg]);
-      setQuery('');
+      if (queryRef.current) queryRef.current.value = '';
       setStreaming(true);
       setCurrentCitations([]);
 
@@ -57,7 +60,7 @@ export default function App() {
 
       await streamChat(
         selectedCourseId,
-        { query: userMsg.text, access_label: accessLabel },
+        { query: q, access_label: accessLabelRef.current },
         {
           onToken: (token) => {
             fullText += token;
@@ -97,7 +100,7 @@ export default function App() {
 
       setStreaming(false);
     },
-    [selectedCourseId, accessLabel, streaming],
+    [selectedCourseId, streaming],
   );
 
   return (
@@ -187,7 +190,11 @@ export default function App() {
         <form onSubmit={handleSubmit} style={styles.form}>
           <select
             value={accessLabel}
-            onChange={(e) => setAccessLabel(e.target.value as 'public' | 'enrolled')}
+            onChange={(e) => {
+              const val = e.target.value as 'public' | 'enrolled';
+              setAccessLabel(val);
+              accessLabelRef.current = val;
+            }}
             style={styles.accessSelect}
             disabled={streaming}
           >
@@ -198,15 +205,15 @@ export default function App() {
             ))}
           </select>
           <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            ref={queryRef}
+            defaultValue=""
             placeholder={
               selectedCourseId ? 'Ask about the course…' : 'Select a course first…'
             }
             disabled={streaming || !selectedCourseId}
             style={styles.input}
           />
-          <button type="submit" disabled={streaming || !query.trim() || !selectedCourseId} style={styles.button}>
+          <button type="submit" disabled={streaming || !selectedCourseId} style={styles.button}>
             {streaming ? '…' : 'Send'}
           </button>
         </form>

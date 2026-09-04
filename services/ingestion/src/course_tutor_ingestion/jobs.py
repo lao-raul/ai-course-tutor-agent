@@ -29,7 +29,81 @@ from course_tutor_ingestion.source_root import validate_path, validate_read_acce
 logger = structlog.get_logger(__name__)
 
 # Increment this whenever the parsing or chunking algorithm changes, forcing a re-index.
-PIPELINE_VERSION = "1.0.0"
+PIPELINE_VERSION = "1.1.0"
+
+
+def _coalesce_chunks(
+    fragments: list[Chunk],
+    *,
+    target_size: int = 1000,
+    overlap: int = 200,
+) -> list[Chunk]:
+    """Coalesce small text fragments into target-size chunks with overlap.
+
+    Chunks are built by accumulating fragment text until reaching *target_size*,
+    then a new chunk starts. The last *overlap* characters are carried forward
+    so context is not lost at boundaries.
+
+    The first chunk in a document starts fresh (no leading overlap).
+    """
+    from course_tutor_ingestion.parsers import Chunk as ChunkFragment
+
+    if not fragments:
+        return []
+
+    result: list[ChunkFragment] = []
+    current_text_parts: list[str] = []
+    current_size = 0
+    current_anchors: list[tuple[str, str]] = []  # (anchor_type, anchor_value)
+
+    def flush() -> ChunkFragment:
+        """Emit the current accumulated chunk."""
+        text = " ".join(current_text_parts)
+        # Use the first anchor as the representative for this chunk.
+        primary_anchor = current_anchors[0] if current_anchors else ("page", "1")
+        # Build a bounded anchor_value: "first-last" for multi-anchor chunks,
+        # capped at 120 chars to stay within VARCHAR(128).
+        if len(current_anchors) > 1:
+            first_val = current_anchors[0][1]
+            last_val = current_anchors[-1][1]
+            raw = f"{first_val}-{last_val}"
+            anchor_value = raw[:120]
+        else:
+            anchor_value = primary_anchor[1]
+        return ChunkFragment(
+            text=text,
+            anchor_type=primary_anchor[0],
+            anchor_value=anchor_value,
+            chunk_class="content",
+        )
+
+    for fragment in fragments:
+        frag_text = fragment.text.strip()
+        if not frag_text:
+            continue
+
+        frag_len = len(frag_text)
+
+        if current_size + frag_len + 1 >= target_size and current_text_parts:
+            # Flush current chunk before starting a new one.
+            result.append(flush())
+            # Carry overlap: keep the last overlap chars as the start of the new chunk.
+            overlap_text = result[-1].text[-overlap:] if result else ""
+            current_text_parts = [overlap_text] if overlap_text else []
+            current_size = len(overlap_text)
+            current_anchors = [(result[-1].anchor_type, result[-1].anchor_value)] if result else []
+        elif current_text_parts:
+            current_size += 1 + frag_len  # +1 for space separator
+
+        current_text_parts.append(frag_text)
+        current_anchors.append((fragment.anchor_type, fragment.anchor_value))
+        current_size += frag_len
+
+    # Don't forget the last accumulated chunk.
+    if current_text_parts:
+        result.append(flush())
+
+    return result
 
 
 @dataclass
@@ -184,8 +258,11 @@ class IngestionJob:
         self._session.add(doc)
         await self._session.flush()  # Get doc.id
 
+        # Coalesce small fragments into target-size chunks with overlap.
+        coalesced = _coalesce_chunks(parsed.chunks, target_size=1000, overlap=200)
+
         # Write chunks with ordinals.
-        for ordinal, chunk in enumerate(parsed.chunks):
+        for ordinal, chunk in enumerate(coalesced):
             orm_chunk = Chunk(
                 source_id=doc.id,
                 ordinal=ordinal,
@@ -194,7 +271,7 @@ class IngestionJob:
                 anchor_type=chunk.anchor_type,
                 anchor_value=chunk.anchor_value,
                 chunk_class=chunk.chunk_class,
-                embedding_model_version=self._pipeline_version,
+                embedding_model_version="pending",
             )
             self._session.add(orm_chunk)
             self._stats.chunks_written += 1

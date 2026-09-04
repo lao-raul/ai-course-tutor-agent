@@ -138,7 +138,7 @@ there is an API for it to call.
 - Integration test: Leeds scanner finds ≥10 files, duplicate `(version_id, checksum)` raises DB constraint error
 - E2E: 14 Leeds module files → 8580 chunks written in ~3 seconds; second worker run → 0 new chunks
 
-### Phase 2 — Retrieval and grounded chat (5–7 days) — **in progress**
+### Phase 2 — Retrieval and grounded chat (5–7 days) — **complete**
 
 - [x] Implement LM Studio provider adapter for embeddings and streaming chat; model/embedding compatibility health checks. *(already existed from Phase 0)*
 - [x] Build Qdrant collection lifecycle, hybrid dense/sparse indexing and tenant/course/version/ACL payload filters.
@@ -149,9 +149,10 @@ there is an API for it to call.
 
 **Exit:** end-to-end question uses only the selected course’s active content and renders valid citations; a no-evidence query abstains. — **met.**
 
-**Implemented at commit `d0ef1cf`:**
-- `services/retrieval/`: `HybridRetrievalService` (dense search + Python-side keyword boost), `EmbeddingIndexer` (batch embed via LM Studio → Qdrant), `Reranker` (source-diversity enforcement)
-- `POST /v1/courses/{id}/chat`: SSE streaming RAG response — LLM tokens + `citation` events with `[Source N]` markers, `abstained` on empty evidence, `RetrievalTrace` recorded
+**Implemented at commit `d0ef1cf` + follow-on fixes:**
+- `services/retrieval/`: `HybridRetrievalService` (dense search + Python-side keyword boost + explicit unit/week path boost +0.35), `EmbeddingIndexer` (batch embed via LM Studio → Qdrant), `Reranker` (source-diversity enforcement, max 2 per file)
+- `services/ingestion/`: `_coalesce_chunks()` — aggregates small text fragments into target-size (1000 chars) chunks with 200-char overlap; `PIPELINE_VERSION = "1.1.0"`; anchor_value truncated to 120 chars (VARCHAR(128) compatibility)
+- `POST /v1/courses/{id}/chat`: SSE streaming RAG response — LLM tokens + `citation` events with `[Source N]` markers (inline regex fallback when LLM skips JSON block), `abstained` on empty evidence, `RetrievalTrace` recorded; `citation_map` built from all 20 retrieval candidates (not just top-K reranked) so LLM references to [Source N>5] resolve correctly
 - `ingestion.embed` outbox events: scan job emits embed event → worker batch-embeds unindexed chunks → upserts to Qdrant → marks chunks with `embedding_model_version`
 - `apps/web/`: React + TypeScript + Vite chat UI with course selector, SSE token streaming, live citation panel, access-label switcher
 - `tests/retrieval_benchmark.py`: synthetic course fixture (5 AI/ML modules, 10 Q&A cases covering search, logic, probability) — copyright-cleared; real-content benchmark pending §9 decision 3
@@ -165,6 +166,11 @@ there is an API for it to call.
 - [ ] Implement scoped memory recall/ranking and prompt-budget enforcement.
 - [ ] Add learner memory UI: inspect, correct, pin, export, delete; show why a memory was used where appropriate.
 - [ ] Add teaching-level and assessed-work hint policy; test bilingual flows.
+
+**Ingestion pipeline fixes (applied post-Phase 2):**
+- Chunk coalescing: `_coalesce_chunks()` aggregates parser output fragments into ~1000-char chunks with 200-char overlap, reducing chunk count ~90% (7564 → 699) while preserving semantic coherence
+- `PIPELINE_VERSION` bumped to `"1.1.0"` to force re-index on chunking algorithm change
+- `anchor_value` bounded to 120 chars to prevent VARCHAR(128) overflow from SRT/subtitle files with hundreds of lines
 
 **Exit:** repeated facts result in one canonical memory; corrected/deleted memory is not recalled; exercise flow respects hint-first policy.
 

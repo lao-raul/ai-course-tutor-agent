@@ -25,7 +25,7 @@ async def ensure_collection(client: QdrantClient) -> None:
     dimension from settings).  Sparse/TEXT_INDEX support requires Qdrant server
     >= 1.19; keyword fallback is handled at query time via Python-side filtering.
     """
-    existing = [c.name for c in client.collections.get_collections().collections]
+    existing = [c.name for c in client.get_collections().collections]
     if COLLECTION_NAME in existing:
         logger.debug("qdrant_collection_exists", collection=COLLECTION_NAME)
         return
@@ -66,7 +66,7 @@ async def ensure_collection(client: QdrantClient) -> None:
 
 async def recreate_collection(client: QdrantClient) -> None:
     """Delete and recreate the collection (for full re-index)."""
-    existing = [c.name for c in client.collections.get_collections().collections]
+    existing = [c.name for c in client.get_collections().collections]
     if COLLECTION_NAME in existing:
         client.delete_collection(collection_name=COLLECTION_NAME)
         logger.info("qdrant_collection_deleted", collection=COLLECTION_NAME)

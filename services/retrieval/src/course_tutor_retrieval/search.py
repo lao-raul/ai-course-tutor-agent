@@ -93,6 +93,31 @@ class HybridRetrievalService:
             if keyword_hits > 0:
                 score = score + (0.05 * keyword_hits)
 
+            # Explicit unit/section path boost: when the query references a specific
+            # unit or section by name (e.g. "unit 3", "unit3", "week 2"), boost chunks
+            # whose relative_path points to that unit.  This reliably surfaces the right
+            # unit even when the embedding model is biased toward overview content or
+            # when query language (e.g. Chinese + English unit names) creates a semantic
+            # gap between query and specific-unit content.
+            import re
+
+            def unit_boost(query_text: str, path: str) -> float:
+                """Return a boost value if query references the same unit as the path."""
+                query_lower = query_text.lower()
+                # Extract unit/week references: "unit 3", "unit3", "week2", etc.
+                unit_refs = re.findall(r"(?:unit|week)[_\s]*(\d+)", query_lower)
+                if not unit_refs:
+                    return 0.0
+                path_lower = path.lower()
+                for ref in unit_refs:
+                    # Match "unitN" or "unit/N" style path segments
+                    if re.search(rf"(?:^|/)unit[_\s]*{re.escape(ref)}(?:[/_\s]|$)", path_lower) or \
+                       re.search(rf"(?:^|/)week[_\s]*{re.escape(ref)}(?:[/_\s]|$)", path_lower):
+                        return 0.35  # strong enough to overcome embedding bias for overview content
+                return 0.0
+
+            score += unit_boost(query, payload.get("relative_path", ""))
+
             candidates.append(
                 RetrievedChunk(
                     chunk_id=uuid.UUID(payload["chunk_id"]),
@@ -135,13 +160,11 @@ class HybridRetrievalService:
     def _count_indexed(self, course_id: uuid.UUID, content_version_id: uuid.UUID) -> int:
         """Approximate count of indexed points for a content version."""
         try:
-            result = self._client.scroll(
+            result = self._client.count(
                 collection_name=COLLECTION_NAME,
-                query_filter=self._build_filter(course_id, content_version_id),
-                limit=0,
-                with_payload=False,
-                with_vectors=False,
+                count_filter=self._build_filter(course_id, content_version_id),
+                exact=True,
             )
-            return result.total or 0
+            return result.count or 0
         except Exception:
             return 0

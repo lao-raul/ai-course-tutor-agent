@@ -43,7 +43,7 @@ class RetrievalResult(BaseModel):
 class ChatRequest(BaseModel):
     """Request to the chat endpoint."""
 
-    course_id: UUID
+    # course_id is provided by the URL path, not the body.
     query: str = Field(..., min_length=1, max_length=2000)
     access_label: AccessLabel = AccessLabel.ENROLLED
     session_id: UUID | None = None
