@@ -104,27 +104,106 @@ Qdrant sparse index（TEXT_INDEX）因 server 1.12.5 不支持而跳过，已用
 │  └── /health                          │
 ├─────────────────────────────────────────────┤
 │  Ingestion Worker (后台)                    │
-│  ├── 扫描任务 (scan)                       │
-│  └── 嵌入任务 (embed → Qdrant)             │
+│  ├── 扫描任务 (scan) → 写 PostgreSQL chunks │
+│  └── 嵌入任务 (embed) → 写入 Qdrant         │
+│       两阶段通过 outbox 事件解耦            │
 ├─────────────────────────────────────────────┤
 │  Postgres  Redis  Qdrant  MinIO            │
 └─────────────────────────────────────────────┘
 ```
 
-### Docker 部署
+### 环境配置
 
 ```bash
-# 完整生产栈（API + Web + Worker + 依赖）
-cd infra/docker
-cp ../../../.env.deploy .env   # 修改密码和 LM Studio URL
-docker compose up --build
+# 复制环境变量模板
+cp .env.example .env
 
-# 仅启动依赖服务（本地开发）
+# 必填项：
+#   DATABASE_URL         — PostgreSQL 连接串
+#   QDRANT_URL           — Qdrant 地址（默认 http://localhost:6333）
+#   REDIS_URL            — Redis 连接串
+#   LM_STUDIO_URL        — LM Studio API（默认 http://192.168.50.146:1234/v1）
+#   COURSE_SOURCE_PATH   — 课程文件根目录（本地 POSIX 路径，必须先挂载 NAS）
+```
+
+### 启动依赖服务（本地开发）
+
+```bash
 docker compose -f infra/docker/docker-compose.yml up -d postgres qdrant redis minio
 ```
 
-验证：
+### 启动 API 和 Ingestion Worker（本地开发）
+
 ```bash
+# 终端 1：启动 API（自动执行 alembic migration）
+uv run uvicorn course_tutor_api:create_app --factory --host 0.0.0.0 --port 8000
+
+# 终端 2：启动 ingestion worker（同时处理 scan + embed 任务）
+uv run python -m course_tutor_ingestion
+```
+
+### 完整生产栈（Docker）
+
+```bash
+cd infra/docker
+cp ../../../.env.deploy .env   # 修改密码和 LM Studio URL
+docker compose up --build
+```
+
+### 触发内容摄取
+
+课程文件就绪后，通过 API 触发扫描（也可使用 Web UI 的 Admin 面板）：
+
+```bash
+# 注册课程内容版本并触发首次扫描
+curl -X POST http://localhost:8000/admin/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"course_id": "<UUID>", "source_root": "/Volumes/L-NAS/.../OCOM5105M"}'
+
+# 或通过 Web UI → Admin → Ingestion 页面
+```
+
+Worker 会自动处理 outbox 事件：
+1. `ingestion.scan` → 扫描文件、计算 checksum、写入 `source_documents` + `chunks`
+2. `ingestion.embed` → 批量 embedding → 写入 Qdrant
+
+**重新摄取（如修改了 chunk_size）：** 需先清理 PostgreSQL 和 Qdrant 数据，再重新扫描：
+
+```bash
+# 清理旧数据（示例：course OCOM5105M）
+psql $DATABASE_URL -c "DELETE FROM chunks WHERE source_id IN (SELECT id FROM source_documents WHERE version_id = '<version_uuid>');"
+psql $DATABASE_URL -c "DELETE FROM source_documents WHERE version_id = '<version_uuid>';"
+# Qdrant 清理（见 Qdrant REST API 或使用 qdrant-cli）
+
+# 重置 chunk embedding 版本
+psql $DATABASE_URL -c "UPDATE chunks SET embedding_model_version = 'pending';"
+
+# 重新扫描（同上 curl 命令）
+```
+
+### 验证
+
+```bash
+# 健康检查
 curl http://localhost:8000/health
-open http://localhost:3000    # Web UI
+
+# 聊天接口（需先摄取课程内容）
+curl -X POST http://localhost:8000/v1/courses/<course_id>/chat \
+  -H "Content-Type: application/json" \
+  -d '{"query": "unit3的主要内容", "access_label": "enrolled"}' -N
+
+# Web UI
+open http://localhost:3000
+```
+
+### Ingestion Worker 独立部署
+
+Worker 可独立部署，不依赖 API 服务：
+
+```bash
+# 只运行 worker（连接远程 PostgreSQL/Qdrant）
+LM_STUDIO_URL=http://192.168.50.146:1234/v1 \
+  DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db \
+  QDRANT_URL=http://host:6333 \
+  uv run python -m course_tutor_ingestion
 ```
