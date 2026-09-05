@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 from sqlalchemy import select, update
@@ -23,8 +24,8 @@ class EmbeddingStats:
 async def run_pending_embedding_jobs(
     session: AsyncSession,
     *,
-    qdrant_client,
-    embed_provider,
+    qdrant_client: Any,
+    embed_provider: Any,
     max_batch: int = 10,
 ) -> int:
     """Claim and process up to *max_batch* pending ingestion.embed outbox events."""
@@ -68,8 +69,8 @@ async def run_pending_embedding_jobs(
 
 async def _process_embed_event(
     session: AsyncSession,
-    event,
-    indexer,
+    event: Any,
+    indexer: Any,
     pipeline_version: str,
 ) -> EmbeddingStats:
     """Process a single embedding event for one content version."""
