@@ -62,12 +62,15 @@ def test_enum_columns_store_every_member(python_enum, table, column) -> None:  #
 
 def test_all_tables_are_registered() -> None:
     assert set(Base.metadata.tables) == {
+        "audit_events",
         "chat_sessions",
         "chunks",
         "content_versions",
         "courses",
+        "course_runs",
         "memory_facts",
         "outbox_events",
+        "programmes",
         "retrieval_traces",
         "source_documents",
         "source_roots",

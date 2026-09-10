@@ -11,21 +11,14 @@ interface Message {
   error?: string;
 }
 
-const ACCESS_LABEL_OPTIONS = [
-  { value: 'enrolled', label: 'Enrolled' },
-  { value: 'public', label: 'Public' },
-] as const;
-
 export default function App() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<string>('');
-  const [accessLabel, setAccessLabel] = useState<'public' | 'enrolled'>('enrolled');
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
-  const [currentCitations, setCurrentCitations] = useState<ChatCitation[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const accessLabelRef = useRef<'public' | 'enrolled'>('enrolled');
   const queryRef = useRef<HTMLInputElement>(null);
+  const streamControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     listCourses()
@@ -35,12 +28,13 @@ export default function App() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, currentCitations]);
+  }, [messages]);
+
+  useEffect(() => () => streamControllerRef.current?.abort(), []);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      console.log('SUBMIT', queryRef.current?.value, selectedCourseId, streaming);
       const q = queryRef.current?.value?.trim() ?? '';
       if (!q || !selectedCourseId || streaming) return;
 
@@ -50,55 +44,55 @@ export default function App() {
         text: q,
         citations: [],
       };
-      setMessages((prev) => [...prev, userMsg]);
+      const assistantId = crypto.randomUUID();
+      const assistantMsg: Message = {
+        id: assistantId,
+        role: 'assistant',
+        text: '',
+        citations: [],
+      };
+      setMessages((prev) => [...prev, userMsg, assistantMsg]);
       if (queryRef.current) queryRef.current.value = '';
       setStreaming(true);
-      setCurrentCitations([]);
 
-      let fullText = '';
-      const citations: ChatCitation[] = [];
+      const updateAssistant = (update: (message: Message) => Message) => {
+        setMessages((prev) =>
+          prev.map((message) => (message.id === assistantId ? update(message) : message)),
+        );
+      };
+      const controller = new AbortController();
+      streamControllerRef.current = controller;
 
-      await streamChat(
-        selectedCourseId,
-        { query: q, access_label: accessLabelRef.current },
-        {
-          onToken: (token) => {
-            fullText += token;
+      try {
+        await streamChat(
+          selectedCourseId,
+          { query: q },
+          {
+            onToken: (token) => {
+              updateAssistant((message) => ({ ...message, text: message.text + token }));
+            },
+            onCitation: (citation) => {
+              updateAssistant((message) => ({
+                ...message,
+                citations: message.citations.some((item) => item.chunk_id === citation.chunk_id)
+                  ? message.citations
+                  : [...message.citations, citation],
+              }));
+            },
+            onAbstained: (reason) => {
+              updateAssistant((message) => ({ ...message, abstained: reason }));
+            },
+            onDone: () => undefined,
+            onError: (detail) => {
+              updateAssistant((message) => ({ ...message, error: detail }));
+            },
           },
-          onCitation: (cit) => {
-            citations.push(cit);
-            setCurrentCitations((prev) => [...prev, cit]);
-          },
-          onAbstained: (reason) => {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: crypto.randomUUID(),
-                role: 'assistant',
-                text: '',
-                citations: [],
-                abstained: reason,
-              },
-            ]);
-          },
-          onDone: () => {
-            if (fullText) {
-              setMessages((prev) => [
-                ...prev,
-                { id: crypto.randomUUID(), role: 'assistant', text: fullText, citations: [...citations] },
-              ]);
-            }
-          },
-          onError: (detail) => {
-            setMessages((prev) => [
-              ...prev,
-              { id: crypto.randomUUID(), role: 'assistant', text: '', citations: [], error: detail },
-            ]);
-          },
-        },
-      );
-
-      setStreaming(false);
+          controller.signal,
+        );
+      } finally {
+        if (streamControllerRef.current === controller) streamControllerRef.current = null;
+        setStreaming(false);
+      }
     },
     [selectedCourseId, streaming],
   );
@@ -164,46 +158,12 @@ export default function App() {
           </div>
         ))}
 
-        {/* Live citations while streaming */}
-        {streaming && currentCitations.length > 0 && (
-          <div style={styles.assistantMsg}>
-            <div style={styles.roleLabel}>Assistant</div>
-            <div style={styles.citations}>
-              <div style={styles.citationsLabel}>Sources found:</div>
-              {currentCitations.map((cit, i) => (
-                <div key={i} style={styles.citation}>
-                  <span style={styles.citSource}>{cit.relative_path}</span>
-                  <span style={styles.citAnchor}>
-                    {' '}({cit.anchor_type} {cit.anchor_value})
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         <div ref={messagesEndRef} />
       </main>
 
       {/* Input */}
       <footer style={styles.footer}>
         <form onSubmit={handleSubmit} style={styles.form}>
-          <select
-            value={accessLabel}
-            onChange={(e) => {
-              const val = e.target.value as 'public' | 'enrolled';
-              setAccessLabel(val);
-              accessLabelRef.current = val;
-            }}
-            style={styles.accessSelect}
-            disabled={streaming}
-          >
-            {ACCESS_LABEL_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
           <input
             ref={queryRef}
             defaultValue=""

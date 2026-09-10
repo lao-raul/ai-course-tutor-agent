@@ -1,112 +1,102 @@
-"""Outbox-backed ingestion job processor.
-
-Design contract (function-spec FR-1.2):
-  checksum + pipeline_version is the idempotency key per source document.
-  A file whose checksum has not changed since the last scan is never reprocessed.
-  A second scan of the same root uses the same outbox idempotency key → at-least-once semantics.
-"""
+"""Incremental, immutable ingestion driven by a transactionally claimed outbox."""
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import re
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from course_tutor_api.db import Chunk as OrmChunk
-from course_tutor_api.db import ContentVersion, SourceDocument
-from course_tutor_api.db.models import OutboxEvent
-from course_tutor_contracts.enums import ExtractionStatus
+from course_tutor_api.db import (
+    ContentVersion,
+    Course,
+    CourseRun,
+    OutboxEvent,
+    SourceDocument,
+    SourceRoot,
+)
+from course_tutor_contracts.enums import AccessLabel, ContentVersionStatus, ExtractionStatus
 from course_tutor_ingestion.object_store import MinioObjectStore
 from course_tutor_ingestion.parsers import ParsedDocument, parse
 from course_tutor_ingestion.scanner import FileEntry, Scanner
 from course_tutor_ingestion.source_root import validate_path, validate_read_access
+from course_tutor_shared import PIPELINE_VERSION
 
 if TYPE_CHECKING:
     from course_tutor_ingestion.parsers import Chunk as ParserChunk
 
 logger = structlog.get_logger(__name__)
 
-# Increment this whenever the parsing or chunking algorithm changes, forcing a re-index.
-PIPELINE_VERSION = "1.1.0"
+
+def snapshot_hash(entries: list[FileEntry]) -> str:
+    """Hash path + content checksum so add/change/delete/rename are all observable."""
+    digest = hashlib.sha256()
+    for entry in sorted(entries, key=lambda item: item.relative_path):
+        digest.update(entry.relative_path.encode())
+        digest.update(b"\0")
+        digest.update(entry.checksum.encode())
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def approximate_token_count(text: str) -> int:
+    """Stable fallback token count for local models without a tokenizer endpoint."""
+    return len(re.findall(r"\w+|[^\s\w]", text, flags=re.UNICODE))
 
 
 def _coalesce_chunks(
-    fragments: list[ParserChunk],
-    *,
-    target_size: int = 1000,
-    overlap: int = 200,
+    fragments: list[ParserChunk], *, target_size: int = 1000, overlap: int = 200
 ) -> list[ParserChunk]:
-    """Coalesce small text fragments into target-size chunks with overlap.
-
-    Chunks are built by accumulating fragment text until reaching *target_size*,
-    then a new chunk starts. The last *overlap* characters are carried forward
-    so context is not lost at boundaries.
-
-    The first chunk in a document starts fresh (no leading overlap).
-    """
+    """Coalesce only fragments with the same semantic class and anchor type."""
     from course_tutor_ingestion.parsers import Chunk as ParserChunk
 
-    if not fragments:
-        return []
-
     result: list[ParserChunk] = []
-    current_text_parts: list[str] = []
-    current_size = 0
-    current_anchors: list[tuple[str, str]] = []  # (anchor_type, anchor_value)
+    parts: list[str] = []
+    anchors: list[str] = []
+    active_type: str | None = None
+    active_class: str | None = None
 
-    def flush() -> ParserChunk:
-        """Emit the current accumulated chunk."""
-        text = " ".join(current_text_parts)
-        # Use the first anchor as the representative for this chunk.
-        primary_anchor = current_anchors[0] if current_anchors else ("page", "1")
-        # Build a bounded anchor_value: "first-last" for multi-anchor chunks,
-        # capped at 120 chars to stay within VARCHAR(128).
-        if len(current_anchors) > 1:
-            first_val = current_anchors[0][1]
-            last_val = current_anchors[-1][1]
-            raw = f"{first_val}-{last_val}"
-            anchor_value = raw[:120]
-        else:
-            anchor_value = primary_anchor[1]
-        return ParserChunk(
-            text=text,
-            anchor_type=primary_anchor[0],
-            anchor_value=anchor_value,
-            chunk_class="content",
+    def flush() -> None:
+        if not parts or active_type is None or active_class is None:
+            return
+        text = " ".join(parts).strip()
+        anchor = anchors[0] if len(anchors) == 1 else f"{anchors[0]}-{anchors[-1]}"[:120]
+        result.append(
+            ParserChunk(
+                text=text,
+                anchor_type=active_type,
+                anchor_value=anchor,
+                chunk_class=active_class,
+                token_count=approximate_token_count(text),
+            )
         )
 
     for fragment in fragments:
-        frag_text = fragment.text.strip()
-        if not frag_text:
+        text = fragment.text.strip()
+        if not text:
             continue
-
-        frag_len = len(frag_text)
-
-        if current_size + frag_len + 1 >= target_size and current_text_parts:
-            # Flush current chunk before starting a new one.
-            result.append(flush())
-            # Carry overlap: keep the last overlap chars as the start of the new chunk.
-            overlap_text = result[-1].text[-overlap:] if result else ""
-            current_text_parts = [overlap_text] if overlap_text else []
-            current_size = len(overlap_text)
-            current_anchors = [(result[-1].anchor_type, result[-1].anchor_value)] if result else []
-        elif current_text_parts:
-            current_size += 1 + frag_len  # +1 for space separator
-
-        current_text_parts.append(frag_text)
-        current_anchors.append((fragment.anchor_type, fragment.anchor_value))
-        current_size += frag_len
-
-    # Don't forget the last accumulated chunk.
-    if current_text_parts:
-        result.append(flush())
-
+        boundary = active_type is not None and (
+            fragment.anchor_type != active_type or fragment.chunk_class != active_class
+        )
+        oversized = parts and len(" ".join(parts)) + len(text) + 1 > target_size
+        if boundary or oversized:
+            flush()
+            carry = result[-1].text[-overlap:] if oversized and not boundary and result else ""
+            parts = [carry] if carry else []
+            anchors = [result[-1].anchor_value] if carry else []
+        active_type = fragment.anchor_type
+        active_class = fragment.chunk_class
+        parts.append(text)
+        anchors.append(fragment.anchor_value)
+    flush()
     return result
 
 
@@ -117,12 +107,11 @@ class IngestionStats:
     files_processed: int = 0
     files_quarantined: int = 0
     chunks_written: int = 0
+    no_change: bool = False
     errors: list[str] = field(default_factory=list)
 
 
 class IngestionJob:
-    """One scan-and-index job driven by an OutboxEvent payload."""
-
     def __init__(
         self,
         session: AsyncSession,
@@ -137,99 +126,166 @@ class IngestionJob:
         self._stats = IngestionStats()
 
     async def run(self) -> IngestionStats:
-        payload: dict[str, Any] = self._event.payload
+        if self._event.processed_at is not None:
+            self._stats.no_change = True
+            return self._stats
+        payload = dict(self._event.payload)
         course_id = uuid.UUID(payload["course_id"])
-        version_id = uuid.UUID(payload["version_id"])
-        resolved_path = Path(payload["resolved_path"])
+        course = await self._session.get(Course, course_id)
+        if course is None:
+            raise ValueError(f"course {course_id} not found")
+        if payload.get("tenant_id") and payload["tenant_id"] != str(course.tenant_id):
+            raise ValueError("ingestion tenant does not own course")
 
-        logger.info(
-            "ingestion_job_start",
-            job_id=str(self._event.id),
-            path=str(resolved_path),
-            course_id=str(course_id),
-            version_id=str(version_id),
+        source_root = (
+            await self._session.get(SourceRoot, uuid.UUID(payload["source_root_id"]))
+            if payload.get("source_root_id")
+            else await self._session.get(SourceRoot, course.source_root_id)
+            if course.source_root_id
+            else None
         )
+        if source_root is None or source_root.tenant_id != course.tenant_id:
+            raise ValueError("course source root is missing or crosses tenant boundary")
+        if raw_run := payload.get("course_run_id"):
+            course_run = await self._session.get(CourseRun, uuid.UUID(raw_run))
+        else:
+            run_result = await self._session.execute(
+                select(CourseRun)
+                .where(
+                    CourseRun.course_id == course.id,
+                    CourseRun.source_root_id == source_root.id,
+                )
+                .order_by(CourseRun.created_at.desc())
+                .limit(1)
+            )
+            course_run = run_result.scalar_one_or_none()
+        if course_run is None or course_run.course_id != course.id:
+            raise ValueError("course run is missing or does not own source root")
 
-        # Validate path on every run (it may have been remounted).
-        try:
-            resolved = validate_path(str(resolved_path))
-            validate_read_access(resolved)
-        except Exception as exc:
-            logger.error("ingestion_path_validation_failed", path=str(resolved_path), exc=str(exc))
-            self._stats.errors.append(f"path validation: {exc}")
-            return self._stats
-
-        scanner = Scanner(resolved)
-        entries = scanner.scan()
+        resolved = validate_path(payload.get("resolved_path", source_root.absolute_path))
+        validate_read_access(resolved)
+        entries = Scanner(resolved).scan()
         self._stats.files_discovered = len(entries)
+        current_snapshot = snapshot_hash(entries)
 
-        version = await self._session.get(ContentVersion, version_id)
-        if version is None:
-            self._stats.errors.append(f"version {version_id} not found")
+        # New API events create a version only after change detection. Old queued
+        # events that already contain version_id remain consumable during rollout.
+        version = None
+        unchanged_version_exists = False
+        if raw_version := payload.get("version_id"):
+            version = await self._session.get(ContentVersion, uuid.UUID(raw_version))
+            if version is None or version.course_id != course.id:
+                raise ValueError("queued content version is invalid")
+        else:
+            baseline_result = await self._session.execute(
+                select(ContentVersion.id).where(
+                    ContentVersion.course_id == course.id,
+                    ContentVersion.course_run_id == course_run.id,
+                    ContentVersion.pipeline_version == self._pipeline_version,
+                    ContentVersion.source_snapshot_hash == current_snapshot,
+                    ContentVersion.status.in_(
+                        [ContentVersionStatus.READY, ContentVersionStatus.PUBLISHED]
+                    ),
+                )
+            )
+            unchanged_version_exists = baseline_result.first() is not None
+
+        if version is None and unchanged_version_exists:
+            self._stats.no_change = True
+            self._stats.files_unchanged = len(entries)
+            source_root.last_scanned_at = datetime.now(UTC).replace(tzinfo=None)
+            payload["stats"] = asdict(self._stats)
+            self._event.payload = payload
+            self._event.processed_at = datetime.now(UTC).replace(tzinfo=None)
+            await self._session.commit()
             return self._stats
+        elif version is None:
+            sequence_result = await self._session.execute(
+                select(func.coalesce(func.max(ContentVersion.sequence), 0)).where(
+                    ContentVersion.course_run_id == course_run.id
+                )
+            )
+            version = ContentVersion(
+                id=uuid.uuid4(),
+                course_id=course.id,
+                course_run_id=course_run.id,
+                pipeline_version=self._pipeline_version,
+                sequence=int(sequence_result.scalar_one()) + 1,
+                status=ContentVersionStatus.BUILDING,
+                embedding_model_version="pending",
+                embedding_dimension=int(payload.get("embedding_dimension", 1024)),
+                source_snapshot_hash=current_snapshot,
+            )
+            self._session.add(version)
+            payload["version_id"] = str(version.id)
 
+        assert version is not None
         for entry in entries:
-            await self._process_file(entry, version.id)
+            await self._process_file(entry, version, course)
 
-        # Emit an embedding job if any chunks were written.
-        if self._stats.chunks_written > 0:
-            embed_event = OutboxEvent(
+        self._session.add(
+            OutboxEvent(
                 id=uuid.uuid4(),
                 topic="ingestion.embed",
-                idempotency_key=f"embed:{version_id}",
+                idempotency_key=f"embed:{version.id}",
                 payload={
-                    "version_id": str(version_id),
-                    "course_id": str(course_id),
+                    "tenant_id": str(course.tenant_id),
+                    "course_id": str(course.id),
+                    "course_run_id": str(course_run.id),
+                    "version_id": str(version.id),
                 },
                 attempts=0,
             )
-            self._session.add(embed_event)
-
+        )
+        source_root.last_snapshot_hash = current_snapshot
+        source_root.last_scanned_at = datetime.now(UTC).replace(tzinfo=None)
+        payload["stats"] = asdict(self._stats)
+        self._event.payload = payload
         self._event.processed_at = datetime.now(UTC).replace(tzinfo=None)
         await self._session.commit()
-
-        logger.info(
-            "ingestion_job_complete",
-            job_id=str(self._event.id),
-            files_discovered=self._stats.files_discovered,
-            files_unchanged=self._stats.files_unchanged,
-            files_processed=self._stats.files_processed,
-            files_quarantined=self._stats.files_quarantined,
-            chunks_written=self._stats.chunks_written,
-        )
         return self._stats
 
-    async def _process_file(self, entry: FileEntry, version_id: uuid.UUID) -> None:
-        """Idempotent per-file processing.
-
-        The uniqueness constraint (version_id, checksum) is the idempotency key from
-        function-spec §7.1. If a matching SourceDocument already exists we skip silently.
-        """
-        existing = await self._session.execute(
+    async def _process_file(
+        self, entry: FileEntry, version: ContentVersion, course: Course
+    ) -> None:
+        result = await self._session.execute(
             select(SourceDocument).where(
-                SourceDocument.version_id == version_id,
-                SourceDocument.checksum == entry.checksum,
+                SourceDocument.version_id == version.id,
+                SourceDocument.relative_path == entry.relative_path,
             )
         )
-        doc = existing.scalar_one_or_none()
-        if doc is not None:
-            logger.debug(
-                "ingestion_skip_unchanged",
-                path=entry.relative_path,
-                checksum=entry.checksum[:16],
-            )
+        if result.scalar_one_or_none() is not None:
             self._stats.files_unchanged += 1
             return
 
-        # Store original in MinIO.
-        artifact_key: str | None = None
+        parsed: ParsedDocument = parse(entry, entry.absolute_path)
+        if parsed.extraction_status == ExtractionStatus.QUARANTINED.value:
+            self._stats.files_quarantined += 1
+        doc = SourceDocument(
+            id=uuid.uuid4(),
+            version_id=version.id,
+            relative_path=entry.relative_path,
+            checksum=entry.checksum,
+            mime_type=entry.mime_type,
+            size_bytes=entry.size_bytes,
+            access_label=AccessLabel.ENROLLED,
+            extraction_status=ExtractionStatus(parsed.extraction_status),
+            extraction_confidence=parsed.extraction_confidence,
+            failure_reason=parsed.failure_reason,
+            artifact_key=None,
+            source_metadata=parsed.metadata,
+        )
+        self._session.add(doc)
+        await self._session.flush()
+
         if self._object_store is not None:
             try:
-                artifact_key = self._object_store.upload_path(
-                    source_path=entry.absolute_path,
-                    tenant_id="00000000-0000-0000-0000-000000000000",
-                    course_id=str(version_id),
-                    source_id="placeholder",
+                doc.artifact_key = await asyncio.to_thread(
+                    self._object_store.upload_path,
+                    entry.absolute_path,
+                    str(course.tenant_id),
+                    str(course.id),
+                    str(doc.id),
                 )
             except Exception as exc:
                 logger.warning(
@@ -237,56 +293,77 @@ class IngestionJob:
                     path=entry.relative_path,
                     exc=str(exc),
                 )
-                artifact_key = None
 
-        # Parse.
-        parsed: ParsedDocument = parse(entry, entry.absolute_path)
-
-        if parsed.extraction_status == "quarantined":
-            self._stats.files_quarantined += 1
-
-        # Write SourceDocument row.
-        doc = SourceDocument(
-            version_id=version_id,
-            relative_path=entry.relative_path,
-            checksum=entry.checksum,
-            mime_type=entry.mime_type,
-            size_bytes=entry.size_bytes,
-            access_label="enrolled",
-            extraction_status=ExtractionStatus(parsed.extraction_status),
-            extraction_confidence=parsed.extraction_confidence,
-            failure_reason=parsed.failure_reason,
-            artifact_key=artifact_key,
-            source_metadata=parsed.metadata,
-        )
-        self._session.add(doc)
-        await self._session.flush()  # Get doc.id
-
-        # Coalesce small fragments into target-size chunks with overlap.
-        coalesced = _coalesce_chunks(parsed.chunks, target_size=1000, overlap=200)
-
-        # Write chunks with ordinals.
-        for ordinal, chunk in enumerate(coalesced):
-            orm_chunk = OrmChunk(
-                source_id=doc.id,
-                ordinal=ordinal,
-                text=chunk.text,
-                token_count=chunk.token_count or 0,
-                anchor_type=chunk.anchor_type,
-                anchor_value=chunk.anchor_value,
-                chunk_class=chunk.chunk_class,
-                embedding_model_version="pending",
+        chunks = _coalesce_chunks(parsed.chunks)
+        for ordinal, chunk in enumerate(chunks):
+            self._session.add(
+                OrmChunk(
+                    source_id=doc.id,
+                    ordinal=ordinal,
+                    text=chunk.text,
+                    token_count=chunk.token_count or approximate_token_count(chunk.text),
+                    anchor_type=chunk.anchor_type,
+                    anchor_value=chunk.anchor_value,
+                    chunk_class=chunk.chunk_class,
+                    embedding_model_version="pending",
+                )
             )
-            self._session.add(orm_chunk)
             self._stats.chunks_written += 1
-
         self._stats.files_processed += 1
-        logger.debug(
-            "ingestion_file_processed",
-            path=entry.relative_path,
-            chunks=len(parsed.chunks),
-            status=parsed.extraction_status,
+
+
+async def enqueue_due_scans(session: AsyncSession, now: datetime | None = None) -> int:
+    """Create one periodic scan event per due course, without duplicating pending work."""
+    now = now or datetime.now(UTC).replace(tzinfo=None)
+    result = await session.execute(
+        select(Course, SourceRoot, CourseRun)
+        .join(SourceRoot, Course.source_root_id == SourceRoot.id)
+        .join(
+            CourseRun,
+            (CourseRun.course_id == Course.id) & (CourseRun.source_root_id == SourceRoot.id),
         )
+    )
+    queued = 0
+    for course, source_root, course_run in result.all():
+        elapsed = (
+            float("inf")
+            if source_root.last_scanned_at is None
+            else (now - source_root.last_scanned_at).total_seconds()
+        )
+        if elapsed < source_root.scan_interval_seconds:
+            continue
+        pending_result = await session.execute(
+            select(OutboxEvent.id).where(
+                OutboxEvent.topic == "ingestion.scan",
+                OutboxEvent.processed_at.is_(None),
+                OutboxEvent.dead_lettered_at.is_(None),
+                OutboxEvent.payload["course_id"].astext == str(course.id),
+            )
+        )
+        if pending_result.first() is not None:
+            continue
+        bucket = int(now.timestamp()) // source_root.scan_interval_seconds
+        session.add(
+            OutboxEvent(
+                id=uuid.uuid4(),
+                topic="ingestion.scan",
+                idempotency_key=f"scan:{course.id}:scheduled:{bucket}",
+                payload={
+                    "tenant_id": str(course.tenant_id),
+                    "course_id": str(course.id),
+                    "source_root_id": str(source_root.id),
+                    "course_run_id": str(course_run.id),
+                    "resolved_path": source_root.absolute_path,
+                    "pipeline_version": PIPELINE_VERSION,
+                    "trigger": "scheduled",
+                },
+                attempts=0,
+            )
+        )
+        queued += 1
+    if queued:
+        await session.commit()
+    return queued
 
 
 async def run_pending_jobs(
@@ -294,35 +371,58 @@ async def run_pending_jobs(
     *,
     max_batch: int = 10,
     object_store: MinioObjectStore | None = None,
+    max_attempts: int = 5,
 ) -> int:
-    """Claim and process up to *max_batch* pending ingestion.scan outbox events.
-
-    Returns the number of events processed. Each event is idempotent on its
-    idempotency_key, so reprocessing a crashed worker is safe.
-    """
-    result = await session.execute(
-        select(OutboxEvent)
-        .where(
-            OutboxEvent.topic == "ingestion.scan",
-            OutboxEvent.processed_at.is_(None),
-            OutboxEvent.dead_lettered_at.is_(None),
-        )
-        .limit(max_batch)
-    )
-    events = list(result.scalars().all())
-    for event in events:
-        try:
-            job = IngestionJob(
-                session=session,
-                event=event,
-                object_store=object_store,
+    """Claim with ``FOR UPDATE SKIP LOCKED`` and process at most one lock at a time."""
+    processed = 0
+    for _ in range(max_batch):
+        result = await session.execute(
+            select(OutboxEvent)
+            .where(
+                OutboxEvent.topic == "ingestion.scan",
+                OutboxEvent.processed_at.is_(None),
+                OutboxEvent.dead_lettered_at.is_(None),
             )
-            await job.run()
+            .order_by(OutboxEvent.created_at)
+            .with_for_update(skip_locked=True)
+            .limit(1)
+        )
+        event = result.scalar_one_or_none()
+        if event is None:
+            break
+        processed += 1
+        event_id = event.id
+        try:
+            await IngestionJob(session, event, object_store).run()
         except Exception as exc:
-            logger.error("ingestion_job_crash", job_id=str(event.id), exc=str(exc))
-            event.attempts += 1
-            event.last_error = str(exc)[:500]
-            if event.attempts >= 5:
-                event.dead_lettered_at = datetime.now(UTC).replace(tzinfo=None)
+            await session.rollback()
+            failed = await session.get(OutboxEvent, event_id, with_for_update=True)
+            if failed is None:
+                continue
+            failed.attempts += 1
+            failed.last_error = str(exc)[:500]
+            if failed.attempts >= max_attempts:
+                failed.dead_lettered_at = datetime.now(UTC).replace(tzinfo=None)
+                raw_version = failed.payload.get("version_id")
+                version = (
+                    await session.get(ContentVersion, uuid.UUID(raw_version))
+                    if raw_version
+                    else None
+                )
+                if version is not None:
+                    version.status = ContentVersionStatus.FAILED
             await session.commit()
-    return len(events)
+            logger.error("ingestion_job_failed", job_id=str(event_id), exc=str(exc))
+    return processed
+
+
+__all__ = [
+    "PIPELINE_VERSION",
+    "IngestionJob",
+    "IngestionStats",
+    "_coalesce_chunks",
+    "approximate_token_count",
+    "enqueue_due_scans",
+    "run_pending_jobs",
+    "snapshot_hash",
+]

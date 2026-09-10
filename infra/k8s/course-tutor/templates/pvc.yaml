@@ -1,0 +1,17 @@
+{{- if and .Values.courseContent.enabled .Values.courseContent.createPvc }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-course-content
+  labels:
+    {{- include "course-tutor.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.courseContent.accessModes | nindent 4 }}
+  {{- with .Values.courseContent.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.courseContent.size }}
+{{- end }}

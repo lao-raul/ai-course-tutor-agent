@@ -27,28 +27,35 @@ async def run_pending_embedding_jobs(
     qdrant_client: Any,
     embed_provider: Any,
     max_batch: int = 10,
+    embedding_model_version: str = "local-embedding-model",
+    max_attempts: int = 5,
 ) -> int:
     """Claim and process up to *max_batch* pending ingestion.embed outbox events."""
     from course_tutor_retrieval.indexer import EmbeddingIndexer
 
     from course_tutor_api.db.models import OutboxEvent
-    from course_tutor_ingestion.jobs import PIPELINE_VERSION
 
-    result = await session.execute(
-        select(OutboxEvent)
-        .where(
-            OutboxEvent.topic == "ingestion.embed",
-            OutboxEvent.processed_at.is_(None),
-            OutboxEvent.dead_lettered_at.is_(None),
-        )
-        .limit(max_batch)
-    )
-    events = list(result.scalars().all())
     indexer = EmbeddingIndexer(qdrant_client=qdrant_client, embed_provider=embed_provider)
-
-    for event in events:
+    processed = 0
+    for _ in range(max_batch):
+        result = await session.execute(
+            select(OutboxEvent)
+            .where(
+                OutboxEvent.topic == "ingestion.embed",
+                OutboxEvent.processed_at.is_(None),
+                OutboxEvent.dead_lettered_at.is_(None),
+            )
+            .order_by(OutboxEvent.created_at)
+            .with_for_update(skip_locked=True)
+            .limit(1)
+        )
+        event = result.scalar_one_or_none()
+        if event is None:
+            break
+        processed += 1
+        event_id = event.id
         try:
-            stats = await _process_embed_event(session, event, indexer, PIPELINE_VERSION)
+            stats = await _process_embed_event(session, event, indexer, embedding_model_version)
             event.processed_at = datetime.now(UTC).replace(tzinfo=None)
             await session.commit()
             logger.info(
@@ -57,21 +64,33 @@ async def run_pending_embedding_jobs(
                 chunks_indexed=stats.chunks_indexed,
             )
         except Exception as exc:
-            logger.error("embedding_job_crash", job_id=str(event.id), exc=str(exc))
+            await session.rollback()
+            event = await session.get(OutboxEvent, event_id, with_for_update=True)
+            if event is None:
+                continue
             event.attempts += 1
             event.last_error = str(exc)[:500]
-            if event.attempts >= 5:
+            if event.attempts >= max_attempts:
                 event.dead_lettered_at = datetime.now(UTC).replace(tzinfo=None)
-            await session.commit()
+                raw_version = event.payload.get("version_id")
+                if raw_version:
+                    from course_tutor_api.db import ContentVersion
+                    from course_tutor_contracts.enums import ContentVersionStatus
 
-    return len(events)
+                    version = await session.get(ContentVersion, uuid.UUID(raw_version))
+                    if version is not None:
+                        version.status = ContentVersionStatus.FAILED
+            await session.commit()
+            logger.error("embedding_job_crash", job_id=str(event_id), exc=str(exc))
+
+    return processed
 
 
 async def _process_embed_event(
     session: AsyncSession,
     event: Any,
     indexer: Any,
-    pipeline_version: str,
+    embedding_model_version: str,
 ) -> EmbeddingStats:
     """Process a single embedding event for one content version."""
     from course_tutor_api.db import Chunk, ContentVersion, Course, SourceDocument
@@ -92,20 +111,25 @@ async def _process_embed_event(
             SourceDocument.version_id == version_id,
             (Chunk.embedding_model_version.is_(None))
             | (Chunk.embedding_model_version == "pending")
-            | (Chunk.embedding_model_version != pipeline_version),
+            | (Chunk.embedding_model_version != embedding_model_version),
         )
         .order_by(Chunk.source_id, Chunk.ordinal)
-        .limit(10000)
     )
     chunks = list(result.scalars().all())
     if not chunks:
         logger.info("embedding_job_no_chunks", version_id=str(version_id))
-        return EmbeddingStats()
+        from course_tutor_contracts.enums import ContentVersionStatus
+
+        version.status = ContentVersionStatus.READY
+        version.embedding_model_version = embedding_model_version
+        return EmbeddingStats(versions_indexed=1)
 
     # Build chunk dicts for the indexer
     chunk_dicts = []
     for chunk in chunks:
         source = await session.get(SourceDocument, chunk.source_id)
+        if source is None:
+            raise ValueError(f"source document {chunk.source_id} not found")
         chunk_dicts.append(
             {
                 "id": chunk.id,
@@ -115,23 +139,22 @@ async def _process_embed_event(
                 "anchor_type": chunk.anchor_type,
                 "anchor_value": chunk.anchor_value,
                 "chunk_class": chunk.chunk_class,
-                "relative_path": source.relative_path if source else "unknown",
-                "mime_type": source.mime_type if source else "application/octet-stream",
-                "access_label": source.access_label if source else "enrolled",
+                "relative_path": source.relative_path,
+                "mime_type": source.mime_type,
+                "access_label": source.access_label,
                 "token_count": chunk.token_count,
             }
         )
 
     # Resolve tenant_id
-    tenant_id = uuid.UUID("00000000-0000-0000-0000-000000000000")
     course = await session.get(Course, version.course_id)
-    if course is not None:
-        tenant_id = course.tenant_id
+    if course is None or course.id != course_id:
+        raise ValueError("embedding event course does not match content version")
 
     version_dict = {
         "id": version_id,
         "course_id": course_id,
-        "tenant_id": tenant_id,
+        "tenant_id": course.tenant_id,
     }
 
     indexed = await indexer.index_chunks(chunk_dicts, version_dict)
@@ -141,9 +164,12 @@ async def _process_embed_event(
     await session.execute(
         update(Chunk)
         .where(Chunk.id.in_(chunk_ids))
-        .values(embedding_model_version=pipeline_version)
+        .values(embedding_model_version=embedding_model_version)
     )
-    await session.commit()
+    from course_tutor_contracts.enums import ContentVersionStatus
+
+    version.status = ContentVersionStatus.READY
+    version.embedding_model_version = embedding_model_version
 
     logger.info(
         "embedding_version_complete",

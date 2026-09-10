@@ -1,0 +1,73 @@
+{{- if .Values.tests.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-smoke
+  labels:
+    {{- include "course-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: helm-test
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: smoke
+      image: {{ include "course-tutor.image" (list .Values.fakeLlm.image) }}
+      imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+      command: ["python", "-c"]
+      args:
+        - |
+          import json, os, urllib.error, urllib.request, uuid
+          token = os.environ["LOCAL_AUTH_TOKEN"]
+          def get(url, auth=False):
+              request = urllib.request.Request(url)
+              if auth:
+                  request.add_header("Authorization", f"Bearer {token}")
+              with urllib.request.urlopen(request, timeout=10) as response:
+                  return response.status, json.load(response)
+          assert get("http://{{ include "course-tutor.fullname" . }}-agent:8000/healthz")[0] == 200
+          assert get("http://{{ include "course-tutor.fullname" . }}-agent:8000/readyz")[0] == 200
+          assert get("http://{{ include "course-tutor.fullname" . }}-practice:8001/healthz")[0] == 200
+          assert get("http://{{ include "course-tutor.fullname" . }}-practice:8001/readyz")[0] == 200
+          with urllib.request.urlopen("http://{{ include "course-tutor.fullname" . }}-web/", timeout=10) as response:
+              assert response.status == 200 and b"<div id=\"root\"></div>" in response.read()
+          status, body = get("http://{{ include "course-tutor.fullname" . }}-practice:8001/v1/practice/capabilities", True)
+          assert status == 200 and body["exercise_generation"] == "not_implemented"
+          course_id = uuid.uuid4()
+          request = urllib.request.Request(
+              f"http://{{ include "course-tutor.fullname" . }}-practice:8001/v1/practice/courses/{course_id}/exercises:generate",
+              data=b'{"count": 1}',
+              headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+              method="POST",
+          )
+          try:
+              urllib.request.urlopen(request, timeout=10)
+              raise AssertionError("practice generation unexpectedly succeeded")
+          except urllib.error.HTTPError as error:
+              assert error.code == 501
+              assert json.load(error)["code"] == "practice_generation_not_implemented"
+      env:
+        - name: LOCAL_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "course-tutor.secretName" . }}
+              key: local-auth-token
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: {drop: ["ALL"]}
+      volumeMounts:
+        - {name: runtime-tmp, mountPath: /tmp}
+      resources:
+        requests: {cpu: 5m, memory: 16Mi}
+        limits: {cpu: 100m, memory: 64Mi}
+  volumes:
+    - {name: runtime-tmp, emptyDir: {}}
+{{- end }}

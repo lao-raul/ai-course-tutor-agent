@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from course_tutor_contracts.enums import AccessLabel, AnchorType, ChunkClass
+from course_tutor_contracts.enums import AnchorType, ChunkClass
 
 
 class RetrievalQuery(BaseModel):
@@ -14,7 +14,6 @@ class RetrievalQuery(BaseModel):
 
     course_id: UUID
     query: str = Field(..., min_length=1, max_length=1000)
-    access_label: AccessLabel = AccessLabel.ENROLLED
     limit: int = Field(default=10, ge=1, le=50)
 
 
@@ -45,7 +44,6 @@ class ChatRequest(BaseModel):
 
     # course_id is provided by the URL path, not the body.
     query: str = Field(..., min_length=1, max_length=2000)
-    access_label: AccessLabel = AccessLabel.ENROLLED
     session_id: UUID | None = None
 
     model_config = {"extra": "forbid"}

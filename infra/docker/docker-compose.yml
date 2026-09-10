@@ -42,7 +42,7 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-course-tutor}
@@ -58,6 +58,18 @@ services:
       retries: 5
 
   # ── Application services ────────────────────────────────────────────────
+  migrate:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+      target: runtime
+    entrypoint: ["alembic", "-c", "apps/api/alembic.ini", "upgrade", "head"]
+    environment:
+      POSTGRES_DSN: postgresql+asyncpg://course_tutor:course_tutor@postgres:5432/course_tutor
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: ../..
@@ -90,12 +102,17 @@ services:
       LLM_EMBEDDING_DIMENSION: ${LLM_EMBEDDING_DIMENSION:-1024}
       # Tracing
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      SOURCE_ROOT: ${SOURCE_ROOT:-/data/content}
+      COURSE_SOURCE_PATH: /data/content
     volumes:
-      - "${SOURCE_ROOT:-/Volumes/home/University of Leeds}:/data/content:ro"
+      - "${COURSE_SOURCE_PATH:-/Volumes/home/University of Leeds}:/data/content:ro"
     extra_hosts:
       - "host.docker.internal:192.168.50.14"
+    networks:
+      default:
+        aliases: [course-tutor-agent]
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       qdrant:
@@ -105,11 +122,25 @@ services:
       minio:
         condition: service_healthy
 
+  practice:
+    build:
+      context: ../..
+      dockerfile: apps/practice/Dockerfile
+    ports: ["${PRACTICE_HOST_PORT:-8012}:8001"]
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-local}
+      SERVICE_NAME: practice-api
+      AUTH_MODE: ${AUTH_MODE:-local}
+      LOCAL_AUTH_TOKEN: ${LOCAL_AUTH_TOKEN:-local-dev-token}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}
+
   web:
     build:
       context: ../..
       dockerfile: apps/web/Dockerfile
-    ports: ["${WEB_HOST_PORT:-3011}:80"]
+    ports: ["${WEB_HOST_PORT:-3011}:8080"]
     depends_on:
       api:
         condition: service_started
@@ -139,10 +170,12 @@ services:
       LLM_EMBEDDING_MODEL: ${LLM_EMBEDDING_MODEL:-text-embedding-qwen3-embedding-0.6b}
       LLM_EMBEDDING_DIMENSION: ${LLM_EMBEDDING_DIMENSION:-1024}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      SOURCE_ROOT: ${SOURCE_ROOT:-/data/content}
+      COURSE_SOURCE_PATH: /data/content
     volumes:
-      - "${SOURCE_ROOT:-/Volumes/home/University of Leeds}:/data/content:ro"
+      - "${COURSE_SOURCE_PATH:-/Volumes/home/University of Leeds}:/data/content:ro"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       qdrant:

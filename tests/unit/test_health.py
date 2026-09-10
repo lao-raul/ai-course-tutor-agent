@@ -23,7 +23,8 @@ async def test_liveness_does_not_touch_dependencies(api_client: AsyncClient) -> 
     assert response.json() == {
         "status": "ok",
         "service": "course-tutor-test",
-        "version": "0.1.0",
+        "version": "0.1.0-dev",
+        "revision": "unknown",
     }
 
 

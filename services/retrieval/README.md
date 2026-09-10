@@ -1,3 +1,5 @@
 # Retrieval Service
 
-Performs hybrid retrieval, reranking, syllabus-aware filtering and citation packaging. Every answerable course claim must carry source metadata.
+Performs ACL-filtered dense retrieval, lexical rescoring, deterministic score/diversity
+ordering and citation packaging. The lexical pass does not claim independent lexical
+recall; ADR-005 records this baseline precisely.

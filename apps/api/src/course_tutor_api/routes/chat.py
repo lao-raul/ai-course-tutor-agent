@@ -1,10 +1,14 @@
-"""Chat endpoint: RAG-grounded SSE streaming responses."""
+"""Grounded chat with bounded evidence, validated citations and real SSE streaming."""
 
 from __future__ import annotations
 
+import asyncio
 import json
+import math
+import time
 import uuid
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated, Any
 
 import structlog
@@ -12,14 +16,16 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Path, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from course_tutor_api.auth import Principal, get_current_principal
 from course_tutor_api.db import ContentVersion, Course, RetrievalTrace
-from course_tutor_api.dependencies import Dependencies, get_dependencies
-from course_tutor_contracts.enums import AccessLabel, ContentVersionStatus
-from course_tutor_contracts.retrieval import (
-    ChatCitation,
-    ChatRequest,
-    RetrievedChunk,
+from course_tutor_api.dependencies import (
+    Dependencies,
+    RedisRateLimiter,
+    dependencies_from_request,
+    get_session,
 )
+from course_tutor_contracts.enums import AccessLabel, ContentVersionStatus
+from course_tutor_contracts.retrieval import ChatCitation, ChatRequest, RetrievedChunk
 
 if TYPE_CHECKING:
     from course_tutor_api.providers.base import ChatMessage
@@ -28,300 +34,373 @@ router = APIRouter(prefix="/v1/courses", tags=["chat"])
 logger = structlog.get_logger(__name__)
 
 MAX_EVIDENCE_CHUNKS = 5
-SCORE_THRESHOLD = 0.3
+MAX_EVIDENCE_TOKENS = 3500
+MIN_RELEVANCE_SCORE = 0.2
+CITATION_MARKER = "CITATIONS:"
+MAX_CITATION_TRAILER_CHARS = 16_384
 
 
-# Lazy import types to avoid circular dependency at import time.
-# chat → course_tutor_retrieval.search → course_tutor_api.providers.base → course_tutor_api
+@dataclass(frozen=True, slots=True)
+class EvidencePack:
+    candidates: tuple[RetrievedChunk, ...]
+    evidence: tuple[RetrievedChunk, ...]
+    citation_map: dict[int, ChatCitation]
+    timings_ms: dict[str, float]
 
 
-def _get_retrieval_service(
-    deps: Dependencies,
-) -> Any:  # HybridRetrievalService — lazy to avoid circular import
-    from course_tutor_retrieval.search import HybridRetrievalService
+def _get_retrieval_service(deps: Dependencies) -> Any:
+    from course_tutor_retrieval.search import DenseRetrievalService
 
-    return HybridRetrievalService(
-        qdrant_client=deps.qdrant_client,
-        embed_provider=deps.llm,
-    )
+    return DenseRetrievalService(qdrant_client=deps.qdrant_client, embed_provider=deps.llm)
 
 
-def _get_reranker() -> Any:  # Reranker — lazy to avoid circular import
+def _get_reranker() -> Any:
     from course_tutor_retrieval.reranker import Reranker
 
     return Reranker()
 
 
+def _estimate_tokens(text: str) -> int:
+    """Conservative tokenizer-independent estimate used for hard prompt budgets."""
+    return max(1, math.ceil(len(text) / 4)) if text else 0
+
+
+def _bounded_evidence(candidates: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    evidence: list[RetrievedChunk] = []
+    remaining = MAX_EVIDENCE_TOKENS
+    for chunk in candidates:
+        if len(evidence) >= MAX_EVIDENCE_CHUNKS or chunk.score < MIN_RELEVANCE_SCORE:
+            continue
+        estimated = _estimate_tokens(chunk.text)
+        if estimated <= remaining:
+            evidence.append(chunk)
+            remaining -= estimated
+            continue
+        if remaining >= 32:
+            truncated = chunk.model_copy(update={"text": chunk.text[: remaining * 4]})
+            evidence.append(truncated)
+        break
+    return evidence
+
+
 async def _build_evidence_pack(
-    retrieval_service: Any,  # HybridRetrievalService
-    reranker: Any,  # Reranker
-    session: AsyncSession,
+    retrieval_service: Any,
+    reranker: Any,
+    tenant_id: uuid.UUID,
     course_id: uuid.UUID,
     version_id: uuid.UUID,
     access_label: AccessLabel,
     query: str,
-) -> tuple[list[RetrievedChunk], dict[int, ChatCitation]]:
-    """Run retrieval and return evidence chunks + built citations."""
+) -> EvidencePack:
     result = await retrieval_service.search(
         query=query,
+        tenant_id=tenant_id,
         course_id=course_id,
         content_version_id=version_id,
         access_label=access_label,
         limit=20,
     )
-    if not result.candidates:
-        return [], {}
-
+    rerank_started = time.perf_counter()
     reranked = reranker.rerank(result.candidates)
-    evidence = reranked[:MAX_EVIDENCE_CHUNKS]
+    evidence = _bounded_evidence(reranked)
+    rerank_ms = (time.perf_counter() - rerank_started) * 1000
 
-    # Build citation_map from ALL retrieval candidates (not just reranked top-K)
-    # so that LLM references to [Source N] can always be resolved even when
-    # the reranker trims the prompt to < MAX_EVIDENCE_CHUNKS chunks.
-    citation_map: dict[int, ChatCitation] = {}
-    for i, chunk in enumerate(result.candidates):
-        citation_map[i + 1] = ChatCitation(
+    citation_map = {
+        number: ChatCitation(
             chunk_id=chunk.chunk_id,
             relative_path=chunk.relative_path,
             anchor_type=chunk.anchor_type,
             anchor_value=chunk.anchor_value,
             text_excerpt=chunk.text[:200],
         )
-
-    return evidence, citation_map
-
-
-def _build_prompt(query: str, evidence: list[RetrievedChunk]) -> list["ChatMessage"]:
-    """Build the chat prompt with evidence context."""
-    from course_tutor_api.providers.base import ChatMessage
-
-    if not evidence:
-        return [
-            ChatMessage(
-                role="system",
-                content=(
-                    "You are a helpful course teaching assistant. "
-                    "Answer the student's question based only on the provided course material. "
-                    "If the material does not contain enough information to answer, "
-                    "say so clearly and suggest how the student might find the answer."
-                ),
-            ),
-            ChatMessage(role="user", content=query),
-        ]
-
-    evidence_lines = []
-    for i, chunk in enumerate(evidence, 1):
-        evidence_lines.append(
-            f"[Source {i}] ({chunk.relative_path}, "
-            f"{chunk.anchor_type.value} {chunk.anchor_value}):\n{chunk.text}"
-        )
-    evidence_context = "\n\n".join(evidence_lines)
-
-    system_msg = (
-        "You are a helpful course teaching assistant. "
-        "Answer the student's question based ONLY on the provided course material. "
-        "For each claim, cite the source using [Source N] notation where N is the number. "
-        "If the material does not contain enough information, say so clearly. "
-        "Do not make up information not present in the course material. "
-        "After your answer, on a new line output exactly: "
-        "CITATIONS:"
-        + json.dumps(
-            [{"source": i + 1, "chunk_id": str(c.chunk_id)} for i, c in enumerate(evidence)]
-        )
+        for number, chunk in enumerate(evidence, 1)
+    }
+    return EvidencePack(
+        candidates=tuple(result.candidates),
+        evidence=tuple(evidence),
+        citation_map=citation_map,
+        timings_ms={**result.timings_ms, "rerank_ms": round(rerank_ms, 2)},
     )
 
+
+def _build_prompt(query: str, evidence: tuple[RetrievedChunk, ...]) -> list[ChatMessage]:
+    from course_tutor_api.providers.base import ChatMessage
+
+    evidence_lines = [
+        (
+            f"[Source {number}] [chunk_id={chunk.chunk_id}] "
+            f"({chunk.relative_path}, {chunk.anchor_type.value} {chunk.anchor_value}):\n"
+            f"{chunk.text}"
+        )
+        for number, chunk in enumerate(evidence, 1)
+    ]
+    system_message = (
+        "You are a helpful course teaching assistant. Answer only from the supplied "
+        "course material and clearly abstain when it is insufficient. Cite supported "
+        "claims with [Source N]. Never invent a source. After the visible answer, output "
+        "a private machine-readable trailer on a new line using exactly "
+        'CITATIONS:[{"source":1,"chunk_id":"UUID"}]. Include only sources actually '
+        "used in the answer and preserve each supplied chunk_id exactly."
+    )
     return [
-        ChatMessage(role="system", content=system_msg),
+        ChatMessage(role="system", content=system_message),
         ChatMessage(
             role="user",
-            content=f"Course material:\n{evidence_context}\n\nQuestion: {query}",
+            content=f"Course material:\n{'\n\n'.join(evidence_lines)}\n\nQuestion: {query}",
         ),
     ]
 
 
-async def _parse_stream(
-    stream: Any,
-    evidence: list[RetrievedChunk],
-) -> tuple[str, list[dict[str, Any]]]:
-    """Consume the token stream, extract citations, return full text + citation list.
+class CitationTrailerParser:
+    """Incrementally hides a possibly split citation trailer from visible output."""
 
-    Two citation formats are supported:
-    1. Structured JSON block:  CITATIONS:[{"source": 1, "chunk_id": "..."}]
-    2. Inline references:     [Source 1], [Source 2]   (emitted when LLM skips the JSON block)
-    """
-    import re
+    def __init__(self) -> None:
+        self._pending = ""
+        self._trailer = ""
+        self._found_marker = False
 
-    full_text = ""
-    buffer = ""
-    citations_raw: list[dict[str, Any]] = []
+    @staticmethod
+    def _marker_prefix_suffix_length(value: str) -> int:
+        maximum = min(len(value), len(CITATION_MARKER) - 1)
+        for length in range(maximum, 0, -1):
+            if value.endswith(CITATION_MARKER[:length]):
+                return length
+        return 0
 
-    async for token in stream:
-        full_text += token
-        buffer += token
+    def feed(self, value: str) -> list[str]:
+        if self._found_marker:
+            self._append_trailer(value)
+            return []
 
-        if "CITATIONS:" in buffer:
-            parts = buffer.split("CITATIONS:", 1)
-            body = parts[0]
-            remainder = parts[1].strip()
+        self._pending += value
+        if CITATION_MARKER in self._pending:
+            visible, trailer = self._pending.split(CITATION_MARKER, 1)
+            self._pending = ""
+            self._found_marker = True
+            self._append_trailer(trailer)
+            return [visible] if visible else []
+
+        held = self._marker_prefix_suffix_length(self._pending)
+        safe_length = len(self._pending) - held
+        if safe_length == 0:
+            return []
+        visible = self._pending[:safe_length]
+        self._pending = self._pending[safe_length:]
+        return [visible]
+
+    def finish_visible(self) -> str:
+        if self._found_marker:
+            return ""
+        visible = self._pending
+        self._pending = ""
+        return visible
+
+    def _append_trailer(self, value: str) -> None:
+        self._trailer += value
+        if len(self._trailer) > MAX_CITATION_TRAILER_CHARS:
+            raise ValueError("citation trailer exceeds maximum size")
+
+    def validated_citations(self, citation_map: dict[int, ChatCitation]) -> list[ChatCitation]:
+        if not self._found_marker:
+            return []
+        try:
+            raw, _remainder = json.JSONDecoder().raw_decode(self._trailer.strip())
+        except (json.JSONDecodeError, TypeError):
+            return []
+        if not isinstance(raw, list):
+            return []
+
+        valid: list[ChatCitation] = []
+        seen: set[uuid.UUID] = set()
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            source = item.get("source")
+            chunk_id = item.get("chunk_id")
+            if isinstance(source, bool) or not isinstance(source, int):
+                continue
+            expected = citation_map.get(source)
             try:
-                citations_raw = json.loads(remainder)
-            except json.JSONDecodeError:
-                pass
-            full_text = body
-            break
-
-    # Fallback: if no structured block found, extract inline [Source N] references
-    if not citations_raw:
-        inline_refs = re.findall(r"\[Source\s+(\d+)\]", full_text)
-        if inline_refs:
-            citations_raw = [{"source": int(n)} for n in inline_refs]
-
-    return full_text, citations_raw
+                parsed_chunk_id = uuid.UUID(str(chunk_id))
+            except (TypeError, ValueError):
+                continue
+            if expected is None or expected.chunk_id != parsed_chunk_id:
+                continue
+            if expected.chunk_id not in seen:
+                valid.append(expected)
+                seen.add(expected.chunk_id)
+        return valid
 
 
-@router.post("/{course_id}/chat")
+async def _create_trace(
+    session: AsyncSession,
+    deps: Dependencies,
+    course_id: uuid.UUID,
+    version_id: uuid.UUID,
+    query: str,
+    pack: EvidencePack,
+    *,
+    stream_state: str,
+) -> uuid.UUID:
+    trace_id = uuid.uuid4()
+    trace = RetrievalTrace(
+        id=trace_id,
+        request_id=str(trace_id),
+        course_id=course_id,
+        content_version_id=version_id,
+        query=query,
+        candidate_ids=[chunk.chunk_id for chunk in pack.candidates],
+        reranked_ids=[chunk.chunk_id for chunk in pack.evidence],
+        scores=[chunk.score for chunk in pack.candidates],
+        timings_ms={
+            **pack.timings_ms,
+            "stream_state": stream_state,
+            "retrieval_policy": "dense-lexical-rescore-v1",
+            "reranker_policy": "score-diversity-v1",
+            "chat_model": deps.settings.llm_chat_model,
+            "embedding_model": deps.settings.llm_embedding_model,
+            "minimum_relevance_score": MIN_RELEVANCE_SCORE,
+            "evidence_token_budget": MAX_EVIDENCE_TOKENS,
+        },
+    )
+    session.add(trace)
+    await session.commit()
+    return trace_id
+
+
+async def _finish_trace(
+    deps: Dependencies,
+    trace_id: uuid.UUID,
+    *,
+    stream_state: str,
+    generation_ms: float,
+    answer_tokens: int,
+    error: str | None = None,
+) -> None:
+    async with AsyncSession(deps.engine, expire_on_commit=False) as trace_session:
+        trace = await trace_session.get(RetrievalTrace, trace_id)
+        if trace is None:
+            return
+        trace.timings_ms = {
+            **trace.timings_ms,
+            "stream_state": stream_state,
+            "generation_ms": round(generation_ms, 2),
+            "answer_tokens": answer_tokens,
+            **({"stream_error": error} if error else {}),
+        }
+        await trace_session.commit()
+
+
+def _sse(event: str, data: dict[str, Any]) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+@router.post("/{course_id}/chat", operation_id="streamCourseChat")
 async def chat(
     session: Annotated[AsyncSession, Depends(get_session)],
-    deps: Annotated[Dependencies, Depends(get_dependencies)],
+    deps: Annotated[Dependencies, Depends(dependencies_from_request)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
     body: ChatRequest = Body(Ellipsis),
     course_id: uuid.UUID = Path(Ellipsis),
 ) -> StreamingResponse:
-    """Stream a RAG-grounded chat response with inline citations.
-
-    Returns an SSE stream with events:
-      - token: {"text": "..."}
-      - citation: {"chunk_id": "...", "relative_path": "...", ...}
-      - abstained: {"reason": "..."}
-      - done: {"trace_id": "...", "answer_tokens": N}
-    """
     course = await session.get(Course, course_id)
-    if course is None:
+    if course is None or course.tenant_id != principal.tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course not found")
 
+    await RedisRateLimiter(deps.redis).enforce(
+        f"chat:{principal.tenant_id}:{principal.user_id}", limit=60, window_seconds=60
+    )
     version_id = course.active_content_version_id
     if version_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="course has no active content version",
-        )
-
+        raise HTTPException(status_code=400, detail="course has no active content version")
     version = await session.get(ContentVersion, version_id)
     if version is None or version.status != ContentVersionStatus.PUBLISHED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="active content version is not published",
-        )
+        raise HTTPException(status_code=400, detail="active content version is not published")
 
-    retrieval_service = _get_retrieval_service(deps)
-    reranker = _get_reranker()
-
-    evidence, citations = await _build_evidence_pack(
-        retrieval_service=retrieval_service,
-        reranker=reranker,
-        session=session,
+    pack = await _build_evidence_pack(
+        retrieval_service=_get_retrieval_service(deps),
+        reranker=_get_reranker(),
+        tenant_id=principal.tenant_id,
         course_id=course_id,
         version_id=version_id,
-        access_label=body.access_label,
+        access_label=principal.access_label,
         query=body.query,
     )
+    stream_state = "started" if pack.evidence else "abstained"
+    trace_id = await _create_trace(
+        session, deps, course_id, version_id, body.query, pack, stream_state=stream_state
+    )
 
-    if not evidence:
-        return StreamingResponse(
-            _abstention_stream(),
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache"},
-        )
-
-    citation_map = citations  # now returns dict[int, ChatCitation] directly
-
+    stream: AsyncGenerator[str, None]
+    if not pack.evidence:
+        stream = _abstention_stream(trace_id)
+    else:
+        stream = _event_stream(deps, trace_id, body, pack)
     return StreamingResponse(
-        _event_stream(
-            deps=deps,
-            session=session,
-            course_id=course_id,
-            version_id=version_id,
-            body=body,
-            evidence=evidence,
-            citation_map=citation_map,
-        ),
+        stream,
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
-async def _abstention_stream() -> AsyncGenerator[str, None]:
-    yield "event: abstained\ndata: "
-    yield json.dumps({"reason": "no relevant content found for this query"})
-    yield "\n\n"
-    yield "event: done\ndata: "
-    yield json.dumps({"trace_id": None, "answer_tokens": 0})
-    yield "\n\n"
+async def _abstention_stream(trace_id: uuid.UUID) -> AsyncGenerator[str, None]:
+    yield _sse("abstained", {"reason": "retrieval score below grounded-answer threshold"})
+    yield _sse("done", {"trace_id": str(trace_id), "answer_tokens": 0})
 
 
 async def _event_stream(
     deps: Dependencies,
-    session: AsyncSession,
-    course_id: uuid.UUID,
-    version_id: uuid.UUID,
+    trace_id: uuid.UUID,
     body: ChatRequest,
-    evidence: list[RetrievedChunk],
-    citation_map: dict[int, ChatCitation],
+    pack: EvidencePack,
 ) -> AsyncGenerator[str, None]:
-    trace_id = uuid.uuid4()
-    answer_tokens = 0
+    parser = CitationTrailerParser()
+    answer_parts: list[str] = []
+    started = time.perf_counter()
+    terminal_state = "completed"
+    error_detail: str | None = None
+    cancelled = False
 
     try:
-        prompt_messages = _build_prompt(body.query, evidence)
-        stream = deps.llm.stream_chat(prompt_messages)
-        full_text, citations_raw = await _parse_stream(stream, evidence)
-
-        for char in full_text:
-            yield f"event: token\ndata: {json.dumps({'text': char})}\n\n"
-            answer_tokens += 1
-
-        for cit_data in citations_raw:
-            src_num = cit_data.get("source")
-            if src_num and src_num in citation_map:
-                cit = citation_map[src_num]
-                yield (f"event: citation\ndata: {json.dumps(cit.model_dump(mode='json'))}\n\n")
-
+        provider_stream = deps.llm.stream_chat(_build_prompt(body.query, pack.evidence))
+        async for provider_token in provider_stream:
+            for visible in parser.feed(provider_token):
+                answer_parts.append(visible)
+                yield _sse("token", {"text": visible})
+        if tail := parser.finish_visible():
+            answer_parts.append(tail)
+            yield _sse("token", {"text": tail})
+        for citation in parser.validated_citations(pack.citation_map):
+            yield _sse("citation", citation.model_dump(mode="json"))
+    except (asyncio.CancelledError, GeneratorExit):
+        terminal_state = "cancelled"
+        cancelled = True
+        raise
     except Exception as exc:
-        logger.error("chat_stream_failed", course_id=str(course_id), exc=str(exc))
-        yield "event: error\ndata: "
-        yield json.dumps({"detail": "stream failed"})
-        yield "\n\n"
-
-    yield "event: done\ndata: "
-    yield json.dumps({"trace_id": str(trace_id), "answer_tokens": answer_tokens})
-    yield "\n\n"
-
-    try:
-        trace = RetrievalTrace(
-            id=trace_id,
-            request_id=str(trace_id),
-            course_id=course_id,
-            content_version_id=version_id,
-            query=body.query,
-            candidate_ids=[c.chunk_id for c in evidence],
-            reranked_ids=[c.chunk_id for c in evidence],
-            scores=[c.score for c in evidence],
-            timings_ms={"retrieval": sum(e.score for e in evidence) if evidence else 0},
+        terminal_state = "failed"
+        error_detail = type(exc).__name__
+        logger.error("chat_stream_failed", trace_id=str(trace_id), exc=str(exc))
+        yield _sse("error", {"detail": "stream failed"})
+    finally:
+        answer_tokens = _estimate_tokens("".join(answer_parts))
+        finish_task = asyncio.create_task(
+            _finish_trace(
+                deps,
+                trace_id,
+                stream_state=terminal_state,
+                generation_ms=(time.perf_counter() - started) * 1000,
+                answer_tokens=answer_tokens,
+                error=error_detail,
+            )
         )
-        session.add(trace)
-        await session.commit()
-    except Exception as exc:
-        logger.warning("retrieval_trace_write_failed", exc=str(exc))
+        try:
+            await asyncio.shield(finish_task)
+        except asyncio.CancelledError:
+            await finish_task
+            raise
 
-
-# ---------------------------------------------------------------------------
-# Dependencies
-# ---------------------------------------------------------------------------
-
-
-async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    deps = get_dependencies()
-    async with AsyncSession(deps.engine, expire_on_commit=False) as session:
-        yield session
+    if not cancelled:
+        yield _sse(
+            "done",
+            {"trace_id": str(trace_id), "answer_tokens": _estimate_tokens("".join(answer_parts))},
+        )

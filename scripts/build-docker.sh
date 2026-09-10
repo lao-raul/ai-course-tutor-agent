@@ -1,23 +1,13 @@
 #!/usr/bin/env bash
-# Generate uv.lock inside Docker build context.
-# The lockfile is normally gitignored, so we generate it inside the builder image.
-set -e
+set -euo pipefail
 
-cd "$(dirname "$0")/.."
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${repo_root}"
 
-# Build args passed from docker-compose
-TARGET="${1:-api}"
+export TAG="${TAG:-dev}"
+export BUILD_VERSION="${BUILD_VERSION:-0.1.0-dev}"
+export BUILD_REVISION="${BUILD_REVISION:-$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)}"
+export BUILD_SOURCE="${BUILD_SOURCE:-https://github.com/example/ai-course-tutor-agent}"
+export BUILDX_NO_DEFAULT_ATTESTATIONS="${BUILDX_NO_DEFAULT_ATTESTATIONS:-1}"
 
-if [[ "$TARGET" == "api" ]]; then
-    DOCKERFILE="apps/api/Dockerfile"
-elif [[ "$TARGET" == "worker" ]]; then
-    DOCKERFILE="services/ingestion/Dockerfile"
-elif [[ "$TARGET" == "web" ]]; then
-    DOCKERFILE="apps/web/Dockerfile"
-else
-    echo "Unknown target: $TARGET"
-    exit 1
-fi
-
-# Build with legacy builder (no buildx cache issues)
-DOCKER_BUILDKIT=0 docker compose -f infra/docker/docker-compose.yml build --no-cache "$TARGET"
+docker buildx bake "$@"

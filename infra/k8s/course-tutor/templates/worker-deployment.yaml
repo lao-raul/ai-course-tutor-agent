@@ -1,0 +1,75 @@
+{{- if .Values.worker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-worker
+  labels:
+    {{- include "course-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  selector:
+    matchLabels:
+      {{- include "course-tutor.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "course-tutor.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+    spec:
+      serviceAccountName: {{ include "course-tutor.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: wait-for-migration
+          image: {{ include "course-tutor.image" (list .Values.backend.agent.image) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command: ["python", "-m", "course_tutor_api.wait_for_migration"]
+          env:
+            - name: POSTGRES_DSN
+              value: {{ .Values.config.postgresDsn | quote }}
+            - name: EXPECTED_ALEMBIC_REVISION
+              value: {{ .Values.config.expectedAlembicRevision | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: runtime-tmp, mountPath: /tmp}
+      containers:
+        - name: ingestion-worker
+          image: {{ include "course-tutor.image" (list .Values.worker.image) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            {{- include "course-tutor.commonEnv" . | nindent 12 }}
+            {{- if .Values.courseContent.enabled }}
+            - name: COURSE_SOURCE_PATH
+              value: {{ .Values.courseContent.mountPath | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: runtime-tmp, mountPath: /tmp}
+          {{- if .Values.courseContent.enabled }}
+            - name: course-content
+              mountPath: {{ .Values.courseContent.mountPath }}
+              readOnly: true
+          {{- end }}
+      volumes:
+        - {name: runtime-tmp, emptyDir: {}}
+      {{- if .Values.courseContent.enabled }}
+        - name: course-content
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-course-content" (include "course-tutor.fullname" .)) .Values.courseContent.existingClaim }}
+            readOnly: true
+      {{- end }}
+{{- end }}

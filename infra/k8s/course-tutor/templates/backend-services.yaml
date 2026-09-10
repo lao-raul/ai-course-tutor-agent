@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-agent
+  labels:
+    {{- include "course-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: agent-api
+spec:
+  selector:
+    {{- include "course-tutor.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: agent-http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-practice
+  labels:
+    {{- include "course-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: practice-api
+spec:
+  selector:
+    {{- include "course-tutor.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+  ports:
+    - name: http
+      port: 8001
+      targetPort: practice-http

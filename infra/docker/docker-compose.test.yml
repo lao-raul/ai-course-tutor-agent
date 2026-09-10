@@ -1,0 +1,36 @@
+name: course-tutor-tests
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: course_tutor_test_local
+      POSTGRES_USER: course_tutor
+      POSTGRES_PASSWORD: course_tutor
+    ports: ["55432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U course_tutor -d course_tutor_test_local"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["56379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    ports: ["56333:6333"]
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: course-tutor
+      MINIO_ROOT_PASSWORD: course-tutor-test-secret
+    ports: ["59000:9000"]

@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Course material scanning, parsing, chunking and indexing"
 requires-python = ">=3.12"
 dependencies = [
+    "course-tutor-api",
     "course-tutor-contracts",
     "course-tutor-shared",
     "course-tutor-retrieval",
@@ -25,6 +26,7 @@ dev = [
 ]
 
 [tool.uv.sources]
+course-tutor-api = { workspace = true }
 course-tutor-contracts = { workspace = true }
 course-tutor-retrieval = { workspace = true }
 course-tutor-shared = { workspace = true }

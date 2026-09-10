@@ -1,0 +1,130 @@
+nameOverride: ""
+fullnameOverride: course-tutor
+
+global:
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+  buildRevision: unknown
+
+backend:
+  replicas: 1
+  revisionHistoryLimit: 3
+  agent:
+    image:
+      repository: course-tutor-agent
+      tag: dev
+      digest: ""
+    port: 8000
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {cpu: "1", memory: 1Gi}
+  practice:
+    image:
+      repository: course-tutor-practice
+      tag: dev
+      digest: ""
+    port: 8001
+    resources:
+      requests: {cpu: 50m, memory: 96Mi}
+      limits: {cpu: 500m, memory: 256Mi}
+
+worker:
+  enabled: true
+  replicas: 1
+  image:
+    repository: course-tutor-worker
+    tag: dev
+    digest: ""
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+
+web:
+  enabled: true
+  replicas: 1
+  image:
+    repository: course-tutor-web
+    tag: dev
+    digest: ""
+  port: 8080
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {cpu: 250m, memory: 128Mi}
+
+fakeLlm:
+  enabled: false
+  image:
+    repository: course-tutor-fake-llm
+    tag: dev
+    digest: ""
+  port: 8082
+
+config:
+  environment: local
+  logLevel: INFO
+  logFormat: json
+  authMode: local
+  oidcIssuer: ""
+  oidcAudience: ""
+  oidcJwksUrl: ""
+  oidcAlgorithms: RS256
+  postgresDsn: postgresql+asyncpg://course_tutor:course_tutor@course-tutor-postgres:5432/course_tutor
+  redisUrl: redis://course-tutor-redis:6379/0
+  qdrantUrl: http://course-tutor-qdrant:6333
+  minioEndpoint: http://course-tutor-minio:9000
+  minioBucket: course-tutor-artifacts
+  llmBaseUrl: http://course-tutor-fake-llm:8082/v1
+  llmChatModel: ci-chat
+  llmEmbeddingModel: ci-embedding
+  llmEmbeddingDimension: 1024
+  expectedAlembicRevision: 8d90c87b7341
+
+secrets:
+  existingSecret: ""
+  localAuthToken: local-dev-token
+  minioAccessKey: course-tutor
+  minioSecretKey: local-development-only
+  llmApiKey: ci-fake-key
+
+courseContent:
+  enabled: false
+  existingClaim: ""
+  createPvc: false
+  storageClassName: ""
+  accessModes: [ReadOnlyMany]
+  size: 10Gi
+  mountPath: /data/content
+
+internalDependencies:
+  enabled: false
+  postgres:
+    image: postgres:16-alpine
+  redis:
+    image: redis:7-alpine
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+
+serviceAccount:
+  create: true
+  name: ""
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+networkPolicy:
+  enabled: false
+
+tests:
+  enabled: true

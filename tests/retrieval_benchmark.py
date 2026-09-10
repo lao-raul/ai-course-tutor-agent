@@ -1,229 +1,301 @@
-"""Retrieval benchmark fixture — synthetic course content.
+"""Executable, synthetic RAG retrieval quality gate.
 
-This module creates a synthetic course with known content and verifies that the
-retrieval pipeline can correctly answer questions against it.
-
-Since benchmark data requires copyright clearance (design-spec §9, decision 3),
-this fixture uses only synthetic generated content — no real Leeds material.
-
-Usage:
-    pytest tests/retrieval_benchmark.py -v
-    python tests/retrieval_benchmark.py  (standalone)
+The benchmark invokes the production ``DenseRetrievalService`` with an in-memory,
+deterministic vector backend. It requires neither course files, NAS, LM Studio nor
+network services and writes machine-readable metrics for CI.
 """
 
 from __future__ import annotations
 
+import argparse
+import asyncio
+import json
+import math
+import re
+import statistics
+import time
+import uuid
+from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
-# Synthetic module content — no real course material
+from course_tutor_retrieval.search import DenseRetrievalService
+
+from course_tutor_api.routes.chat import MIN_RELEVANCE_SCORE
+from course_tutor_contracts.enums import AccessLabel
+
 SYNTHETIC_MODULES = [
     {
         "filename": "week1_introduction.txt",
-        "content": """
-Week 1: Introduction to Artificial Intelligence
-
-Artificial Intelligence (AI) is the field of computer science devoted to creating
-systems that perform tasks requiring human intelligence. Key topics include:
-
-- Machine learning: systems that learn from data without being explicitly programmed
-- Natural language processing: enabling computers to understand and generate human language
-- Computer vision: interpreting and understanding visual information from the world
-- Robotics: intelligent control of physical agents in environments
-
-The Turing Test, proposed by Alan Turing in 1950, measures machine intelligence by
-whether a human can distinguish AI-generated responses from human responses.
-A pass indicates the machine exhibits intelligent behavior equivalent to human behavior.
-        """,
+        "content": (
+            "Artificial Intelligence includes machine learning, natural language processing, "
+            "computer vision and robotics. The Turing Test was proposed by Alan Turing in 1950 "
+            "and asks whether a human can distinguish a machine response."
+        ),
     },
     {
         "filename": "week2_search.txt",
-        "content": """
-Week 2: Search Algorithms
-
-Search is fundamental to AI problem solving. Key algorithms include:
-
-Breadth-First Search (BFS): Explores all nodes at depth d before depth d+1.
-  - Time complexity: O(b^d) where b is the branching factor
-  - Space complexity: O(b^d)
-  - Guarantees shortest path in unweighted graphs
-
-Depth-First Search (DFS): Explores as far as possible along each branch before backtracking.
-  - Time complexity: O(b^d)
-  - Space complexity: O(d) — only stores the current path
-  - Does NOT guarantee shortest path
-
-A* Search: Uses a heuristic function h(n) to estimate cost from node n to goal.
-  - Optimal if h(n) is admissible (never overestimates true cost)
-  - f(n) = g(n) + h(n) where g(n) = path cost from start, h(n) = heuristic
-
-The 8-puzzle is a classic domain for search algorithms. The goal state has tiles 1-8
-in order with blank in position 9. The optimal solution for the 8-puzzle requires
-20-30 moves depending on the starting configuration.
-        """,
+        "content": (
+            "Breadth-First Search BFS explores each depth and has O(b^d) time where b is "
+            "branching factor. Depth-First Search DFS explores branches using O(d) space. A* "
+            "Search uses f(n)=g(n)+h(n). An admissible heuristic never overestimates. The "
+            "8-puzzle optimal solution commonly needs 20-30 moves."
+        ),
     },
     {
         "filename": "week3_logic.txt",
-        "content": """
-Week 3: Logic and Planning
-
-Propositional Logic uses boolean variables and logical connectives:
-  - AND (AND), OR (OR), NOT (NOT), IMPLIES (IMPLIES)
-  - Modus ponens: from P and (P IMPLIES Q) infer Q
-
-First-Order Logic (FOL) adds quantifiers:
-  - forall x: for all x
-  - exists x: there exists x
-
-Planning is the task of finding a sequence of actions to achieve a goal.
-The STRIPS representation uses:
-  - Preconditions: what must be true before an action
-  - Effects: how the action changes the world state
-
-The Blocks World is a classic planning domain. Blocks are stacked on a table.
-Operators include: UNSTACK(block, on), STACK(block, on), PICKUP(block), PUTDOWN(block).
-The goal is typically expressed as a set of On(x,y) atoms specifying final positions.
-        """,
+        "content": (
+            "Propositional Logic includes modus ponens: from P and P IMPLIES Q infer Q. "
+            "First-Order Logic adds forall and exists quantifiers. STRIPS planning represents "
+            "actions with preconditions and effects in domains such as Blocks World."
+        ),
     },
     {
         "filename": "week4_probability.txt",
-        "content": """
-Week 4: Probabilistic Reasoning
-
-Probability fundamentals:
-  - P(A): probability of event A, ranges from 0 to 1
-  - Conditional: P(A|B) = P(A,B) / P(B)
-  - Bayes' Rule: P(A|B) = P(B|A) x P(A) / P(B)
-
-Bayesian Networks represent joint distributions over variables as directed acyclic graphs.
-Each node X has a CPD P(X | Parents(X)).
-
-A Hidden Markov Model (HMM) has:
-  - Hidden states S = {s1, s2, ..., sn}
-  - Observations O = {o1, o2, ..., om}
-  - Transition model: P(S_t | S_{t-1})
-  - Observation model: P(O_t | S_t)
-
-The Viterbi algorithm finds the most likely sequence of hidden states in an HMM.
-The forward algorithm computes the probability of an observation sequence.
-        """,
+        "content": (
+            "Bayes Rule is P(A|B)=P(B|A) times P(A) divided by P(B). Bayesian Networks are "
+            "directed acyclic graphs. A Hidden Markov Model HMM contains hidden states, "
+            "observations, a transition model and an observation model. Viterbi finds the most "
+            "likely hidden-state sequence."
+        ),
     },
     {
         "filename": "exercises_week3.txt",
-        "content": """
-Exercise Set — Week 3
-
-Question 1 (Propositional Logic):
-Given the knowledge base: {P IMPLIES Q, P, Q IMPLIES R}, use modus ponens to derive Q, then R.
-What is the final conclusion?
-
-Question 2 (STRIPS Planning):
-In the Blocks World with blocks A, B, C on a table, initial state: On(A,B), On(B,C).
-Goal: On(A,B), On(B,C), On(C,table). Write the plan using UNSTACK, STACK, PUTDOWN.
-
-Question 3 (First-Order Logic):
-Express in FOL: "Every student who passes the exam is happy."
-Use predicates: Student(x), Pass(x), Happy(x).
-
-Solution hints:
-- Q1: From P and P->Q derive Q. From Q and Q->R derive R. Final: R.
-- Q2: The solution requires unstacking A from B first, then restacking.
-- Q3: forall x: (Student(x) AND Pass(x)) -> Happy(x)
-        """,
+        "content": (
+            "Exercise: express every student who passes is happy as forall x: Student(x) AND "
+            "Pass(x) IMPLIES Happy(x). Logic solution hints use modus ponens."
+        ),
     },
 ]
 
-# Benchmark questions with expected source files and answer requirements
 BENCHMARK_CASES = [
-    {
-        "id": "q1",
-        "question": "What is the Turing Test and who proposed it?",
-        "expected_sources": ["week1_introduction.txt"],
-        "key_concepts": ["Turing Test", "Alan Turing", "1950"],
-        "abstain_if_missing": False,
-    },
-    {
-        "id": "q2",
-        "question": "What is the time complexity of BFS and what does b represent?",
-        "expected_sources": ["week2_search.txt"],
-        "key_concepts": ["O(b^d)", "branching factor"],
-        "abstain_if_missing": False,
-    },
-    {
-        "id": "q3",
-        "question": "What are the three key algorithms for search covered in week 2?",
-        "expected_sources": ["week2_search.txt"],
-        "key_concepts": ["BFS", "DFS", "A*"],
-        "abstain_if_missing": False,
-    },
-    {
-        "id": "q4",
-        "question": "What is Bayes' Rule?",
-        "expected_sources": ["week4_probability.txt"],
-        "key_concepts": ["P(A|B)", "P(B|A)", "P(A)"],
-        "abstain_if_missing": False,
-    },
-    {
-        "id": "q5",
-        "question": "What is modus ponens and how is it used in propositional logic?",
-        "expected_sources": ["week3_logic.txt"],
-        "key_concepts": ["modus ponens", "P IMPLIES Q", "infer Q"],
-        "abstain_if_missing": False,
-    },
-    {
-        "id": "q6",
-        "question": "How do you express 'every student who passes is happy' in First-Order Logic?",
-        "expected_sources": ["exercises_week3.txt"],
-        "key_concepts": ["forall x", "Student(x)", "Pass(x)", "Happy(x)"],
-        "abstain_if_missing": False,
-    },
-    {
-        "id": "q7",
-        "question": "What is the optimal solution length for the 8-puzzle?",
-        "expected_sources": ["week2_search.txt"],
-        "key_concepts": ["20-30 moves"],
-        "abstain_if_missing": False,
-    },
-    {
-        "id": "q8",
-        "question": "What is the Viterbi algorithm used for?",
-        "expected_sources": ["week4_probability.txt"],
-        "key_concepts": ["HMM", "hidden states", "most likely sequence"],
-        "abstain_if_missing": False,
-    },
-    {
-        "id": "q9",
-        "question": "What is NOT covered in this course about neural networks?",
-        "expected_sources": [],
-        "key_concepts": [],
-        "abstain_if_missing": True,  # Should abstain — topic not in content
-    },
-    {
-        "id": "q10",
-        "question": "What are the components of a Hidden Markov Model?",
-        "expected_sources": ["week4_probability.txt"],
-        "key_concepts": ["hidden states", "observations", "transition model", "observation model"],
-        "abstain_if_missing": False,
-    },
+    ("q1", "What is the Turing Test and who proposed it?", {"week1_introduction.txt"}, False),
+    (
+        "q2",
+        "What is the time complexity of BFS and what does b represent?",
+        {"week2_search.txt"},
+        False,
+    ),
+    ("q3", "What are the BFS DFS and A* search algorithms?", {"week2_search.txt"}, False),
+    ("q4", "What is Bayes Rule?", {"week4_probability.txt"}, False),
+    ("q5", "How does modus ponens infer Q?", {"week3_logic.txt"}, False),
+    ("q6", "Express every student who passes is happy in FOL", {"exercises_week3.txt"}, False),
+    ("q7", "What is the optimal solution length for the 8-puzzle?", {"week2_search.txt"}, False),
+    ("q8", "What is the Viterbi algorithm used for?", {"week4_probability.txt"}, False),
+    ("q9", "What is covered about convolutional neural networks?", set(), True),
+    ("q10", "What are the components of a Hidden Markov Model?", {"week4_probability.txt"}, False),
 ]
 
+_TOKEN = re.compile(r"[a-z0-9*]+", re.IGNORECASE)
+_STOPWORDS = {
+    "a",
+    "about",
+    "and",
+    "are",
+    "does",
+    "for",
+    "how",
+    "in",
+    "is",
+    "it",
+    "of",
+    "the",
+    "to",
+    "what",
+    "who",
+}
 
-def write_synthetic_course(tmp_path: Path) -> Path:
-    """Write synthetic course files to a directory and return the path."""
-    course_dir = tmp_path / "synthetic_course"
-    course_dir.mkdir(parents=True, exist_ok=True)
-    for module in SYNTHETIC_MODULES:
-        (course_dir / module["filename"]).write_text(module["content"].strip(), encoding="utf-8")
-    return course_dir
+
+def _tokens(value: str) -> list[str]:
+    return [token.lower() for token in _TOKEN.findall(value) if token.lower() not in _STOPWORDS]
+
+
+class _Vectorizer:
+    def __init__(self, texts: list[str]) -> None:
+        documents = [set(_tokens(text)) for text in texts]
+        self.vocabulary = sorted(set().union(*documents))
+        count = len(documents)
+        self.idf = {
+            term: math.log((count + 1) / (1 + sum(term in doc for doc in documents))) + 1
+            for term in self.vocabulary
+        }
+
+    def vector(self, text: str) -> list[float]:
+        terms = _tokens(text)
+        values = [terms.count(term) * self.idf[term] for term in self.vocabulary]
+        norm = math.sqrt(sum(value * value for value in values)) or 1.0
+        return [value / norm for value in values]
+
+
+class _Embedder:
+    def __init__(self, vectorizer: _Vectorizer) -> None:
+        self.vectorizer = vectorizer
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        return [self.vectorizer.vector(text) for text in texts]
+
+
+@dataclass(frozen=True, slots=True)
+class _Document:
+    path: str
+    text: str
+    vector: list[float]
+
+
+class _VectorBackend:
+    def __init__(self, documents: list[_Document]) -> None:
+        self.documents = documents
+
+    def query_points(self, *, query: list[float], limit: int, **_kwargs: Any) -> object:
+        points = []
+        for document in self.documents:
+            score = sum(left * right for left, right in zip(query, document.vector, strict=True))
+            points.append(
+                SimpleNamespace(
+                    score=score,
+                    payload={
+                        "chunk_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"chunk:{document.path}")),
+                        "source_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"source:{document.path}")),
+                        "text": document.text,
+                        "relative_path": document.path,
+                        "mime_type": "text/plain",
+                        "anchor_type": "page",
+                        "anchor_value": "1",
+                        "chunk_class": "content",
+                        "access_label": "enrolled",
+                    },
+                )
+            )
+        points.sort(key=lambda point: point.score, reverse=True)
+        return SimpleNamespace(points=points[:limit])
+
+    def count(self, **_kwargs: Any) -> object:
+        return SimpleNamespace(count=len(self.documents))
+
+
+def _percentile(values: list[float], quantile: float) -> float:
+    ordered = sorted(values)
+    index = min(len(ordered) - 1, math.ceil(len(ordered) * quantile) - 1)
+    return ordered[index]
+
+
+async def run_benchmark() -> dict[str, Any]:
+    corpus = [module["content"] for module in SYNTHETIC_MODULES]
+    vectorizer = _Vectorizer(corpus)
+    documents = [
+        _Document(module["filename"], module["content"], vectorizer.vector(module["content"]))
+        for module in SYNTHETIC_MODULES
+    ]
+    service = DenseRetrievalService(  # type: ignore[arg-type]
+        _VectorBackend(documents), _Embedder(vectorizer)
+    )
+    tenant_id, course_id, version_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+
+    case_results: list[dict[str, Any]] = []
+    reciprocal_ranks: list[float] = []
+    recall_hits = 0
+    citation_true = 0
+    citation_total = 0
+    abstain_true_positive = 0
+    abstain_false_positive = 0
+    abstain_false_negative = 0
+    latencies: list[float] = []
+
+    for case_id, question, expected_sources, should_abstain in BENCHMARK_CASES:
+        started = time.perf_counter()
+        result = await service.search(
+            question,
+            tenant_id,
+            course_id,
+            version_id,
+            AccessLabel.ENROLLED,
+            limit=5,
+        )
+        latency_ms = (time.perf_counter() - started) * 1000
+        latencies.append(latency_ms)
+        ranked_sources = [candidate.relative_path for candidate in result.candidates]
+        top_score = result.candidates[0].score if result.candidates else 0.0
+        predicted_abstain = top_score < MIN_RELEVANCE_SCORE
+
+        rank = next(
+            (index for index, source in enumerate(ranked_sources, 1) if source in expected_sources),
+            None,
+        )
+        if not should_abstain:
+            recall_hits += int(rank is not None and rank <= 5)
+            reciprocal_ranks.append(1 / rank if rank else 0.0)
+            if not predicted_abstain and ranked_sources:
+                citation_total += 1
+                citation_true += int(ranked_sources[0] in expected_sources)
+        if predicted_abstain and should_abstain:
+            abstain_true_positive += 1
+        elif predicted_abstain:
+            abstain_false_positive += 1
+        elif should_abstain:
+            abstain_false_negative += 1
+
+        case_results.append(
+            {
+                "id": case_id,
+                "top_sources": ranked_sources,
+                "top_score": top_score,
+                "expected_sources": sorted(expected_sources),
+                "predicted_abstain": predicted_abstain,
+                "should_abstain": should_abstain,
+                "latency_ms": round(latency_ms, 3),
+            }
+        )
+
+    answerable = sum(not case[3] for case in BENCHMARK_CASES)
+    abstain_precision = abstain_true_positive / max(
+        1, abstain_true_positive + abstain_false_positive
+    )
+    abstain_recall = abstain_true_positive / max(1, abstain_true_positive + abstain_false_negative)
+    abstain_f1 = (
+        2 * abstain_precision * abstain_recall / (abstain_precision + abstain_recall)
+        if abstain_precision + abstain_recall
+        else 0.0
+    )
+    return {
+        "summary": {
+            "recall_at_5": recall_hits / answerable,
+            "mrr": statistics.fmean(reciprocal_ranks),
+            "citation_precision": citation_true / max(1, citation_total),
+            "abstention_precision": abstain_precision,
+            "abstention_recall": abstain_recall,
+            "abstention_f1": abstain_f1,
+            "latency_p50_ms": statistics.median(latencies),
+            "latency_p95_ms": _percentile(latencies, 0.95),
+        },
+        "cases": case_results,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--recall-threshold", type=float, default=0.85)
+    parser.add_argument("--mrr-threshold", type=float, default=0.80)
+    parser.add_argument("--citation-threshold", type=float, default=0.95)
+    parser.add_argument("--abstention-f1-threshold", type=float, default=0.90)
+    parser.add_argument("--p95-latency-threshold-ms", type=float, default=250.0)
+    args = parser.parse_args()
+
+    metrics = asyncio.run(run_benchmark())
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8")
+    summary = metrics["summary"]
+    print(json.dumps(summary, indent=2, sort_keys=True))
+    failed = (
+        summary["recall_at_5"] < args.recall_threshold
+        or summary["mrr"] < args.mrr_threshold
+        or summary["citation_precision"] < args.citation_threshold
+        or summary["abstention_f1"] < args.abstention_f1_threshold
+        or summary["latency_p95_ms"] > args.p95_latency_threshold_ms
+    )
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        course_dir = write_synthetic_course(tmp_path)
-        print(f"Synthetic course written to: {course_dir}")
-        print(f"Files: {sorted(f.name for f in course_dir.iterdir())}")
-        print(f"\nBenchmark cases: {len(BENCHMARK_CASES)}")
-        for case in BENCHMARK_CASES:
-            print(f"  [{case['id']}] {case['question'][:60]}...")
+    raise SystemExit(main())

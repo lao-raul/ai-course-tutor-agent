@@ -1,4 +1,4 @@
-"""Retrieval service: hybrid search, reranking and citation packaging."""
+"""Retrieval service: dense recall, score/diversity ordering and evidence packaging."""
 
 from course_tutor_retrieval.collection import (
     COLLECTION_NAME,
@@ -7,12 +7,12 @@ from course_tutor_retrieval.collection import (
 )
 from course_tutor_retrieval.indexer import EmbeddingIndexer
 from course_tutor_retrieval.reranker import Reranker
-from course_tutor_retrieval.search import HybridRetrievalService
+from course_tutor_retrieval.search import DenseRetrievalService
 
 __all__ = [
     "COLLECTION_NAME",
+    "DenseRetrievalService",
     "EmbeddingIndexer",
-    "HybridRetrievalService",
     "Reranker",
     "ensure_collection",
     "recreate_collection",

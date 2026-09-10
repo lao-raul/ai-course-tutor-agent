@@ -10,11 +10,8 @@ export interface ChatCitation {
 
 export interface ChatRequest {
   query: string;
-  access_label: AccessLabel;
   session_id?: string;
 }
-
-export type AccessLabel = 'public' | 'enrolled' | 'staff_only' | 'restricted';
 
 export interface Course {
   id: string;

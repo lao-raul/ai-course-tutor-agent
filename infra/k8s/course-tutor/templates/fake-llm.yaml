@@ -1,0 +1,55 @@
+{{- if .Values.fakeLlm.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-fake-llm
+  labels:
+    {{- include "course-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: fake-llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "course-tutor.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: fake-llm
+  template:
+    metadata:
+      labels:
+        {{- include "course-tutor.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: fake-llm
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: fake-llm
+          image: {{ include "course-tutor.image" (list .Values.fakeLlm.image) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - {name: http, containerPort: {{ .Values.fakeLlm.port }}}
+          readinessProbe:
+            httpGet: {path: /v1/models, port: http}
+          livenessProbe:
+            httpGet: {path: /v1/models, port: http}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-fake-llm
+spec:
+  selector:
+    {{- include "course-tutor.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: fake-llm
+  ports:
+    - {name: http, port: {{ .Values.fakeLlm.port }}, targetPort: http}
+{{- end }}

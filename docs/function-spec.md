@@ -1,209 +1,189 @@
-# Function Specification — AI Course Tutor Agent
+# Function Specification — Course Tutor Platform
 
-**Status:** Draft v0.1  
-**Initial tenant/course:** University of Leeds · MSc Artificial Intelligence  
-**Primary language:** Chinese and English  
-**Deployment posture:** local-first; local LM Studio inference with self-hostable state stores.
+**Status:** Baseline v0.2
+**Date:** 2026-09-09
+**Initial programme:** University of Leeds · MSc Artificial Intelligence
+**Languages:** Chinese and English
+**Deployment posture:** local-first inference; Helm-packaged Kubernetes deployment
 
-## 1. Problem and outcome
+## 1. Product outcome
 
-The system is a course-specific teaching assistant. It ingests instructor-provided slides, exercises and supporting course files, answers questions with traceable course citations, and adapts its teaching to the learner across sessions. It must be reusable across education levels by configuring a curriculum and teaching policy rather than rewriting the platform.
+The platform helps a learner study a selected course from instructor-provided materials. It ingests a periodically updated mounted NAS directory, answers with traceable citations, adapts explanations to the learner, and retains only compact, controlled learning memory.
 
-The first usable outcome is a student who can ask, in Chinese or English, “Explain Week 3’s Bayesian-network exercise step by step”, receive a bounded explanation with slide/page citations, and resume later without repeating their current mastery level or preferences.
+The platform has two backend product applications:
+
+1. **Agent API** (`apps/api`, runtime name `agent-api`) owns courses, source ingestion, retrieval, tutoring chat, sessions and learner memory.
+2. **Practice API** (`apps/practice`, runtime name `practice-api`) is the boundary for future exercise generation. In v0.2 it is a dummy service and does not generate questions.
+
+The ingestion worker and React Web UI are supporting workloads, not additional backend product apps.
 
 ## 2. Scope
 
-### In scope (MVP)
+### MVP scope
 
-- Discover and ingest PDF, PPTX, DOCX, Markdown, text and image-OCR course material from a configured local directory.
-- Preserve course/module, week/topic, source file, page/slide, version, permission label and extraction confidence as metadata.
-- Answer course questions, explain concepts at a chosen education level, offer hints before solutions, and generate cited summaries/practice questions.
-- Retrieve using hybrid search (dense vector + lexical) and rerank results before the LLM call.
-- Stream responses from LM Studio’s OpenAI-compatible API.
-- Maintain session memory and compact learner-profile/learning-progress memory with user controls.
-- Teacher/admin ingestion status, source list, failure retry, and index/version visibility.
+- Ingest PDF, PPTX, DOCX, Markdown and text files; use OCR for scanned PDFs.
+- Detect source additions, modifications, deletions and renames through periodic scans.
+- Build immutable content versions and explicitly preview, publish or roll back them.
+- Provide tenant- and course-scoped grounded chat with navigable source citations.
+- Stream Agent responses and abstain when retrieved evidence is insufficient.
+- Maintain bounded session context and optional compact long-term learner memory.
+- Apply configurable teaching level and assessed-work hint policies.
+- Expose a deployable Practice API dummy contract.
+- Package every Kubernetes workload as one versioned Helm chart. Helm is the supported
+  installation, upgrade and rollback interface; CI verifies the rendered release and
+  a real installation in an ephemeral cluster.
 
-### Explicitly out of scope (MVP)
+### Not in v0.2
 
-- Fully autonomous grading, high-stakes academic decisions, browser/cloud search, and replacing a lecturer’s official instructions.
-- Accessing SMB with embedded credentials. The host must mount the NAS and expose a least-privilege local read-only path.
-- Cross-course learner profiling unless the learner grants consent and the institution enables it.
+- Actual random-exercise generation, grading, adaptive question selection or attempt history.
+- Fully autonomous assessment decisions or replacing official instructor guidance.
+- Direct SMB credential handling inside the applications.
+- Production CD activation before a cluster provider and secret manager are selected.
 
-## 3. Users and permissions
+## 3. Domain hierarchy and source mapping
 
-| Role | Key capabilities |
-|---|---|
-| Student | Course chat, cited sources, preferences, memory export/delete, feedback |
-| Teaching assistant | Student capabilities plus approved content drafts and anonymized retrieval-quality review |
-| Instructor | Manage module/course materials, publish index versions, set answer/hint policies, view aggregate usage |
-| Platform administrator | Tenant setup, identity integration, service configuration, audit and retention policies |
+| Entity | Meaning | Example |
+|---|---|---|
+| Tenant | Institution/security boundary | University of Leeds |
+| Programme | Group of courses | MSc Artificial Intelligence |
+| Course | Academic module | OCOM5105M Mathematical Foundations of AI |
+| CourseRun | Time-bounded delivery | 2026–27 semester 1 |
+| SourceRoot | Mounted read-only directory registered to a course run | `/Volumes/home/University of Leeds/modules/OCOM5105M` |
+| ContentVersion | Immutable snapshot built by one ingestion pipeline version | sequence 4, pipeline 1.2.0 |
 
-Tenant → institution; course → module/run; source and memory are always tagged with tenant/course and authorization scope. Retrieval never crosses these filters.
+A SourceRoot belongs to one CourseRun. One higher-level NAS directory may contain multiple modules, but each module must have an explicit SourceRoot mapping; the scanner must not infer tenant/course ownership from arbitrary folder names. The first migration may map the existing `Course` row to both Course and current CourseRun, but the API contract uses explicit course-run semantics for new data.
+
+`smb://L-NAS` is mounted by the host or Kubernetes SMB CSI driver. Applications receive a read-only POSIX path/PVC and never receive an SMB URL as a source path. Credentials are referenced from a secret store and are not committed.
 
 ## 4. Functional requirements
 
-### FR-1 Course and source management
+### Course and ingestion
 
-1. An instructor registers a course, module/run and a local source root.
-2. The ingestion service performs initial and incremental scans using file checksum plus metadata, so unchanged files are not reprocessed.
-3. Each ingestion produces an immutable `content_version`; new versions can be previewed before publication and rolled back by changing the active alias.
-4. Unsupported, password-protected or low-confidence OCR files are quarantined with an actionable failure record.
-
-### FR-2 RAG answer flow
-
-1. Student selects a course and submits a question.
-2. The assistant detects the language and asks only essential clarification when course, task or level is ambiguous.
-3. Retrieval filters to active course versions, executes lexical and semantic recall, then reranks candidates.
-4. The assistant uses only supplied evidence for course-specific factual claims. It presents citations with file title, version and page/slide/chunk anchor.
-5. When evidence is weak, conflicting or absent, it says so, suggests a refinement, and must not invent a course answer.
-6. Exercises use a configurable pedagogy: default to a progressive hint, then outline, then solution only after an explicit request; honor instructor policy for assessed work.
-
-### FR-3 Learning support
-
-- Explain at selected level (primary, middle school, high school, undergraduate, postgraduate) with an appropriate vocabulary/pacing policy.
-- Create revision summaries, flashcards and original practice questions based on retrieved objectives, marking generated content clearly.
-- Track optional learner goals, current topic, demonstrated misconceptions and preferred explanation style.
-
-### FR-4 Memory
-
-**Working memory**: last relevant dialogue turns plus a rolling conversation summary, scoped to a chat/session and with short retention.
-
-**Long-term memory**: compact atomic facts and periodic learner-state summaries. Each item contains `type`, `value`, `course_scope`, `evidence_turn_ids`, `confidence`, `importance`, `created_at`, `last_confirmed_at`, `expires_at`, and `supersedes`.
-
-Allowed initial types: learning goal, knowledge level, preferred language/style, stable constraint, misconception, mastery signal, and active study plan. Raw personal details and unsupported inference are not promoted.
-
-**Extraction/compaction policy**:
-
-1. After a meaningful turn, an LLM extracts only candidate facts in a strict JSON schema; deterministic validation rejects unscoped/sensitive/low-confidence candidates.
-2. Candidate facts are normalized and compared within the same learner + course + type using embedding similarity and key fields.
-3. Exact/near duplicates merge evidence and refresh confirmation instead of creating another item. Conflicts retain provenance, reduce confidence, and replace only after confirmation or stronger new evidence.
-4. At session close or a token threshold, the service writes a bounded summary of progress, unresolved questions and next action. It keeps links to source turns but does not copy whole transcripts.
-5. Recalled memory is limited by course scope, expiry, importance and relevance. It is injected as a labeled, small context block, not as untrusted instructions.
-6. Learners can inspect, correct, pin, export or delete memory. Deletion propagates to materialized summaries and vector entries via a tombstone job.
-
-### FR-5 Safety and academic integrity
-
-- Clearly label AI-generated material and cite course sources.
-- Avoid giving a final answer to configured live assessments; use hints and refer learners to course policy.
-- Do not claim that a response is official instructor guidance.
-- Enforce tenant/course authorization before document, chat, memory or audit access.
-
-## 5. Non-functional requirements
-
-| Area | MVP target |
+| ID | Requirement |
 |---|---|
-| Availability | Stateless API/orchestrator replicas; target 99.5% service availability excluding a single local LM Studio host |
-| Latency | Stream first token under 3 s at P50 on LAN after retrieval; expose component timings |
-| Reliability | At-least-once ingestion events, idempotent checksum/version writes, retries with dead-letter queue |
-| Security | TLS in deployment, OIDC-ready auth, secrets externalized, encrypted state-store volumes/backups, role and tenant checks |
-| Privacy | Data-minimized memory, configurable retention, export/delete, audit trail without prompt content by default |
-| Observability | Structured logs, correlation IDs, metrics/traces, RAG quality feedback and retrieval evaluation set |
-| Scalability | Independently scale API, workers, retrieval, memory and model gateway; partition by tenant/course |
+| FR-1.1 | An instructor can register a programme, course, course run and validated SourceRoot without recreating the tenant on every ingestion. |
+| FR-1.2 | A scheduled or manual scan detects file add/change/delete/rename and creates a new immutable ContentVersion only when the snapshot changed. |
+| FR-1.3 | Scan and embed jobs are idempotent under retry and concurrent workers; unchanged artifacts may be reused safely. |
+| FR-1.4 | A successful build progresses `BUILDING → READY`; an instructor can preview, publish and roll back by changing the active-version alias. |
+| FR-1.5 | Unsupported, protected, low-confidence or failed files are quarantined with status, reason, retry action and source anchor. |
+| FR-1.6 | Source originals/extraction artifacts use canonical tenant/course-run/source IDs and are retrievable only after authorization. |
+
+Default scan interval is 15 minutes and is configurable. Manual scans are always available to instructors. Automatic publication is off by default; a READY version requires explicit publication. Deletions affect only the new version until it is published.
+
+### Grounded tutoring chat
+
+| ID | Requirement |
+|---|---|
+| FR-2.1 | An authenticated learner selects an authorized course run and submits a question in Chinese or English. |
+| FR-2.2 | Retrieval filters tenant, course run, active version and server-derived access rank before candidate selection. |
+| FR-2.3 | Retrieval combines semantic and lexical recall; any baseline substitute must be named accurately and evaluated. |
+| FR-2.4 | The final evidence pack is reranked, source-diverse and bounded by tokens. Every emitted citation maps to evidence actually sent to the LLM. |
+| FR-2.5 | The Agent streams answer events as they are generated and never exposes its hidden citation-control trailer. |
+| FR-2.6 | Weak, conflicting or absent evidence produces a transparent abstention rather than an unsupported course claim. |
+| FR-2.7 | Retrieval traces record candidates, final evidence, scores, timings, policy/model versions and terminal stream state. |
+
+### Learning and teaching behavior
+
+| ID | Requirement |
+|---|---|
+| FR-3.1 | Explanations apply the configured primary, middle-school, high-school, undergraduate or postgraduate teaching level. |
+| FR-3.2 | The Agent can create cited summaries, flashcards and clearly labeled original practice prompts from authorized evidence. |
+| FR-3.3 | Exercise/solution/assessment chunks retain their class; assessed work defaults to progressive hints and withholds stored solutions until policy allows. |
+| FR-3.4 | The Practice API exposes capabilities and a reserved generation endpoint; v0.2 returns HTTP 501 `practice_generation_not_implemented`. |
+
+### Session and long-term memory
+
+| ID | Requirement |
+|---|---|
+| FR-4.1 | Session memory stores a bounded recent-turn window and rolling summary scoped to authenticated user and course run. |
+| FR-4.2 | Long-term memory is disabled by default in production until the learner opts in; enabled memory stores typed atomic facts, not raw transcript copies. |
+| FR-4.3 | Candidate facts pass schema, scope, sensitivity, confidence and evidence validation before promotion. |
+| FR-4.4 | Equivalent facts merge provenance; conflicts are retained for confirmation; confidence, relevance and expiry are type-aware. |
+| FR-4.5 | Recall is course-scoped by default and capped at 8 facts/350 tokens; rolling summaries are capped at 500 tokens. |
+| FR-4.6 | Learners can inspect, correct, pin, export and delete memory; tombstones take effect immediately and derived copies are purged asynchronously. |
+
+Production retention defaults are: raw chat turns 30 days, session summaries 90 days, misconception/mastery facts 90 days, and explicitly saved preferences/goals 365 days. Tenant policy may shorten these values. Pinned facts remain until deletion or tenant maximum retention.
+
+### Identity, authorization and privacy
+
+| ID | Requirement |
+|---|---|
+| FR-5.1 | Production requires OIDC/JWT authentication; disabled/local identity is permitted only in local and test environments. |
+| FR-5.2 | Tenant, role, membership and access rank are derived server-side and cannot be raised through request fields. |
+| FR-5.3 | Student, teaching-assistant, instructor and platform-admin operations follow least privilege; administrative changes are audited. |
+| FR-5.4 | Logs/traces exclude source text, raw prompts, tokens and memory values by default; secrets are externalized. |
+| FR-5.5 | The interface labels AI-generated content and does not present it as official instructor guidance. |
+
+### Practice API dummy
+
+| ID | Requirement |
+|---|---|
+| FR-6.1 | Practice API starts and scales independently of the Agent API process. |
+| FR-6.2 | Health, readiness and capabilities endpoints expose service/build status without leaking configuration. |
+| FR-6.3 | The reserved generation endpoint verifies identity and course access, persists nothing, and returns deterministic HTTP 501 until its product specification is approved. |
+
+## 5. Canonical API surface
+
+The versioned source of truth is:
+
+- `packages/contracts/openapi/agent-api.v1.json`
+- `packages/contracts/openapi/practice-api.v1.json`
+
+Each operation contains `x-implementation-status`: `implemented`, `partial` or `planned`. The former non-canonical `POST /v1/admin/ingest` prototype was removed in TASK-03; programme/course/run registration and `POST /v1/admin/courses/{course_id}/ingestions` are now separate operations.
 
 ## 6. System context
 
 ```mermaid
 flowchart LR
-  S[Student] --> W[React web app]
-  I[Instructor / TA] --> W
-  W --> G[API gateway / BFF]
-  G --> O[Assistant orchestrator]
-  O --> R[Retrieval service]
-  O --> M[Memory service]
-  O --> L[LM Studio gateway\nOpenAI-compatible API]
-  R --> Q[(Qdrant\nvector + sparse index)]
-  R --> P[(PostgreSQL\nmetadata & ACL)]
-  M --> P
-  M --> RV[(Redis\nshort-lived state/cache)]
-  N[Mounted NAS course folder\nread-only POSIX path] --> IN[Ingestion service]
-  IN --> OB[(MinIO / object storage)]
-  IN --> Q
-  IN --> P
-  IN --> E[(Event bus / queue)]
-  E --> IN
-  O --> E
-  G --> OBS[Logs, metrics, traces]
-  O --> OBS
-  IN --> OBS
+  Student --> Web[React Web]
+  Instructor --> Web
+  Web --> Agent[Agent API]
+  Web --> Practice[Practice API]
+  Agent --> Retrieval[Retrieval module]
+  Agent --> Memory[Memory module]
+  Agent --> DB[(PostgreSQL)]
+  Practice --> AgentContract[Versioned Agent/course contract]
+  Agent --> LLM[LM Studio / compatible gateway]
+  Retrieval --> Q[(Qdrant)]
+  Memory --> Redis[(Redis)]
+  NAS[Read-only course PVC] --> Worker[Ingestion worker]
+  Worker --> DB
+  Worker --> Q
+  Worker --> Objects[(MinIO)]
+  CI[GitHub Actions] --> Kind[Ephemeral Kind deployment]
+  CD[GitHub Actions CD] --> K8s[Kubernetes + Helm]
 ```
 
-## 7. Technical architecture
+Agent API is the system of record for tenant, programme, course run, content, authorization, sessions and memory. Practice API may consume versioned contracts or an authorized Agent API, but must not import Agent API persistence/business modules or create duplicate ownership.
 
-### 7.1 Deployable services
+## 7. Non-functional requirements
 
-| Service | Responsibility | Scaling/availability boundary |
-|---|---|---|
-| Web app | React UI, token-safe streaming display, citation reader | CDN/static replicas |
-| API gateway/BFF | AuthN/AuthZ, request validation, SSE/WebSocket stream, rate control | Stateless horizontal replicas |
-| Orchestrator | Prompt assembly, tool workflow, policy enforcement, answer verification | Stateless workers; queue-backed long jobs |
-| Ingestion | File watch/scan, extract, chunk, embed, upsert/version/publish | Horizontally scaled jobs; idempotency key `(course, checksum, pipeline_version)` |
-| Retrieval | ACL-filtered hybrid recall, rerank, citations | Stateless replicas with Qdrant/Postgres read dependencies |
-| Memory | Session summaries, fact extraction, merge/relevance/revocation | Stateless workers; durable PostgreSQL record of truth |
-| Model gateway (optional initially) | OpenAI-compatible adapter, timeouts/retries/model routing | Isolates LM Studio and enables future local/cloud model changes |
+| ID | Requirement/target |
+|---|---|
+| NFR-1 | End-user Agent chat availability target is 99.5% monthly including the configured inference dependency; Practice dummy health target is 99.5%. |
+| NFR-2 | On the target LAN and warmed services, Agent time-to-first-token is P50 < 3 s and P95 < 8 s; no request may wait indefinitely. |
+| NFR-3 | On the approved benchmark, retrieval Recall@5 ≥ 0.85, citation precision ≥ 0.95 and unsupported-query abstention F1 ≥ 0.90. |
+| NFR-4 | Ingestion is at-least-once and idempotent; worker restart/duplicate delivery creates no duplicate source, chunk, artifact or vector. |
+| NFR-5 | PostgreSQL/content metadata MVP RPO is 24 h and RTO is 4 h; restore and rollback drills are required before release. |
+| NFR-6 | Structured logs, metrics and traces carry correlation IDs with bounded-cardinality labels and no sensitive payload by default. |
+| NFR-7 | Kubernetes delivery uses one versioned Helm chart as the supported packaging/deployment interface. The chart must deploy non-root workloads with resource limits, readiness/liveness probes, rolling updates, secret references and least-privilege network access; production releases must not rely on hand-maintained `kubectl apply` manifests. |
+| NFR-8 | Pull requests must pass unit/integration/e2e, RAG gates, image builds, Helm validation and an ephemeral Kind smoke deployment of both backend apps. |
+| NFR-9 | Releases use immutable image digests and a verified Helm rollout with rollback support. |
 
-Start as a **modular monolith deployment with separable packages** to minimize operational cost, but retain explicit HTTP/gRPC and event contracts. Extract services when worker load, release cadence, or failure isolation makes it valuable. This avoids premature microservice coordination while keeping migration straightforward.
+## 8. Release acceptance
 
-### 7.2 Data and RAG path
+An MVP release is acceptable only when:
 
-```mermaid
-sequenceDiagram
-  participant NAS as Mounted NAS
-  participant ING as Ingestion
-  participant OBJ as Object storage
-  participant DB as PostgreSQL
-  participant VDB as Qdrant
-  NAS->>ING: scan / file-change event
-  ING->>ING: checksum, parse, OCR if needed, normalize
-  ING->>OBJ: store original + extracted artifact
-  ING->>DB: source/version/chunk metadata + ACL
-  ING->>VDB: dense vectors + sparse terms + payload metadata
-  ING->>DB: mark content version ready
-  participant U as Student
-  participant ORC as Orchestrator
-  participant RET as Retrieval
-  participant MEM as Memory
-  participant LLM as LM Studio
-  U->>ORC: question(course, session)
-  ORC->>MEM: recall compact scoped memory
-  ORC->>RET: hybrid retrieve + rerank
-  RET->>VDB: vector/sparse candidates (ACL/course/version filters)
-  RET->>DB: source anchors and permissions
-  RET-->>ORC: evidence bundle + citations
-  ORC->>LLM: policy + memory + evidence + question
-  LLM-->>ORC: streaming answer
-  ORC-->>U: answer + cited anchors
-  ORC->>MEM: extract/merge only validated memory candidates
-```
+1. A generated fixture and an approved Leeds evaluation set pass the RAG thresholds.
+2. File add/change/delete/rename produces a previewable new version and repeated/concurrent jobs remain idempotent.
+3. Student requests cannot retrieve staff/restricted evidence and cross-tenant access tests pass.
+4. Source citations resolve to the exact page/slide/chunk sent to the LLM.
+5. The first SSE token arrives before generation completes.
+6. Memory deduplication, correction, expiry and deletion tests pass with long-term memory opt-in.
+7. `helm package` produces a versioned chart archive, and `helm upgrade --install`
+   deploys Agent API, Practice API, worker and Web into a clean Kind cluster where all
+   smoke calls pass.
+8. `helm rollback` restores the previous healthy release, and the Kubernetes rollback
+   and data restore drills meet the declared targets.
 
-### 7.3 Storage model
-
-- **PostgreSQL**: tenants, users/roles, courses, content versions, source metadata, chunks, chats, durable memory facts, summaries, feedback, audits and outbox events.
-- **Qdrant**: chunk embeddings plus filterable payload (`tenant_id`, `course_id`, `content_version`, `source_id`, `chunk_id`, access label); separate collections per embedding model/version.
-- **Object storage**: source originals, extraction artifacts and optional rendered slide/page assets. Original content is never placed directly in the vector database.
-- **Redis**: session window, distributed locks, rate limiting, queues/cache. It is not the source of truth.
-
-### 7.4 Model integration
-
-The adapter implements the OpenAI-compatible `chat/completions` (streaming) and `embeddings` interfaces against `LLM_BASE_URL`. It uses finite connect/read timeouts, circuit breaking and per-request correlation IDs. Model name, prompt template and embedding dimension are configuration/versioned metadata. The system fails closed for a course answer when the embedding model or collection dimension does not match.
-
-### 7.5 NAS integration
-
-`smb://L-NAS` is a client mount address, not an application path. On macOS/Linux, mount it through the OS with a dedicated read-only service account, then configure `COURSE_SOURCE_PATH` to the mounted absolute POSIX directory. The ingestion container receives that directory as a read-only bind mount. A periodic scanner is the baseline because SMB file-watch semantics vary; it may later consume a filesystem event adapter where reliable.
-
-### 7.6 Operations and high availability
-
-- Put API, orchestrator, retrieval and memory behind a load balancer; make all request state external.
-- Use transactional outbox + queue consumers for ingestion, summary, deletion and reindex jobs; every consumer is idempotent.
-- Run PostgreSQL with managed HA/replication and tested point-in-time recovery; use Qdrant snapshots/replicas appropriate to data volume.
-- Treat the first LM Studio machine as a single availability dependency. Add a second compatible local inference node plus health-aware routing for real HA.
-- Deploy with Docker Compose locally, Kubernetes/Helm in production; autoscale workers on queue depth and retrieval/API on CPU/latency.
-- Back up Postgres, object storage and Qdrant snapshots; test restore periodically.
-
-## 8. Acceptance criteria for MVP
-
-1. A newly added Leeds module PDF/PPTX becomes searchable without manual re-upload, and a status page shows parsed/failed state.
-2. A course answer includes at least one navigable source anchor when evidence exists; unsupported claims generate a transparent abstention.
-3. A follow-up conversation uses the learner’s course-scoped preference/progress without reintroducing duplicate memories after repeated turns.
-4. Deleting a learner memory prevents it being recalled and completes asynchronously with an auditable status.
-5. Restarting a worker does not duplicate indexed chunks or messages.
-6. A simulated LM Studio outage produces a user-safe error and traceable health signal, not a hung chat request.
+Traceability from these requirements to tasks, operations and tests is maintained in `docs/requirements-traceability.md`.

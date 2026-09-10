@@ -6,17 +6,27 @@ fixture here is either in-memory or a fake.
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator, Iterator
 
 import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from course_tutor_api.app import create_app
+from course_tutor_api.auth import create_auth_provider
+from course_tutor_api.db import Base
 from course_tutor_api.dependencies import Dependencies
 from course_tutor_api.providers import FakeLLMProvider, FakeObjectStore
 from course_tutor_shared import Settings, get_settings
 from course_tutor_shared.config import Environment
+from tests.support.postgres import reset_test_schema
 
 
 @pytest.fixture(autouse=True)
@@ -90,6 +100,7 @@ async def api_client(settings: Settings, fake_llm: FakeLLMProvider) -> AsyncIter
         http=http,
         llm=fake_llm,
         qdrant_client=None,  # type: ignore[arg-type]
+        auth=create_auth_provider(settings),
         _probes=[
             StubProbe("postgres"),
             StubProbe("redis"),
@@ -103,3 +114,26 @@ async def api_client(settings: Settings, fake_llm: FakeLLMProvider) -> AsyncIter
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
     await http.aclose()
+
+
+@pytest.fixture
+async def integration_db_engine() -> AsyncIterator[AsyncEngine]:
+    """Disposable, explicitly marked PostgreSQL used by integration/e2e tests."""
+    dsn = os.environ.get("TEST_POSTGRES_DSN")
+    if not dsn:
+        pytest.skip("TEST_POSTGRES_DSN is required; use scripts/run-integration-tests.sh")
+    engine = create_async_engine(dsn)
+    await reset_test_schema(engine, dsn)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    try:
+        yield engine
+    finally:
+        await engine.dispose()
+
+
+@pytest.fixture
+async def db_session(integration_db_engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
+    maker = async_sessionmaker(integration_db_engine, expire_on_commit=False)
+    async with maker() as session:
+        yield session

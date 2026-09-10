@@ -1,0 +1,11 @@
+Course Tutor {{ .Chart.AppVersion }} has been installed.
+
+Backend layout:
+  kubectl get pods -l app.kubernetes.io/component=backend -o jsonpath='{.items[0].spec.containers[*].name}'
+
+Run release tests:
+  helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+
+Inspect release history and rollback:
+  helm history {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+  helm rollback {{ .Release.Name }} <REVISION> --namespace {{ .Release.Namespace }} --wait

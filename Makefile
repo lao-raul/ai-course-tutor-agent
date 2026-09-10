@@ -1,4 +1,4 @@
-.PHONY: help install dev api test lint format typecheck migrate migration up down logs reset-db check
+.PHONY: help install dev api practice test test-integration rag-benchmark lint format typecheck contracts migrate migration up down logs reset-db check images kind-deploy
 
 COMPOSE := docker compose --env-file .env -f infra/docker/docker-compose.dev.yml
 ALEMBIC := cd apps/api && uv run --project ../.. alembic
@@ -31,10 +31,25 @@ reset-db:  ## Drop and rebuild the schema from migrations
 api:  ## Run the API with reload
 	uv run uvicorn course_tutor_api.app:create_app --factory --reload --port 8080
 
+practice:  ## Run the Practice API dummy with reload
+	uv run uvicorn course_tutor_practice.app:create_app --factory --reload --port 8001
+
 dev: up migrate api  ## Start dependencies, migrate, then run the API
 
 test:  ## Run the test suite
 	uv run pytest
+
+test-integration:  ## Run disposable integration and E2E suites
+	scripts/run-integration-tests.sh
+
+rag-benchmark:  ## Run the synthetic retrieval quality gate
+	uv run python tests/retrieval_benchmark.py --output build/reports/rag-metrics.json
+
+images:  ## Build all application and CI helper images
+	scripts/build-docker.sh
+
+kind-deploy:  ## Install and verify the chart in course-tutor-local Kind
+	scripts/kind-smoke-test.sh course-tutor-local
 
 lint:  ## Check formatting and lint rules
 	uv run ruff check .
@@ -47,4 +62,7 @@ format:  ## Apply formatting and safe lint fixes
 typecheck:  ## Run mypy
 	uv run mypy packages apps
 
-check: lint typecheck test  ## Everything CI runs
+contracts:  ## Validate OpenAPI and requirements traceability
+	uv run python scripts/validate_contract_baseline.py
+
+check: lint typecheck contracts test  ## Everything CI runs

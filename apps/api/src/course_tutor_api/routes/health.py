@@ -20,6 +20,7 @@ class LivenessResponse(BaseModel):
     status: Literal["ok"]
     service: str
     version: str
+    revision: str
 
 
 class ComponentHealth(BaseModel):
@@ -39,7 +40,8 @@ async def liveness(request: Request) -> LivenessResponse:
     return LivenessResponse(
         status="ok",
         service=request.app.state.settings.service_name,
-        version=request.app.version,
+        version=request.app.state.settings.build_version,
+        revision=request.app.state.settings.build_revision,
     )
 
 

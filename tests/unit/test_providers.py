@@ -20,6 +20,7 @@ from course_tutor_api.providers import (
     LLMProvider,
     LMStudioProvider,
     ProviderError,
+    ResilientLLMProvider,
 )
 from course_tutor_shared import Settings
 
@@ -138,3 +139,38 @@ async def test_stream_chat_yields_content_deltas(settings: Settings) -> None:
         token async for token in provider.stream_chat([ChatMessage(role="user", content="hi")])
     ]
     assert tokens == ["Bayes", " rule"]
+
+
+class _FlakyProvider(FakeLLMProvider):
+    def __init__(self, failures: int) -> None:
+        super().__init__(embedding_dimension=8)
+        self.failures = failures
+
+    async def embed(self, texts):  # type: ignore[no-untyped-def]
+        if self.failures:
+            self.failures -= 1
+            raise ProviderError("temporary")
+        return await super().embed(texts)
+
+
+async def test_resilient_provider_retries_before_opening_circuit() -> None:
+    flaky = _FlakyProvider(failures=1)
+    provider = ResilientLLMProvider(flaky, max_attempts=2, retry_delay_seconds=0)
+    assert len(await provider.embed(["hello"])) == 1
+
+
+async def test_resilient_provider_opens_circuit_after_repeated_failures() -> None:
+    flaky = _FlakyProvider(failures=10)
+    provider = ResilientLLMProvider(
+        flaky,
+        max_attempts=1,
+        failure_threshold=2,
+        reset_seconds=60,
+        retry_delay_seconds=0,
+    )
+    with pytest.raises(ProviderError, match="temporary"):
+        await provider.embed(["one"])
+    with pytest.raises(ProviderError, match="temporary"):
+        await provider.embed(["two"])
+    with pytest.raises(ProviderError, match="circuit is open"):
+        await provider.embed(["three"])

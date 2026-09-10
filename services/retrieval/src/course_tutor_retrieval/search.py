@@ -1,12 +1,15 @@
-"""Hybrid retrieval: dense vector search with keyword boost."""
+"""Dense retrieval with a small, accurately named lexical scoring heuristic."""
 
 from __future__ import annotations
 
+import asyncio
+import re
+import time
 import uuid
 
 import structlog
 from qdrant_client import QdrantClient
-from qdrant_client.models import FieldCondition, Filter, MatchValue
+from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
 
 from course_tutor_api.providers.base import EmbeddingProvider
 from course_tutor_contracts.enums import AccessLabel, AnchorType, ChunkClass
@@ -14,9 +17,6 @@ from course_tutor_contracts.retrieval import RetrievalResult, RetrievedChunk
 from course_tutor_retrieval.collection import COLLECTION_NAME
 
 logger = structlog.get_logger(__name__)
-
-# Reciprocal Rank Fusion k parameter
-RRF_K = 60
 
 # Access label ordering: higher privilege includes lower
 _ACCESS_LABEL_RANK = {
@@ -26,12 +26,13 @@ _ACCESS_LABEL_RANK = {
     AccessLabel.RESTRICTED: 3,
 }
 
-# Minimum score below which we abstain
-SCORE_THRESHOLD = 0.3
 
+class DenseRetrievalService:
+    """Dense vector recall followed by a deterministic lexical score adjustment.
 
-class HybridRetrievalService:
-    """Dense vector search with Python-side keyword matching boost."""
+    This is not called hybrid retrieval: the lexical pass only reorders the dense
+    result set and cannot recall a document that dense search did not return.
+    """
 
     def __init__(
         self,
@@ -44,6 +45,7 @@ class HybridRetrievalService:
     async def search(
         self,
         query: str,
+        tenant_id: uuid.UUID,
         course_id: uuid.UUID,
         content_version_id: uuid.UUID,
         access_label: AccessLabel,
@@ -56,22 +58,23 @@ class HybridRetrievalService:
         2. Python-side keyword re-score (boost docs with query terms)
         3. Filter by access_label
         """
-        import time
-
         t0 = time.monotonic()
 
         query_vector = await self._embed.embed([query])
-        results = self._client.query_points(
+        t_embed = (time.monotonic() - t0) * 1000
+        t_query = time.monotonic()
+        results = await asyncio.to_thread(
+            self._client.query_points,
             collection_name=COLLECTION_NAME,
             query=query_vector[0],
-            query_filter=self._build_filter(course_id, content_version_id),
-            limit=limit * 3,  # over-fetch for post-filter headroom
+            query_filter=self._build_filter(tenant_id, course_id, content_version_id, access_label),
+            limit=limit * 3,
             with_payload=True,
         )
-        t_dense = (time.monotonic() - t0) * 1000
+        t_dense = (time.monotonic() - t_query) * 1000
 
         candidates: list[RetrievedChunk] = []
-        min_rank = _ACCESS_LABEL_RANK.get(access_label, 0)
+        max_rank = _ACCESS_LABEL_RANK.get(access_label, 0)
         query_terms = set(query.lower().split())
 
         for point in results.points:
@@ -84,7 +87,7 @@ class HybridRetrievalService:
             except ValueError:
                 label_enum = AccessLabel.ENROLLED
 
-            if _ACCESS_LABEL_RANK.get(label_enum, 0) < min_rank:
+            if _ACCESS_LABEL_RANK.get(label_enum, 0) > max_rank:
                 continue
 
             score = float(point.score)
@@ -101,8 +104,6 @@ class HybridRetrievalService:
             # unit even when the embedding model is biased toward overview content or
             # when query language (e.g. Chinese + English unit names) creates a semantic
             # gap between query and specific-unit content.
-            import re
-
             def unit_boost(query_text: str, path: str) -> float:
                 """Return a boost value if query references the same unit as the path."""
                 query_lower = query_text.lower()
@@ -138,34 +139,57 @@ class HybridRetrievalService:
         # Sort by score descending
         candidates.sort(key=lambda c: c.score, reverse=True)
 
-        total = self._count_indexed(course_id, content_version_id)
+        total = await asyncio.to_thread(
+            self._count_indexed, tenant_id, course_id, content_version_id, access_label
+        )
 
         return RetrievalResult(
             candidates=candidates[:limit],
             total_indexed=total,
-            timings_ms={"dense_ms": round(t_dense, 2)},
+            timings_ms={
+                "embedding_ms": round(t_embed, 2),
+                "dense_query_ms": round(t_dense, 2),
+                "total_retrieval_ms": round((time.monotonic() - t0) * 1000, 2),
+            },
         )
 
     def _build_filter(
         self,
+        tenant_id: uuid.UUID,
         course_id: uuid.UUID,
         content_version_id: uuid.UUID,
+        access_label: AccessLabel,
     ) -> Filter:
+        allowed_labels = [
+            label.value
+            for label, rank in _ACCESS_LABEL_RANK.items()
+            if rank <= _ACCESS_LABEL_RANK[access_label]
+        ]
         return Filter(
             must=[
+                FieldCondition(key="tenant_id", match=MatchValue(value=str(tenant_id))),
                 FieldCondition(key="course_id", match=MatchValue(value=str(course_id))),
                 FieldCondition(
                     key="content_version_id", match=MatchValue(value=str(content_version_id))
                 ),
+                FieldCondition(key="access_label", match=MatchAny(any=allowed_labels)),
             ]
         )
 
-    def _count_indexed(self, course_id: uuid.UUID, content_version_id: uuid.UUID) -> int:
+    def _count_indexed(
+        self,
+        tenant_id: uuid.UUID,
+        course_id: uuid.UUID,
+        content_version_id: uuid.UUID,
+        access_label: AccessLabel,
+    ) -> int:
         """Approximate count of indexed points for a content version."""
         try:
             result = self._client.count(
                 collection_name=COLLECTION_NAME,
-                count_filter=self._build_filter(course_id, content_version_id),
+                count_filter=self._build_filter(
+                    tenant_id, course_id, content_version_id, access_label
+                ),
                 exact=True,
             )
             return result.count or 0

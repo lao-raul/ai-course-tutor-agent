@@ -32,6 +32,8 @@ class DomainModel(BaseModel):
 class Course(DomainModel):
     id: UUID
     tenant_id: UUID
+    programme_id: UUID
+    code: str
     name: str
     level: EducationLevel
     active_content_version: UUID | None = None
@@ -41,6 +43,7 @@ class Course(DomainModel):
 class ContentVersion(DomainModel):
     id: UUID
     course_id: UUID
+    course_run_id: UUID
     pipeline_version: str
     status: ContentVersionStatus
     created_at: datetime

@@ -13,6 +13,7 @@ from course_tutor_api.providers.base import (
 )
 from course_tutor_api.providers.fake import FakeLLMProvider, FakeObjectStore
 from course_tutor_api.providers.lmstudio import LMStudioProvider
+from course_tutor_api.providers.resilience import ResilientLLMProvider
 
 __all__ = [
     "ChatMessage",
@@ -23,4 +24,5 @@ __all__ = [
     "LMStudioProvider",
     "ObjectStore",
     "ProviderError",
+    "ResilientLLMProvider",
 ]

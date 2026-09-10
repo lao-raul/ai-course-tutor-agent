@@ -1,79 +1,37 @@
-# ---- API Docker image ----
-FROM python:3.12-slim AS base
+# syntax=docker/dockerfile:1.7
+ARG PYTHON_IMAGE=python:3.12.11-slim-bookworm
 
+FROM ${PYTHON_IMAGE} AS build
+ARG UV_VERSION=0.12.6
 WORKDIR /app
+RUN pip install --no-cache-dir "uv==${UV_VERSION}"
+COPY . .
+RUN uv sync --frozen --no-dev --package course-tutor-api
 
-RUN pip install --no-cache-dir uv
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy all source — needed so uv lock can resolve every workspace member
-COPY apps/api/src ./apps/api/src
-COPY apps/api/alembic ./apps/api/alembic
-COPY apps/api/alembic.ini ./apps/api/alembic.ini
-COPY packages/contracts/src ./packages/contracts/src
-COPY packages/shared/src ./packages/shared/src
-COPY services/ingestion/src ./services/ingestion/src
-COPY services/retrieval/src ./services/retrieval/src
-
-# Copy per-package manifests (no root pyproject.toml — avoids workspace member
-# resolution in base stage where it would try to install all members)
-COPY apps/api/pyproject.toml ./apps/api/pyproject.toml
-COPY packages/contracts/pyproject.toml ./packages/contracts/pyproject.toml
-COPY packages/shared/pyproject.toml ./packages/shared/pyproject.toml
-COPY services/ingestion/pyproject.toml ./services/ingestion/pyproject.toml
-COPY services/retrieval/pyproject.toml ./services/retrieval/pyproject.toml
-COPY pyproject.toml ./pyproject.toml
-
-# ---- API build stage ----
-FROM base AS api-build
-
-# Copy lockfile so we use the committed reproducible lock
-COPY uv.lock ./uv.lock
-
-# uv lock: generate a lockfile from all workspace members (source already in base)
-# uv sync: install using the lockfile
-RUN uv lock && uv sync --frozen --no-install-project --extra dev
-
-# Copy source on top of whatever uv installed (overwrites stubs)
-COPY apps/api/src ./apps/api/src
-COPY apps/api/alembic ./apps/api/alembic
-COPY apps/api/alembic.ini ./apps/api/alembic.ini
-COPY packages/contracts/src ./packages/contracts/src
-COPY packages/shared/src ./packages/shared/src
-COPY services/ingestion/src ./services/ingestion/src
-COPY services/retrieval/src ./services/retrieval/src
-
-# Re-install api in editable mode to pick up src/ changes
-RUN uv sync --frozen --extra dev
-
-# ---- Runtime stage ----
-FROM base AS runtime
-
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-
-COPY --from=api-build /app/.venv /app/.venv
-COPY --from=api-build /app/apps/api/src /app/apps/api/src
-COPY --from=api-build /app/apps/api/alembic /app/apps/api/alembic
-COPY --from=api-build /app/packages/contracts/src /app/packages/contracts/src
-COPY --from=api-build /app/packages/shared/src /app/packages/shared/src
-COPY --from=api-build /app/services/retrieval/src /app/services/retrieval/src
-
-ENV PATH="/app/.venv/bin:$PATH"
-
-RUN useradd --create-home --shell /bin/bash appuser
-USER appuser
-
+FROM ${PYTHON_IMAGE} AS runtime
+ARG BUILD_VERSION=0.1.0-dev
+ARG BUILD_REVISION=unknown
+ARG BUILD_SOURCE=https://github.com/example/ai-course-tutor-agent
+LABEL org.opencontainers.image.title="course-tutor-agent-api" \
+      org.opencontainers.image.version="${BUILD_VERSION}" \
+      org.opencontainers.image.revision="${BUILD_REVISION}" \
+      org.opencontainers.image.source="${BUILD_SOURCE}"
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    SERVICE_NAME=agent-api \
+    BUILD_VERSION="${BUILD_VERSION}" \
+    BUILD_REVISION="${BUILD_REVISION}"
+WORKDIR /app
+RUN useradd --create-home --uid 10001 appuser
+COPY --from=build /app/.venv /app/.venv
+COPY --from=build /app/apps/api /app/apps/api
+COPY --from=build /app/packages/auth /app/packages/auth
+COPY --from=build /app/packages/contracts /app/packages/contracts
+COPY --from=build /app/packages/shared /app/packages/shared
+COPY --from=build /app/services/retrieval /app/services/retrieval
+USER 10001:10001
 EXPOSE 8000
-
-ENTRYPOINT ["/bin/bash", "-c", "\
-    echo 'Waiting for postgres...' && \
-    python -c 'import socket,os; s=socket.socket(); s.connect((os.environ[\"POSTGRES_HOST\"],int(os.environ[\"POSTGRES_PORT\"]))); s.close()' && \
-    echo 'Running migrations...' && \
-    alembic -c apps/api/alembic.ini upgrade head && \
-    echo 'Starting API...' && \
-    uvicorn 'course_tutor_api.app:create_app' --factory --host 0.0.0.0 --port 8000 \
-"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"
+ENTRYPOINT ["uvicorn", "course_tutor_api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

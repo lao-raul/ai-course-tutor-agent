@@ -1,0 +1,216 @@
+{{- if .Values.internalDependencies.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-postgres
+  labels:
+    {{- include "course-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "course-tutor.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        {{- include "course-tutor.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: postgres
+          image: {{ .Values.internalDependencies.postgres.image }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: POSTGRES_DB, value: course_tutor}
+            - {name: POSTGRES_USER, value: course_tutor}
+            - {name: POSTGRES_PASSWORD, value: course_tutor}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          ports: [{name: postgres, containerPort: 5432}]
+          readinessProbe:
+            exec: {command: ["pg_isready", "-U", "course_tutor", "-d", "course_tutor"]}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
+      volumes: [{name: data, emptyDir: {}}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: {{ include "course-tutor.fullname" . }}-postgres}
+spec:
+  selector:
+    {{- include "course-tutor.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+  ports: [{name: postgres, port: 5432, targetPort: postgres}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-redis
+  labels:
+    {{- include "course-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "course-tutor.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: redis
+  template:
+    metadata:
+      labels:
+        {{- include "course-tutor.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: redis
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: redis
+          image: {{ .Values.internalDependencies.redis.image }}
+          imagePullPolicy: IfNotPresent
+          args: ["redis-server", "--save", ""]
+          ports: [{name: redis, containerPort: 6379}]
+          readinessProbe: {exec: {command: ["redis-cli", "ping"]}}
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: {{ include "course-tutor.fullname" . }}-redis}
+spec:
+  selector:
+    {{- include "course-tutor.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+  ports: [{name: redis, port: 6379, targetPort: redis}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-qdrant
+  labels:
+    {{- include "course-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "course-tutor.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: qdrant
+  template:
+    metadata:
+      labels:
+        {{- include "course-tutor.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: qdrant
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: qdrant
+          image: {{ .Values.internalDependencies.qdrant.image }}
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 6333}]
+          readinessProbe: {httpGet: {path: /readyz, port: http}}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: data, mountPath: /qdrant/storage}
+            - {name: snapshots, mountPath: /qdrant/snapshots}
+      volumes:
+        - {name: data, emptyDir: {}}
+        - {name: snapshots, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: {{ include "course-tutor.fullname" . }}-qdrant}
+spec:
+  selector:
+    {{- include "course-tutor.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+  ports: [{name: http, port: 6333, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-minio
+  labels:
+    {{- include "course-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "course-tutor.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: minio
+  template:
+    metadata:
+      labels:
+        {{- include "course-tutor.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: minio
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: minio
+          image: {{ .Values.internalDependencies.minio.image }}
+          imagePullPolicy: IfNotPresent
+          args: ["server", "/data"]
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom: {secretKeyRef: {name: {{ include "course-tutor.secretName" . }}, key: minio-access-key}}
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ include "course-tutor.secretName" . }}, key: minio-secret-key}}
+          ports: [{name: http, containerPort: 9000}]
+          readinessProbe: {httpGet: {path: /minio/health/ready, port: http}}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          volumeMounts: [{name: data, mountPath: /data}]
+      volumes: [{name: data, emptyDir: {}}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: {{ include "course-tutor.fullname" . }}-minio}
+spec:
+  selector:
+    {{- include "course-tutor.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+  ports: [{name: http, port: 9000, targetPort: http}]
+{{- end }}

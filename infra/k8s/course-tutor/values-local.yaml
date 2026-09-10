@@ -1,0 +1,24 @@
+global:
+  imagePullPolicy: IfNotPresent
+
+backend:
+  agent:
+    image: {repository: course-tutor-agent, tag: local, digest: ""}
+  practice:
+    image: {repository: course-tutor-practice, tag: local, digest: ""}
+
+worker:
+  image: {repository: course-tutor-worker, tag: local, digest: ""}
+
+web:
+  image: {repository: course-tutor-web, tag: local, digest: ""}
+
+fakeLlm:
+  enabled: true
+  image: {repository: course-tutor-fake-llm, tag: local, digest: ""}
+
+internalDependencies:
+  enabled: true
+
+config:
+  environment: local

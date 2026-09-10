@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-backend
+  labels:
+    {{- include "course-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicas }}
+  revisionHistoryLimit: {{ .Values.backend.revisionHistoryLimit }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "course-tutor.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "course-tutor.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+      annotations:
+        checksum/runtime-secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "course-tutor.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: wait-for-migration
+          image: {{ include "course-tutor.image" (list .Values.backend.agent.image) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command: ["python", "-m", "course_tutor_api.wait_for_migration"]
+          env:
+            - name: POSTGRES_DSN
+              value: {{ .Values.config.postgresDsn | quote }}
+            - name: EXPECTED_ALEMBIC_REVISION
+              value: {{ .Values.config.expectedAlembicRevision | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: runtime-tmp, mountPath: /tmp}
+      containers:
+        - name: agent-api
+          image: {{ include "course-tutor.image" (list .Values.backend.agent.image) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - {name: agent-http, containerPort: {{ .Values.backend.agent.port }}, protocol: TCP}
+          env:
+            {{- include "course-tutor.commonEnv" . | nindent 12 }}
+            {{- if .Values.courseContent.enabled }}
+            - name: COURSE_SOURCE_PATH
+              value: {{ .Values.courseContent.mountPath | quote }}
+            {{- end }}
+          readinessProbe:
+            httpGet: {path: /readyz, port: agent-http}
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet: {path: /healthz, port: agent-http}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.backend.agent.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: runtime-tmp, mountPath: /tmp}
+          {{- if .Values.courseContent.enabled }}
+            - name: course-content
+              mountPath: {{ .Values.courseContent.mountPath }}
+              readOnly: true
+          {{- end }}
+        - name: practice-api
+          image: {{ include "course-tutor.image" (list .Values.backend.practice.image) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - {name: practice-http, containerPort: {{ .Values.backend.practice.port }}, protocol: TCP}
+          env:
+            {{- include "course-tutor.commonEnv" . | nindent 12 }}
+          readinessProbe:
+            httpGet: {path: /readyz, port: practice-http}
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: practice-http}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.backend.practice.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: runtime-tmp, mountPath: /tmp}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "course-tutor.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: backend
+      volumes:
+        - {name: runtime-tmp, emptyDir: {}}
+      {{- if .Values.courseContent.enabled }}
+        - name: course-content
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-course-content" (include "course-tutor.fullname" .)) .Values.courseContent.existingClaim }}
+            readOnly: true
+      {{- end }}

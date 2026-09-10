@@ -1,0 +1,24 @@
+[project]
+name = "course-tutor-practice"
+version = "0.1.0"
+description = "Course Tutor Practice API deployment boundary"
+requires-python = ">=3.12"
+dependencies = [
+    "course-tutor-auth",
+    "course-tutor-contracts",
+    "course-tutor-shared",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+]
+
+[tool.uv.sources]
+course-tutor-auth = { workspace = true }
+course-tutor-contracts = { workspace = true }
+course-tutor-shared = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/course_tutor_practice"]

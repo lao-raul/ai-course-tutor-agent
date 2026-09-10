@@ -1,0 +1,58 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Course Tutor Practice API",
+    "version": "1.0.0",
+    "description": "Dummy v1 contract. Exercise generation remains intentionally unavailable in v0.2."
+  },
+  "servers": [{"url": "/"}],
+  "security": [{"bearerAuth": []}],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "practiceHealth",
+                "x-implementation-status": "implemented",
+        "security": [],
+        "responses": {"200": {"description": "Process is alive", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Health"}}}}}
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "practiceReady",
+                "x-implementation-status": "implemented",
+        "security": [],
+        "responses": {"200": {"description": "Dummy service is ready"}, "503": {"description": "A required dependency is unavailable"}}
+      }
+    },
+    "/v1/practice/capabilities": {
+      "get": {
+        "operationId": "getPracticeCapabilities",
+                "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Current practice capabilities", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Capabilities"}}}}}
+      }
+    },
+    "/v1/practice/courses/{course_id}/exercises:generate": {
+      "parameters": [{"$ref": "#/components/parameters/CourseId"}],
+      "post": {
+        "operationId": "generatePracticeExercises",
+                "x-implementation-status": "implemented",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GenerateRequest"}}}},
+        "responses": {
+          "401": {"description": "Authentication required"},
+          "403": {"description": "Course is outside the authenticated scope"},
+          "501": {"description": "Generation is intentionally unavailable", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NotImplementedError"}}}}
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}},
+    "parameters": {"CourseId": {"name": "course_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}},
+    "schemas": {
+      "Health": {"type": "object", "required": ["status", "service", "version", "revision"], "properties": {"status": {"const": "ok"}, "service": {"const": "practice-api"}, "version": {"type": "string"}, "revision": {"type": "string"}}},
+      "Capabilities": {"type": "object", "required": ["exercise_generation", "implemented_features"], "properties": {"exercise_generation": {"const": "not_implemented"}, "implemented_features": {"type": "array", "items": {"type": "string"}, "maxItems": 0}}},
+      "GenerateRequest": {"type": "object", "additionalProperties": false, "properties": {"count": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5}, "topic": {"type": ["string", "null"]}, "difficulty": {"type": ["string", "null"]}}},
+      "NotImplementedError": {"type": "object", "required": ["code", "message", "correlation_id"], "properties": {"code": {"const": "practice_generation_not_implemented"}, "message": {"type": "string"}, "correlation_id": {"type": "string"}}}
+    }
+  }
+}

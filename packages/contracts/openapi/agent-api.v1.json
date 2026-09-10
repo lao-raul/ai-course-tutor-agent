@@ -1,0 +1,189 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Course Tutor Agent API",
+    "version": "1.0.0",
+    "description": "Canonical v1 contract. x-implementation-status distinguishes implemented, partial and planned operations."
+  },
+  "servers": [{"url": "/"}],
+  "security": [{"bearerAuth": []}],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "agentHealth",
+        "x-implementation-status": "implemented",
+        "security": [],
+        "responses": {"200": {"description": "Process is alive", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Health"}}}}}
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "agentReady",
+        "x-implementation-status": "implemented",
+        "security": [],
+        "responses": {
+          "200": {"description": "Dependencies are ready"},
+          "503": {"description": "One or more required dependencies are unavailable"}
+        }
+      }
+    },
+    "/v1/courses": {
+      "get": {
+        "operationId": "listCourses",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Authorized courses", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/Course"}}}}}}
+      }
+    },
+    "/v1/courses/{course_id}": {
+      "parameters": [{"$ref": "#/components/parameters/CourseId"}],
+      "get": {
+        "operationId": "getCourse",
+        "x-implementation-status": "implemented",
+        "responses": {
+          "200": {"description": "Authorized course", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Course"}}}},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/v1/courses/{course_id}/chat": {
+      "parameters": [{"$ref": "#/components/parameters/CourseId"}],
+      "post": {
+        "operationId": "streamCourseChat",
+        "x-implementation-status": "partial",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ChatRequest"}}}},
+        "responses": {
+          "200": {"description": "SSE events: token, citation, abstained, warning, done or error", "content": {"text/event-stream": {"schema": {"type": "string"}}}},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/v1/admin/programmes": {
+      "post": {
+        "operationId": "createProgramme",
+        "x-implementation-status": "implemented",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateProgrammeRequest"}}}},
+        "responses": {"201": {"description": "Programme registered"}, "403": {"$ref": "#/components/responses/Forbidden"}}
+      }
+    },
+    "/v1/admin/courses": {
+      "post": {
+        "operationId": "createCourse",
+        "x-implementation-status": "implemented",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateCourseRequest"}}}},
+        "responses": {"201": {"description": "Course and course run registered"}, "403": {"$ref": "#/components/responses/Forbidden"}}
+      }
+    },
+    "/v1/admin/courses/{course_id}/ingestions": {
+      "parameters": [{"$ref": "#/components/parameters/CourseId"}],
+      "post": {
+        "operationId": "createCourseIngestion",
+        "x-implementation-status": "implemented",
+        "requestBody": {"required": false, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateIngestionRequest"}}}},
+        "responses": {"202": {"description": "Version build queued", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/IngestionJob"}}}}, "403": {"$ref": "#/components/responses/Forbidden"}}
+      }
+    },
+    "/v1/admin/ingestions/{job_id}": {
+      "parameters": [{"$ref": "#/components/parameters/JobId"}],
+      "get": {
+        "operationId": "getIngestion",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Ingestion state", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/IngestionJob"}}}}, "404": {"$ref": "#/components/responses/NotFound"}}
+      }
+    },
+    "/v1/admin/ingestions/{job_id}/retry": {
+      "parameters": [{"$ref": "#/components/parameters/JobId"}],
+      "post": {
+        "operationId": "retryIngestion",
+        "x-implementation-status": "implemented",
+        "responses": {
+          "200": {"description": "Dead-lettered ingestion reset and queued"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"description": "Completed ingestion cannot be retried"}
+        }
+      }
+    },
+    "/v1/admin/courses/{course_id}/sources": {
+      "parameters": [{"$ref": "#/components/parameters/CourseId"}],
+      "get": {
+        "operationId": "listCourseSources",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Source and extraction status list"}, "403": {"$ref": "#/components/responses/Forbidden"}}
+      }
+    },
+    "/v1/courses/{course_id}/sources/{source_id}": {
+      "parameters": [{"$ref": "#/components/parameters/CourseId"}, {"$ref": "#/components/parameters/SourceId"}],
+      "get": {
+        "operationId": "getCourseSource",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Authorized source metadata and anchors"}, "404": {"$ref": "#/components/responses/NotFound"}}
+      }
+    },
+    "/v1/admin/courses/{course_id}/versions/{version_id}/publish": {
+      "parameters": [{"$ref": "#/components/parameters/CourseId"}, {"$ref": "#/components/parameters/VersionId"}],
+      "post": {
+        "operationId": "publishContentVersion",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Version published and active alias updated"}, "409": {"description": "Version is not ready"}}
+      }
+    },
+    "/v1/admin/courses/{course_id}/versions/{version_id}/rollback": {
+      "parameters": [{"$ref": "#/components/parameters/CourseId"}, {"$ref": "#/components/parameters/VersionId"}],
+      "post": {
+        "operationId": "rollbackContentVersion",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Previous valid version activated"}, "409": {"description": "No valid rollback target"}}
+      }
+    },
+    "/v1/memories": {
+      "get": {
+        "operationId": "listMemories",
+        "x-implementation-status": "planned",
+        "responses": {"200": {"description": "Current user's scoped memory facts"}}
+      }
+    },
+    "/v1/memories/{memory_id}": {
+      "parameters": [{"$ref": "#/components/parameters/MemoryId"}],
+      "patch": {
+        "operationId": "updateMemory",
+        "x-implementation-status": "planned",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MemoryUpdate"}}}},
+        "responses": {"200": {"description": "Memory corrected or pinned"}, "202": {"description": "Deletion tombstoned and purge queued"}}
+      }
+    },
+    "/v1/feedback": {
+      "post": {
+        "operationId": "createFeedback",
+        "x-implementation-status": "planned",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedbackRequest"}}}},
+        "responses": {"201": {"description": "Feedback stored"}}
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}},
+    "parameters": {
+      "CourseId": {"name": "course_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+      "JobId": {"name": "job_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+      "SourceId": {"name": "source_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+      "VersionId": {"name": "version_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+      "MemoryId": {"name": "memory_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+    },
+    "responses": {
+      "Unauthorized": {"description": "Authentication required"},
+      "Forbidden": {"description": "Insufficient role, membership or tenant scope"},
+      "NotFound": {"description": "Resource not found in the authorized scope"}
+    },
+    "schemas": {
+      "Health": {"type": "object", "required": ["status", "service", "version", "revision"], "properties": {"status": {"const": "ok"}, "service": {"type": "string"}, "version": {"type": "string"}, "revision": {"type": "string"}}},
+      "Course": {"type": "object", "required": ["id", "tenant_id", "code", "name", "level"], "properties": {"id": {"type": "string", "format": "uuid"}, "tenant_id": {"type": "string", "format": "uuid"}, "programme_id": {"type": ["string", "null"], "format": "uuid"}, "course_run_id": {"type": ["string", "null"], "format": "uuid"}, "code": {"type": "string"}, "name": {"type": "string"}, "level": {"type": "string"}, "active_content_version_id": {"type": ["string", "null"], "format": "uuid"}}},
+      "ChatRequest": {"type": "object", "additionalProperties": false, "required": ["query"], "properties": {"query": {"type": "string", "minLength": 1, "maxLength": 2000}, "session_id": {"type": ["string", "null"], "format": "uuid"}}},
+      "CreateProgrammeRequest": {"type": "object", "additionalProperties": false, "required": ["code", "name"], "properties": {"code": {"type": "string", "minLength": 1, "maxLength": 64}, "name": {"type": "string", "minLength": 1, "maxLength": 255}}},
+      "CreateCourseRequest": {"type": "object", "additionalProperties": false, "required": ["programme_id", "code", "name", "level", "run_key", "source_path"], "properties": {"programme_id": {"type": "string", "format": "uuid"}, "code": {"type": "string"}, "name": {"type": "string"}, "level": {"enum": ["primary", "middle_school", "high_school", "undergraduate", "postgraduate"]}, "run_key": {"type": "string"}, "source_path": {"type": "string"}, "scan_interval_seconds": {"type": "integer", "minimum": 30, "default": 900}}},
+      "CreateIngestionRequest": {"type": "object", "additionalProperties": false, "properties": {"reason": {"type": "string", "maxLength": 500}, "force_rebuild": {"type": "boolean", "default": false}}},
+      "IngestionJob": {"type": "object", "required": ["job_id", "course_id", "status"], "properties": {"job_id": {"type": "string", "format": "uuid"}, "course_id": {"type": "string", "format": "uuid"}, "version_id": {"type": ["string", "null"], "format": "uuid"}, "status": {"enum": ["pending", "building", "ready", "published", "failed", "dead_lettered"]}, "last_error": {"type": ["string", "null"]}}},
+      "MemoryUpdate": {"type": "object", "additionalProperties": false, "properties": {"normalized_value": {"type": "string"}, "pinned": {"type": "boolean"}, "action": {"enum": ["correct", "pin", "unpin", "delete"]}}},
+      "FeedbackRequest": {"type": "object", "additionalProperties": false, "required": ["trace_id", "rating"], "properties": {"trace_id": {"type": "string", "format": "uuid"}, "rating": {"type": "integer", "minimum": -1, "maximum": 1}, "comment": {"type": "string", "maxLength": 2000}}}
+    }
+  }
+}

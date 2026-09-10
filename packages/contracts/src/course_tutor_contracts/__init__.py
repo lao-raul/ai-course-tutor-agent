@@ -24,6 +24,11 @@ from course_tutor_contracts.enums import (
     MemoryFactType,
     UserRole,
 )
+from course_tutor_contracts.practice import (
+    GeneratePracticeRequest,
+    PracticeCapabilities,
+    PracticeNotImplementedError,
+)
 from course_tutor_contracts.retrieval import (
     ChatCitation,
     ChatRequest,
@@ -47,9 +52,12 @@ __all__ = [
     "Course",
     "EducationLevel",
     "ExtractionStatus",
+    "GeneratePracticeRequest",
     "MemoryFact",
     "MemoryFactStatus",
     "MemoryFactType",
+    "PracticeCapabilities",
+    "PracticeNotImplementedError",
     "RetrievalQuery",
     "RetrievalResult",
     "RetrievalTrace",

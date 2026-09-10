@@ -69,6 +69,16 @@ class User(Base, TimestampMixin):
     role: Mapped[UserRole] = mapped_column(_enum(UserRole, "user_role"))
 
 
+class Programme(Base, TimestampMixin):
+    __tablename__ = "programmes"
+    __table_args__ = (UniqueConstraint("tenant_id", "code"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
+    code: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(255))
+
+
 class SourceRoot(Base, TimestampMixin):
     """A mounted, read-only local directory holding course material."""
 
@@ -78,6 +88,8 @@ class SourceRoot(Base, TimestampMixin):
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
     absolute_path: Mapped[str] = mapped_column(Text)
     last_scanned_at: Mapped[datetime | None] = mapped_column()
+    last_snapshot_hash: Mapped[str | None] = mapped_column(String(64))
+    scan_interval_seconds: Mapped[int] = mapped_column(Integer, default=900)
 
 
 class Course(Base, TimestampMixin):
@@ -86,6 +98,9 @@ class Course(Base, TimestampMixin):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
+    programme_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("programmes.id", ondelete="RESTRICT")
+    )
     code: Mapped[str] = mapped_column(String(64))
     name: Mapped[str] = mapped_column(String(255))
     level: Mapped[EducationLevel] = mapped_column(_enum(EducationLevel, "education_level"))
@@ -97,12 +112,28 @@ class Course(Base, TimestampMixin):
     teaching_policy: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
 
-class ContentVersion(Base, TimestampMixin):
-    __tablename__ = "content_versions"
-    __table_args__ = (UniqueConstraint("course_id", "pipeline_version", "sequence"),)
+class CourseRun(Base, TimestampMixin):
+    __tablename__ = "course_runs"
+    __table_args__ = (UniqueConstraint("course_id", "run_key"),)
 
     id: Mapped[uuid.UUID] = uuid_pk()
     course_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    run_key: Mapped[str] = mapped_column(String(128))
+    source_root_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source_roots.id"))
+    active_content_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("content_versions.id", use_alter=True)
+    )
+
+
+class ContentVersion(Base, TimestampMixin):
+    __tablename__ = "content_versions"
+    __table_args__ = (UniqueConstraint("course_run_id", "pipeline_version", "sequence"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    course_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    course_run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("course_runs.id", ondelete="CASCADE")
+    )
     pipeline_version: Mapped[str] = mapped_column(String(64))
     sequence: Mapped[int] = mapped_column(Integer)
     status: Mapped[ContentVersionStatus] = mapped_column(
@@ -110,16 +141,15 @@ class ContentVersion(Base, TimestampMixin):
     )
     embedding_model_version: Mapped[str] = mapped_column(String(128))
     embedding_dimension: Mapped[int] = mapped_column(Integer)
+    source_snapshot_hash: Mapped[str | None] = mapped_column(String(64))
     published_at: Mapped[datetime | None] = mapped_column()
 
 
 class SourceDocument(Base, TimestampMixin):
     __tablename__ = "source_documents"
     __table_args__ = (
-        # Idempotency key from function-spec §7.1: same file, same version, one row.
-        # Both constraints lead with version_id, so they need explicit names — the
-        # naming convention keys only on the first column and would collide.
-        UniqueConstraint("version_id", "checksum", name="uq_source_documents_version_checksum"),
+        # Path is the immutable row identity inside a version. Checksums detect
+        # changes, but duplicate files with identical bytes are valid inputs.
         UniqueConstraint("version_id", "relative_path", name="uq_source_documents_version_path"),
         Index("ix_source_documents_extraction_status", "extraction_status"),
         CheckConstraint(
@@ -255,3 +285,21 @@ class OutboxEvent(Base, TimestampMixin):
     processed_at: Mapped[datetime | None] = mapped_column()
     dead_lettered_at: Mapped[datetime | None] = mapped_column()
     last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class AuditEvent(Base, TimestampMixin):
+    """Append-only record of privileged and privacy-sensitive operations."""
+
+    __tablename__ = "audit_events"
+    __table_args__ = (
+        Index("ix_audit_events_tenant_created", "tenant_id", "created_at"),
+        Index("ix_audit_events_actor", "actor_user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
+    actor_user_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    action: Mapped[str] = mapped_column(String(128))
+    resource_type: Mapped[str] = mapped_column(String(64))
+    resource_id: Mapped[str] = mapped_column(String(255))
+    details: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)

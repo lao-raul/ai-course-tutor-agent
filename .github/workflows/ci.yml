@@ -12,79 +12,248 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: read  # required for Gitleaks to read PR commits
+  pull-requests: read
 
 env:
-  # CI must not depend on the LAN LM Studio host or the NAS.
-  LLM_BASE_URL: http://localhost:1234/v1
+  # CI must never depend on the NAS, LM Studio, or another LAN service.
+  UV_FROZEN: "1"
+  LLM_BASE_URL: http://127.0.0.1:1234/v1
   LLM_CHAT_MODEL: ci-chat
   LLM_EMBEDDING_MODEL: ci-embedding
   LLM_EMBEDDING_DIMENSION: "1024"
-  POSTGRES_DSN: postgresql+asyncpg://course_tutor:course_tutor@localhost:5432/course_tutor
-  REDIS_URL: redis://localhost:6379/0
 
 jobs:
   quality:
+    name: Python quality and unit contracts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
         with:
           enable-cache: true
-
       - run: uv sync --extra dev
-
-      - name: Lint
+      - run: mkdir -p build/reports
+      - name: Lint and formatting
         run: |
           uv run ruff check --output-format=github .
           uv run ruff format --check .
-
       - name: Typecheck
-        run: uv run mypy packages apps
+        run: uv run mypy packages apps services
+      - name: Unit, contract, ACL, and SSE tests
+        run: >-
+          uv run pytest tests/unit apps/practice/tests
+          tests/integration/chat tests/integration/security
+          --cov=course_tutor_api --cov=course_tutor_practice
+          --cov=course_tutor_ingestion --cov=course_tutor_retrieval
+          --cov-report=xml:build/reports/coverage.xml
+          --junitxml=build/reports/unit.xml
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: python-unit-report
+          path: |
+            build/reports/unit.xml
+            build/reports/coverage.xml
 
-      - name: Test
-        run: uv run pytest --ignore=tests/integration/
+  frontend:
+    name: Frontend test and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  integration:
+    name: Disposable integration, E2E, and RAG evaluation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: true
+      - run: uv sync --extra dev
+      - run: mkdir -p build/reports
+      - name: Start disposable services
+        run: docker compose -f infra/docker/docker-compose.test.yml up --detach --wait
+      - name: Integration and generated-course E2E tests
+        env:
+          TEST_POSTGRES_DSN: postgresql+asyncpg://course_tutor:course_tutor@127.0.0.1:55432/course_tutor_test_local
+          TEST_REDIS_URL: redis://127.0.0.1:56379/0
+          TEST_QDRANT_URL: http://127.0.0.1:56333
+          TEST_MINIO_ENDPOINT: http://127.0.0.1:59000
+        run: >-
+          uv run pytest tests/integration tests/e2e
+          --junitxml=build/reports/integration.xml
+      - name: RAG quality gate
+        run: uv run python tests/retrieval_benchmark.py --output build/reports/rag-metrics.json
+      - name: Collect service diagnostics
+        if: failure()
+        run: docker compose -f infra/docker/docker-compose.test.yml logs --no-color > build/reports/integration-services.log
+      - name: Stop disposable services
+        if: always()
+        run: docker compose -f infra/docker/docker-compose.test.yml down --volumes --remove-orphans
+      - name: Upload integration and RAG reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: integration-and-rag-reports
+          path: build/reports
 
   migrations:
+    name: Migration round trip and schema parity
     runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: course_tutor
+          POSTGRES_DB: course_tutor_test_migrations
           POSTGRES_USER: course_tutor
           POSTGRES_PASSWORD: course_tutor
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U course_tutor"
+          --health-cmd "pg_isready -U course_tutor -d course_tutor_test_migrations"
           --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      POSTGRES_DSN: postgresql+asyncpg://course_tutor:course_tutor@localhost:5432/course_tutor_test_migrations
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
         with:
           enable-cache: true
-
       - run: uv sync --extra dev
-
-      - name: Migrations apply, reverse and re-apply
+      - name: Apply, reverse, re-apply, and compare models
         run: |
-          uv run --project . alembic -c apps/api/alembic.ini upgrade head
-          uv run --project . alembic -c apps/api/alembic.ini downgrade base
-          uv run --project . alembic -c apps/api/alembic.ini upgrade head
+          uv run alembic -c apps/api/alembic.ini upgrade head
+          uv run alembic -c apps/api/alembic.ini downgrade base
+          uv run alembic -c apps/api/alembic.ini upgrade head
+          uv run alembic -c apps/api/alembic.ini check
 
-      - name: Models and migrations are in sync
-        run: uv run --project . alembic -c apps/api/alembic.ini check
-
-  secrets:
+  secret-scan:
+    name: Secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-
-      - name: Scan for committed secrets
-        uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  package-and-deploy:
+    name: Images, security, Helm, and Kind deployment
+    runs-on: ubuntu-latest
+    needs: [quality, frontend, integration, migrations, secret-scan]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Validate image build graph
+        run: docker buildx bake --check
+      - name: Build local CI images
+        env:
+          BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
+          TAG: ci
+          BUILD_VERSION: 0.1.0-ci
+          BUILD_REVISION: ${{ github.sha }}
+          BUILD_SOURCE: ${{ github.server_url }}/${{ github.repository }}
+        run: docker buildx bake --load
+      - name: Prepare artifact directories
+        run: mkdir -p build/reports build/charts
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: build/reports/source.spdx.json
+      - name: Scan source dependencies and configuration
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Scan Agent image
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: course-tutor-agent:ci
+          scan-type: image
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Scan Practice image
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: course-tutor-practice:ci
+          scan-type: image
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Scan Worker image
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: course-tutor-worker:ci
+          scan-type: image
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Scan Web image
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: course-tutor-web:ci
+          scan-type: image
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Scan fake-LLM image
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: course-tutor-fake-llm:ci
+          scan-type: image
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Validate and package Helm chart
+        run: |
+          mkdir -p build/reports build/charts
+          helm lint infra/k8s/course-tutor -f infra/k8s/course-tutor/values-ci.yaml
+          helm template course-tutor infra/k8s/course-tutor \
+            -f infra/k8s/course-tutor/values-ci.yaml > build/reports/rendered.yaml
+          helm package infra/k8s/course-tutor --destination build/charts
+      - name: Create Kind cluster
+        uses: helm/kind-action@0b5c88445f37b7e12a2ce1ecca7805b9046a74db # v1
+        with:
+          cluster_name: course-tutor-ci
+      - name: Load local images
+        run: |
+          kind load docker-image --name course-tutor-ci \
+            course-tutor-agent:ci course-tutor-practice:ci course-tutor-worker:ci \
+            course-tutor-web:ci course-tutor-fake-llm:ci
+      - name: Install chart and run smoke tests
+        run: scripts/kind-smoke-test.sh course-tutor-ci
+      - name: Collect Kubernetes diagnostics
+        if: failure()
+        run: |
+          mkdir -p build/reports/kubernetes
+          kubectl get all,jobs,pvc -n course-tutor -o wide > build/reports/kubernetes/resources.txt
+          kubectl get events -n course-tutor --sort-by=.lastTimestamp > build/reports/kubernetes/events.txt
+          kubectl logs -n course-tutor -l app.kubernetes.io/instance=course-tutor \
+            --all-containers --prefix --tail=500 > build/reports/kubernetes/pods.log || true
+      - name: Upload chart, SBOM, and deployment diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: helm-sbom-and-deployment-reports
+          path: |
+            build/charts
+            build/reports

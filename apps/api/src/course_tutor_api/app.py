@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from course_tutor_api.dependencies import get_dependencies
+from course_tutor_api.local_bootstrap import ensure_local_identity
 from course_tutor_api.routes import admin, chat, courses, health
 from course_tutor_shared import (
     CorrelationIdMiddleware,
@@ -31,14 +32,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         dependencies = get_dependencies(settings)
         app.state.settings = settings
         app.state.dependencies = dependencies
-        logger.info(
-            "api_starting",
-            environment=settings.environment.value,
-            chat_model=settings.llm_chat_model,
-            embedding_model=settings.llm_embedding_model,
-            embedding_dimension=settings.llm_embedding_dimension,
-        )
         try:
+            await ensure_local_identity(dependencies.engine, settings)
+            logger.info(
+                "api_starting",
+                environment=settings.environment.value,
+                chat_model=settings.llm_chat_model,
+                embedding_model=settings.llm_embedding_model,
+                embedding_dimension=settings.llm_embedding_dimension,
+            )
             yield
         finally:
             await dependencies.aclose()

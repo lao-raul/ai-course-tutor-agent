@@ -18,8 +18,6 @@ from course_tutor_shared import configure_logging, get_logger, get_settings
 configure_logging()
 logger = get_logger(__name__)
 
-POLL_INTERVAL_SECONDS = 5
-
 
 async def main() -> None:
     # Lazy import to avoid circular dependency at module load time.
@@ -27,7 +25,7 @@ async def main() -> None:
     # has a transitive path that touches the ingestion package internals.
     from course_tutor_api.dependencies import get_dependencies
     from course_tutor_ingestion.embed_jobs import run_pending_embedding_jobs
-    from course_tutor_ingestion.jobs import run_pending_jobs
+    from course_tutor_ingestion.jobs import enqueue_due_scans, run_pending_jobs
     from course_tutor_ingestion.object_store import MinioObjectStore
 
     settings = get_settings()
@@ -36,10 +34,15 @@ async def main() -> None:
         endpoint=settings.minio_endpoint,
         access_key=settings.minio_access_key,
         secret_key=settings.minio_secret_key.get_secret_value(),
-        bucket="course-tutor-artifacts",
+        bucket=settings.minio_bucket,
     )
+    await asyncio.to_thread(object_store.ensure_bucket)
 
-    logger.info("ingestion_worker_start", poll_interval=POLL_INTERVAL_SECONDS)
+    logger.info(
+        "ingestion_worker_start",
+        poll_interval=settings.ingestion_poll_interval_seconds,
+        bucket=settings.minio_bucket,
+    )
 
     running = True
 
@@ -55,9 +58,13 @@ async def main() -> None:
         from sqlalchemy.ext.asyncio import AsyncSession
 
         async with AsyncSession(deps.engine, expire_on_commit=False) as session:
+            await enqueue_due_scans(session)
             # Process scan jobs
             processed_scans = await run_pending_jobs(
-                session, max_batch=5, object_store=object_store
+                session,
+                max_batch=5,
+                object_store=object_store,
+                max_attempts=settings.ingestion_max_attempts,
             )
             if processed_scans:
                 logger.info("ingestion_batch_complete", count=processed_scans)
@@ -70,12 +77,14 @@ async def main() -> None:
                 max_batch=10,
                 qdrant_client=deps.qdrant_client,
                 embed_provider=deps.llm,
+                embedding_model_version=settings.llm_embedding_model,
+                max_attempts=settings.ingestion_max_attempts,
             )
             if processed_embeds:
                 logger.info("embedding_batch_complete", count=processed_embeds)
 
         if running:
-            await asyncio.sleep(POLL_INTERVAL_SECONDS)
+            await asyncio.sleep(settings.ingestion_poll_interval_seconds)
 
     await deps.aclose()
     logger.info("ingestion_worker_stopped")

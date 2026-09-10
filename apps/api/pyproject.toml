@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "FastAPI gateway / BFF"
 requires-python = ">=3.12"
 dependencies = [
+    "course-tutor-auth",
     "course-tutor-contracts",
     "course-tutor-shared",
     "course-tutor-retrieval",
@@ -13,11 +14,14 @@ dependencies = [
     "asyncpg>=0.30",
     "alembic>=1.14",
     "redis>=5.2",
-    "qdrant-client>=1.12",
+    "qdrant-client>=1.12,<1.13",
     "httpx>=0.28",
+    "pyjwt[crypto]>=2.10,<3",
+    "cryptography>=43,<46",
 ]
 
 [tool.uv.sources]
+course-tutor-auth = { workspace = true }
 course-tutor-contracts = { workspace = true }
 course-tutor-shared = { workspace = true }
 course-tutor-retrieval = { workspace = true }

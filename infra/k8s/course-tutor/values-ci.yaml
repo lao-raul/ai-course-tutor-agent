@@ -1,0 +1,29 @@
+global:
+  imagePullPolicy: Never
+
+backend:
+  replicas: 1
+  agent:
+    image: {repository: course-tutor-agent, tag: ci, digest: ""}
+  practice:
+    image: {repository: course-tutor-practice, tag: ci, digest: ""}
+
+worker:
+  image: {repository: course-tutor-worker, tag: ci, digest: ""}
+
+web:
+  image: {repository: course-tutor-web, tag: ci, digest: ""}
+
+fakeLlm:
+  enabled: true
+  image: {repository: course-tutor-fake-llm, tag: ci, digest: ""}
+
+internalDependencies:
+  enabled: true
+
+config:
+  environment: test
+  authMode: local
+
+courseContent:
+  enabled: false

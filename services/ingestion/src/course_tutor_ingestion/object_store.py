@@ -51,6 +51,22 @@ class MinioObjectStore:
         )
         self._bucket = bucket
 
+    def ensure_bucket(self) -> None:
+        """Create the configured private bucket once; tolerate concurrent creators."""
+        try:
+            self._client.head_bucket(Bucket=self._bucket)
+            return
+        except botocore.exceptions.ClientError as exc:
+            code = str(exc.response.get("Error", {}).get("Code", ""))
+            if code not in {"404", "NoSuchBucket", "NotFound"}:
+                raise ObjectStoreError(f"bucket {self._bucket!r} is not accessible: {exc}") from exc
+        try:
+            self._client.create_bucket(Bucket=self._bucket)
+        except botocore.exceptions.ClientError as exc:
+            code = str(exc.response.get("Error", {}).get("Code", ""))
+            if code not in {"BucketAlreadyExists", "BucketAlreadyOwnedByYou"}:
+                raise ObjectStoreError(f"could not create bucket {self._bucket!r}: {exc}") from exc
+
     async def put(self, key: str, data: bytes, *, content_type: str) -> str:
         """Store *data* under *key* and return the key."""
         try:

@@ -1,12 +1,12 @@
 [project]
 name = "course-tutor-retrieval"
 version = "0.1.0"
-description = "Hybrid dense/sparse retrieval, reranking and citation packaging"
+description = "Dense retrieval, deterministic reranking and citation packaging"
 requires-python = ">=3.12"
 dependencies = [
     "course-tutor-contracts",
     "course-tutor-shared",
-    "qdrant-client>=1.12",
+    "qdrant-client>=1.12,<1.13",
     "structlog>=24",
 ]
 

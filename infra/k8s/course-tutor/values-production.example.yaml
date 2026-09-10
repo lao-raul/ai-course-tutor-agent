@@ -1,0 +1,72 @@
+global:
+  imagePullPolicy: IfNotPresent
+  buildRevision: REPLACE_WITH_GIT_SHA
+
+backend:
+  replicas: 2
+  agent:
+    image:
+      repository: ghcr.io/OWNER/course-tutor-agent
+      tag: ""
+      digest: sha256:REPLACE_WITH_RELEASE_DIGEST
+  practice:
+    image:
+      repository: ghcr.io/OWNER/course-tutor-practice
+      tag: ""
+      digest: sha256:REPLACE_WITH_RELEASE_DIGEST
+
+worker:
+  image:
+    repository: ghcr.io/OWNER/course-tutor-worker
+    tag: ""
+    digest: sha256:REPLACE_WITH_RELEASE_DIGEST
+
+web:
+  image:
+    repository: ghcr.io/OWNER/course-tutor-web
+    tag: ""
+    digest: sha256:REPLACE_WITH_RELEASE_DIGEST
+
+fakeLlm:
+  enabled: false
+
+internalDependencies:
+  enabled: false
+
+config:
+  environment: production
+  authMode: oidc
+  oidcIssuer: https://identity.example/
+  oidcAudience: course-tutor
+  oidcJwksUrl: https://identity.example/.well-known/jwks.json
+  oidcAlgorithms: RS256
+  postgresDsn: postgresql+asyncpg://USER@postgres.example:5432/course_tutor
+  redisUrl: rediss://redis.example:6379/0
+  qdrantUrl: https://qdrant.example
+  minioEndpoint: https://objects.example
+  llmBaseUrl: https://llm.example/v1
+
+secrets:
+  existingSecret: course-tutor-production
+  localAuthToken: ""
+  minioAccessKey: ""
+  minioSecretKey: ""
+  llmApiKey: ""
+
+courseContent:
+  enabled: true
+  existingClaim: leeds-course-content
+
+podDisruptionBudget:
+  enabled: true
+
+autoscaling:
+  enabled: true
+
+networkPolicy:
+  enabled: true
+
+# The built-in test uses local bearer authentication. Production smoke tests must
+# obtain an OIDC token through the deployment environment instead.
+tests:
+  enabled: false

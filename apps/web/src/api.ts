@@ -1,15 +1,17 @@
 import type { ChatCitation, ChatRequest, Course } from './types';
 
 const API_BASE = '/v1';
+const LOCAL_AUTH_TOKEN = import.meta.env.VITE_LOCAL_AUTH_TOKEN ?? 'local-dev-token';
+const authHeaders = { Authorization: `Bearer ${LOCAL_AUTH_TOKEN}` };
 
 export async function listCourses(): Promise<Course[]> {
-  const res = await fetch(`${API_BASE}/courses`);
+  const res = await fetch(`${API_BASE}/courses`, { headers: authHeaders });
   if (!res.ok) throw new Error(`listCourses failed: ${res.status}`);
   return res.json();
 }
 
 export async function getCourse(courseId: string): Promise<Course> {
-  const res = await fetch(`${API_BASE}/courses/${courseId}`);
+  const res = await fetch(`${API_BASE}/courses/${courseId}`, { headers: authHeaders });
   if (!res.ok) throw new Error(`getCourse failed: ${res.status}`);
   return res.json();
 }
@@ -26,11 +28,13 @@ export async function streamChat(
   courseId: string,
   body: ChatRequest,
   callbacks: ChatStreamCallbacks,
+  signal?: AbortSignal,
 ): Promise<void> {
   const response = await fetch(`${API_BASE}/courses/${courseId}/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ body }),
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    body: JSON.stringify(body),
+    signal,
   });
 
   if (!response.ok) {
@@ -48,13 +52,10 @@ export async function streamChat(
   const decoder = new TextDecoder();
   let buffer = '';
 
-  // SSE parse: each chunk is "event: <type>\ndata: <json>\n\n"
-  const CONTROLLER = { cancelled: false };
-
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done || CONTROLLER.cancelled) break;
+      if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
 
@@ -96,7 +97,7 @@ export async function streamChat(
           case 'done': {
             const d = data as { trace_id: string | null; answer_tokens: number };
             callbacks.onDone(d.trace_id, d.answer_tokens);
-            break;
+            return;
           }
           case 'error': {
             const d = data as { detail: string };
@@ -106,7 +107,12 @@ export async function streamChat(
         }
       }
     }
+  } catch (error) {
+    if (!(error instanceof DOMException && error.name === 'AbortError')) {
+      callbacks.onError(error instanceof Error ? error.message : 'stream failed');
+    }
   } finally {
+    await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }
@@ -121,7 +127,7 @@ export async function ingestCourse(
 ): Promise<{ course_id: string; job_id: string; version_id: string }> {
   const res = await fetch(`${API_BASE}/admin/ingest`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
     body: JSON.stringify({
       source_path: sourcePath,
       tenant_slug: tenantSlug,

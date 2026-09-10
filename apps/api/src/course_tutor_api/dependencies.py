@@ -8,16 +8,24 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, cast
 
 import httpx
+from fastapi import HTTPException, Request, status
 from qdrant_client import QdrantClient
 from redis.asyncio import Redis
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.sql import text
 
-from course_tutor_api.providers import LLMProvider, LMStudioProvider, ProviderError
+from course_tutor_api.auth import AuthProvider, create_auth_provider
+from course_tutor_api.providers import (
+    LLMProvider,
+    LMStudioProvider,
+    ProviderError,
+    ResilientLLMProvider,
+)
 from course_tutor_shared import Settings, get_logger, get_settings
 
 logger = get_logger(__name__)
@@ -114,6 +122,7 @@ class Dependencies:
     http: httpx.AsyncClient
     llm: LLMProvider
     qdrant_client: QdrantClient
+    auth: AuthProvider
     _probes: list[Probe] = field(default_factory=list)
 
     def probes(self) -> list[Probe]:
@@ -133,8 +142,25 @@ class Dependencies:
         await self.redis.aclose()
         await self.http.aclose()
         await self.engine.dispose()
+        self.qdrant_client.close()
         if (close := getattr(self.llm, "aclose", None)) is not None:
             await close()
+
+
+class RedisRateLimiter:
+    def __init__(self, client: Redis) -> None:
+        self._client = client
+
+    async def enforce(self, key: str, *, limit: int, window_seconds: int) -> None:
+        redis_key = f"rate-limit:{key}"
+        count = await self._client.incr(redis_key)
+        if count == 1:
+            await self._client.expire(redis_key, window_seconds)
+        if count > limit:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="rate limit exceeded",
+            )
 
 
 def get_dependencies(settings: Settings | None = None) -> Dependencies:
@@ -146,15 +172,30 @@ def get_dependencies(settings: Settings | None = None) -> Dependencies:
         engine=create_async_engine(settings.postgres_dsn, pool_pre_ping=True),
         redis=Redis.from_url(settings.redis_url, decode_responses=True),
         http=http,
-        llm=LMStudioProvider(settings),
+        llm=ResilientLLMProvider(LMStudioProvider(settings)),
         qdrant_client=qdrant_client,
+        auth=create_auth_provider(settings),
     )
+
+
+def dependencies_from_request(request: Request) -> Dependencies:
+    """Return the process-owned dependency container; never allocate per request."""
+    return cast("Dependencies", request.app.state.dependencies)
+
+
+async def get_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
+    dependencies = dependencies_from_request(request)
+    async with AsyncSession(dependencies.engine, expire_on_commit=False) as session:
+        yield session
 
 
 __all__ = [
     "Dependencies",
     "ProbeResult",
     "ProviderError",
+    "RedisRateLimiter",
+    "dependencies_from_request",
     "get_dependencies",
+    "get_session",
     "run_probe",
 ]

@@ -1,216 +1,423 @@
-"""Admin routes: course setup and ingestion management.
-
-Design (function-spec FR-1):
-  POST /v1/admin/ingest          → creates Tenant / Course / SourceRoot /
-                                    initial BUILDING ContentVersion / OutboxEvent
-  GET  /v1/admin/ingestions/{id}  → polling status
-  POST /v1/admin/courses/{id}/versions/{vid}/publish
-  POST /v1/admin/courses/{id}/versions/{vid}/rollback
-"""
+"""Tenant-scoped course, ingestion and immutable-version administration."""
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
-from typing import Annotated
+from pathlib import Path
+from typing import Annotated, Any
 from uuid import UUID
 
-from course_tutor_ingestion import SourceRootError, validate_path, validate_read_access
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from course_tutor_api.db import ContentVersion, Course, SourceRoot, Tenant
-from course_tutor_api.db.models import OutboxEvent
-from course_tutor_api.dependencies import get_dependencies
+from course_tutor_api.auth import Principal, get_current_principal, require_course_admin
+from course_tutor_api.db import (
+    AuditEvent,
+    ContentVersion,
+    Course,
+    CourseRun,
+    OutboxEvent,
+    Programme,
+    SourceDocument,
+    SourceRoot,
+    Tenant,
+)
+from course_tutor_api.dependencies import (
+    Dependencies,
+    RedisRateLimiter,
+    dependencies_from_request,
+    get_session,
+)
 from course_tutor_contracts.enums import ContentVersionStatus, EducationLevel
-
-router = APIRouter(prefix="/v1/admin", tags=["admin"])
-
-# Bumped whenever the parsing or chunking algorithm changes to force a full re-index.
-PIPELINE_VERSION = "1.0.0"
+from course_tutor_shared import PIPELINE_VERSION
 
 
-# ---------------------------------------------------------------------------
-# Request / Response shapes
-# ---------------------------------------------------------------------------
+async def _enforce_admin_rate_limit(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    dependencies: Annotated[Dependencies, Depends(dependencies_from_request)],
+) -> None:
+    await RedisRateLimiter(dependencies.redis).enforce(
+        f"admin:{principal.tenant_id}:{principal.user_id}", limit=120, window_seconds=60
+    )
 
 
-class IngestRequest(BaseModel):
-    """One-shot course setup + ingestion queue.
+router = APIRouter(
+    prefix="/v1/admin",
+    tags=["admin"],
+    dependencies=[Depends(_enforce_admin_rate_limit)],
+)
 
-    Phase 1 covers the happy path: one course per tenant, one module run.
-    Multi-course and multi-tenant management is Phase 4.
-    """
 
-    tenant_slug: str = Field(..., min_length=1, max_length=64)
-    tenant_name: str = Field(..., min_length=1, max_length=255)
-    course_code: str = Field(..., min_length=1, max_length=64)
-    course_name: str = Field(..., min_length=1, max_length=255)
-    course_level: EducationLevel
+class CourseRegistrationRequest(BaseModel):
+    programme_id: UUID
+    code: str = Field(..., min_length=1, max_length=64)
+    name: str = Field(..., min_length=1, max_length=255)
+    level: EducationLevel
+    run_key: str = Field(..., min_length=1, max_length=128)
     source_path: str = Field(..., min_length=1)
+    scan_interval_seconds: int = Field(default=900, ge=30)
 
     model_config = {"extra": "forbid"}
 
 
-class IngestResponse(BaseModel, frozen=True):
-    tenant_id: UUID
+class ProgrammeRegistrationRequest(BaseModel):
+    code: str = Field(..., min_length=1, max_length=64)
+    name: str = Field(..., min_length=1, max_length=255)
+
+    model_config = {"extra": "forbid"}
+
+
+class ProgrammeRegistrationResponse(BaseModel, frozen=True):
+    programme_id: UUID
+
+
+class CourseRegistrationResponse(BaseModel, frozen=True):
     course_id: UUID
+    course_run_id: UUID
     source_root_id: UUID
-    version_id: UUID
-    job_id: UUID
     resolved_path: str
 
 
+class IngestionQueuedResponse(BaseModel, frozen=True):
+    job_id: UUID
+    course_id: UUID
+    version_id: UUID | None = None
+    status: str = "pending"
+
+
 class IngestionStatusResponse(BaseModel, frozen=True):
-    job_id: str
-    topic: str
+    job_id: UUID
+    course_id: UUID
+    version_id: UUID | None
     status: str
+    version_status: str | None
     attempts: int
-    processed_at: str | None
-    dead_lettered_at: str | None
+    processed_at: datetime | None
+    dead_lettered_at: datetime | None
     last_error: str | None
+    stats: dict[str, Any] = Field(default_factory=dict)
+
+
+class SourceStatusResponse(BaseModel, frozen=True):
+    id: UUID
+    version_id: UUID
+    relative_path: str
+    checksum: str
+    extraction_status: str
+    failure_reason: str | None
+    artifact_key: str | None
 
 
 class VersionActionResponse(BaseModel, frozen=True):
     version_id: UUID
+    active_version_id: UUID
     status: str
-    published_at: str | None
+    published_at: datetime | None
 
 
-# ---------------------------------------------------------------------------
-# Dependencies
-# ---------------------------------------------------------------------------
+def _validated_source_path(raw: str) -> str:
+    if "://" in raw:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="source_path must be a mounted local absolute path, not a URL",
+        )
+    path = Path(raw)
+    if not path.is_absolute():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="source_path must be absolute",
+        )
+    # The ingestion worker, not the API pod, owns the read-only NAS mount.
+    return str(path)
 
 
-async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    deps = get_dependencies()
-    async with AsyncSession(deps.engine, expire_on_commit=False) as session:
-        yield session
+def _audit(
+    session: AsyncSession,
+    principal: Principal,
+    action: str,
+    resource_type: str,
+    resource_id: UUID | str,
+    **details: Any,
+) -> None:
+    session.add(
+        AuditEvent(
+            id=uuid.uuid4(),
+            tenant_id=principal.tenant_id,
+            actor_user_id=principal.user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=str(resource_id),
+            details=details,
+        )
+    )
 
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
+async def _tenant_course(session: AsyncSession, course_id: UUID, principal: Principal) -> Course:
+    course = await session.get(Course, course_id)
+    if course is None or course.tenant_id != principal.tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course not found")
+    return course
 
 
 @router.post(
-    "/ingest",
-    response_model=IngestResponse,
+    "/programmes",
+    response_model=ProgrammeRegistrationResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def ingest(
-    body: IngestRequest,
+async def register_programme(
+    body: ProgrammeRegistrationRequest,
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> IngestResponse:
-    """Register a course, source root, initial BUILDING version, and queue a scan job.
-
-    All created in one transaction. The worker consumes the outbox event asynchronously.
-    """
-    # 1. Validate source path (OS-level).
-    try:
-        resolved = validate_path(body.source_path)
-        validate_read_access(resolved)
-    except SourceRootError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-
-    # 2. Tenant — create if not exists.
-    tenant_id = uuid.uuid4()
-    tenant = Tenant(id=tenant_id, slug=body.tenant_slug, name=body.tenant_name)
-    session.add(tenant)
-    await session.flush()  # Ensure tenant_id is visible to SourceRoot FK
-
-    # 3. SourceRoot.
-    source_root_id = uuid.uuid4()
-    source_root = SourceRoot(
-        id=source_root_id,
-        tenant_id=tenant_id,
-        absolute_path=str(resolved),
-        last_scanned_at=None,
+    principal: Annotated[Principal, Depends(require_course_admin)],
+) -> ProgrammeRegistrationResponse:
+    if await session.get(Tenant, principal.tenant_id) is None:
+        raise HTTPException(status_code=409, detail="authenticated tenant is not provisioned")
+    programme = Programme(
+        id=uuid.uuid4(), tenant_id=principal.tenant_id, code=body.code, name=body.name
     )
-    session.add(source_root)
-    await session.flush()  # Ensure source_root_id is visible to Course FK
+    session.add(programme)
+    _audit(session, principal, "programme.register", "programme", programme.id)
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail="programme code already exists") from exc
+    return ProgrammeRegistrationResponse(programme_id=programme.id)
 
-    # 4. Course — linked to the source root.
-    course_id = uuid.uuid4()
+
+@router.post(
+    "/courses",
+    response_model=CourseRegistrationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def register_course(
+    body: CourseRegistrationRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    principal: Annotated[Principal, Depends(require_course_admin)],
+) -> CourseRegistrationResponse:
+    """Register metadata and a source root without starting ingestion."""
+    if await session.get(Tenant, principal.tenant_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="authenticated tenant is not provisioned",
+        )
+    programme = await session.get(Programme, body.programme_id)
+    if programme is None or programme.tenant_id != principal.tenant_id:
+        raise HTTPException(status_code=404, detail="programme not found")
+    resolved = _validated_source_path(body.source_path)
+    source_root = SourceRoot(
+        id=uuid.uuid4(),
+        tenant_id=principal.tenant_id,
+        absolute_path=resolved,
+        last_scanned_at=None,
+        last_snapshot_hash=None,
+        scan_interval_seconds=body.scan_interval_seconds,
+    )
     course = Course(
-        id=course_id,
-        tenant_id=tenant_id,
-        code=body.course_code,
-        name=body.course_name,
-        level=body.course_level,
-        source_root_id=source_root_id,
+        id=uuid.uuid4(),
+        tenant_id=principal.tenant_id,
+        programme_id=programme.id,
+        code=body.code,
+        name=body.name,
+        level=body.level,
+        source_root_id=source_root.id,
         teaching_policy={},
     )
+    session.add(source_root)
+    await session.flush()
     session.add(course)
-    await session.flush()  # Ensure course_id is visible to ContentVersion FK
-
-    # 5. Initial BUILDING content version.
-    version_id = uuid.uuid4()
-    version = ContentVersion(
-        id=version_id,
-        course_id=course_id,
-        pipeline_version=PIPELINE_VERSION,
-        sequence=1,
-        status=ContentVersionStatus.BUILDING,
-        embedding_model_version="text-embedding-qwen3-embedding-0.6b",
-        embedding_dimension=1024,
+    await session.flush()
+    course_run = CourseRun(
+        id=uuid.uuid4(),
+        course_id=course.id,
+        run_key=body.run_key,
+        source_root_id=source_root.id,
+        active_content_version_id=None,
     )
-    session.add(version)
+    session.add(course_run)
+    _audit(session, principal, "course.register", "course", course.id, source_path=resolved)
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="course code already exists in this tenant",
+        ) from exc
+    return CourseRegistrationResponse(
+        course_id=course.id,
+        course_run_id=course_run.id,
+        source_root_id=source_root.id,
+        resolved_path=resolved,
+    )
 
-    # 6. Outbox event (idempotency key = scan:{tenant_id}:{resolved_path}).
-    job_id = uuid.uuid4()
-    outbox_event = OutboxEvent(
-        id=job_id,
+
+@router.post(
+    "/courses/{course_id}/ingestions",
+    response_model=IngestionQueuedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def queue_ingestion(
+    course_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    principal: Annotated[Principal, Depends(require_course_admin)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> IngestionQueuedResponse:
+    """Queue an incremental scan for an already registered course."""
+    course = await _tenant_course(session, course_id, principal)
+    if course.source_root_id is None:
+        raise HTTPException(status_code=409, detail="course has no source root")
+    source_root = await session.get(SourceRoot, course.source_root_id)
+    if source_root is None or source_root.tenant_id != principal.tenant_id:
+        raise HTTPException(status_code=409, detail="course source root is invalid")
+    run_result = await session.execute(
+        select(CourseRun)
+        .where(CourseRun.course_id == course.id, CourseRun.source_root_id == source_root.id)
+        .order_by(CourseRun.created_at.desc())
+        .limit(1)
+    )
+    course_run = run_result.scalar_one_or_none()
+    if course_run is None:
+        raise HTTPException(status_code=409, detail="course has no registered run")
+
+    event_key = f"scan:{course_id}:{idempotency_key or uuid.uuid4()}"
+    existing_result = await session.execute(
+        select(OutboxEvent).where(OutboxEvent.idempotency_key == event_key)
+    )
+    if existing := existing_result.scalar_one_or_none():
+        raw_version = existing.payload.get("version_id")
+        return IngestionQueuedResponse(
+            job_id=existing.id,
+            course_id=course_id,
+            version_id=UUID(raw_version) if raw_version else None,
+        )
+
+    event = OutboxEvent(
+        id=uuid.uuid4(),
         topic="ingestion.scan",
-        idempotency_key=f"scan:{tenant_id}:{resolved}",
+        idempotency_key=event_key,
         payload={
-            "tenant_id": str(tenant_id),
-            "course_id": str(course_id),
-            "source_root_id": str(source_root_id),
-            "version_id": str(version_id),
-            "resolved_path": str(resolved),
+            "tenant_id": str(principal.tenant_id),
+            "course_id": str(course.id),
+            "source_root_id": str(source_root.id),
+            "course_run_id": str(course_run.id),
+            "resolved_path": source_root.absolute_path,
+            "pipeline_version": PIPELINE_VERSION,
+            "trigger": "manual",
         },
         attempts=0,
     )
-    session.add(outbox_event)
-    await session.commit()
-
-    return IngestResponse(
-        tenant_id=tenant_id,
-        course_id=course_id,
-        source_root_id=source_root_id,
-        version_id=version_id,
-        job_id=job_id,
-        resolved_path=str(resolved),
+    session.add(event)
+    _audit(
+        session,
+        principal,
+        "ingestion.queue",
+        "outbox_event",
+        event.id,
+        course_id=str(course_id),
     )
+    await session.commit()
+    return IngestionQueuedResponse(job_id=event.id, course_id=course.id)
 
 
 @router.get("/ingestions/{job_id}", response_model=IngestionStatusResponse)
 async def get_ingestion_status(
     job_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
+    principal: Annotated[Principal, Depends(require_course_admin)],
 ) -> IngestionStatusResponse:
-    """Poll the status of an ingestion job."""
     event = await session.get(OutboxEvent, job_id)
-    if event is None or event.topic != "ingestion.scan":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"job {job_id} not found")
-
-    return IngestionStatusResponse(
-        job_id=str(event.id),
-        topic=event.topic,
-        status="pending"
-        if event.processed_at is None and event.dead_lettered_at is None
-        else "dead_lettered"
-        if event.dead_lettered_at is not None
-        else "processed",
-        attempts=event.attempts,
-        processed_at=event.processed_at.isoformat() if event.processed_at else None,
-        dead_lettered_at=event.dead_lettered_at.isoformat() if event.dead_lettered_at else None,
-        last_error=event.last_error,
+    if (
+        event is None
+        or event.topic != "ingestion.scan"
+        or event.payload.get("tenant_id") != str(principal.tenant_id)
+    ):
+        raise HTTPException(status_code=404, detail="ingestion job not found")
+    raw_version = event.payload.get("version_id")
+    version = await session.get(ContentVersion, UUID(raw_version)) if raw_version else None
+    state = (
+        "dead_lettered"
+        if event.dead_lettered_at
+        else "processed"
+        if event.processed_at
+        else "pending"
     )
+    return IngestionStatusResponse(
+        job_id=event.id,
+        course_id=UUID(event.payload["course_id"]),
+        version_id=version.id if version else None,
+        status=state,
+        version_status=version.status.value if version else None,
+        attempts=event.attempts,
+        processed_at=event.processed_at,
+        dead_lettered_at=event.dead_lettered_at,
+        last_error=event.last_error,
+        stats=event.payload.get("stats", {}),
+    )
+
+
+@router.post("/ingestions/{job_id}/retry", response_model=IngestionQueuedResponse)
+async def retry_ingestion(
+    job_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    principal: Annotated[Principal, Depends(require_course_admin)],
+) -> IngestionQueuedResponse:
+    event = await session.get(OutboxEvent, job_id)
+    if (
+        event is None
+        or event.topic != "ingestion.scan"
+        or event.payload.get("tenant_id") != str(principal.tenant_id)
+    ):
+        raise HTTPException(status_code=404, detail="ingestion job not found")
+    if event.processed_at is not None:
+        raise HTTPException(status_code=409, detail="processed jobs cannot be retried")
+    event.dead_lettered_at = None
+    event.last_error = None
+    event.attempts = 0
+    _audit(session, principal, "ingestion.retry", "outbox_event", event.id)
+    await session.commit()
+    raw_version = event.payload.get("version_id")
+    return IngestionQueuedResponse(
+        job_id=event.id,
+        course_id=UUID(event.payload["course_id"]),
+        version_id=UUID(raw_version) if raw_version else None,
+    )
+
+
+@router.get("/courses/{course_id}/sources", response_model=list[SourceStatusResponse])
+async def list_sources(
+    course_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    principal: Annotated[Principal, Depends(require_course_admin)],
+    version_id: UUID | None = None,
+) -> list[SourceStatusResponse]:
+    course = await _tenant_course(session, course_id, principal)
+    selected_version = version_id or course.active_content_version_id
+    if selected_version is None:
+        return []
+    version = await session.get(ContentVersion, selected_version)
+    if version is None or version.course_id != course.id:
+        raise HTTPException(status_code=404, detail="content version not found")
+    result = await session.execute(
+        select(SourceDocument)
+        .where(SourceDocument.version_id == selected_version)
+        .order_by(SourceDocument.relative_path)
+    )
+    return [
+        SourceStatusResponse(
+            id=item.id,
+            version_id=item.version_id,
+            relative_path=item.relative_path,
+            checksum=item.checksum,
+            extraction_status=item.extraction_status.value,
+            failure_reason=item.failure_reason,
+            artifact_key=item.artifact_key,
+        )
+        for item in result.scalars().all()
+    ]
 
 
 @router.post(
@@ -221,39 +428,30 @@ async def publish_version(
     course_id: UUID,
     version_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
+    principal: Annotated[Principal, Depends(require_course_admin)],
 ) -> VersionActionResponse:
-    """Publish a READY version and atomically make it the course's active version.
-
-    No data is modified — this is an alias swap (function-spec FR-1.3).
-    """
+    course = await _tenant_course(session, course_id, principal)
     version = await session.get(ContentVersion, version_id)
-    if version is None or version.course_id != course_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="version not found")
-
+    if version is None or version.course_id != course.id:
+        raise HTTPException(status_code=404, detail="version not found")
     if version.status != ContentVersionStatus.READY:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"version status is {version.status.value}, "
-                f"must be {ContentVersionStatus.READY.value}"
-            ),
-        )
-
+        raise HTTPException(status_code=409, detail="only READY versions can be published")
     now = datetime.now(UTC).replace(tzinfo=None)
     version.status = ContentVersionStatus.PUBLISHED
     version.published_at = now
-
-    course = await session.get(Course, course_id)
-    if course is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course not found")
-
-    course.active_content_version_id = version_id
+    course.active_content_version_id = version.id
+    run_result = await session.execute(
+        select(CourseRun).where(CourseRun.id == version.course_run_id)
+    )
+    if course_run := run_result.scalar_one_or_none():
+        course_run.active_content_version_id = version.id
+    _audit(session, principal, "version.publish", "content_version", version.id)
     await session.commit()
-
     return VersionActionResponse(
-        version_id=version_id,
-        status="published",
-        published_at=now.isoformat(),
+        version_id=version.id,
+        active_version_id=version.id,
+        status=version.status.value,
+        published_at=version.published_at,
     )
 
 
@@ -265,46 +463,42 @@ async def rollback_version(
     course_id: UUID,
     version_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
+    principal: Annotated[Principal, Depends(require_course_admin)],
 ) -> VersionActionResponse:
-    """Roll back the active version by switching the alias to the previous published version.
-
-    Only the active version can be rolled back (function-spec FR-1.3).
-    """
-    course = await session.get(Course, course_id)
-    if course is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course not found")
-
+    course = await _tenant_course(session, course_id, principal)
     if course.active_content_version_id != version_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="can only rollback the currently active version",
-        )
-
-    # Find the previous published version ordered by published_at desc.
+        raise HTTPException(status_code=409, detail="only the active version can be rolled back")
+    current = await session.get(ContentVersion, version_id)
     result = await session.execute(
         select(ContentVersion)
         .where(
-            ContentVersion.course_id == course_id,
+            ContentVersion.course_id == course.id,
             ContentVersion.id != version_id,
             ContentVersion.status == ContentVersionStatus.PUBLISHED,
         )
-        .order_by(ContentVersion.published_at.desc())
+        .order_by(ContentVersion.published_at.desc(), ContentVersion.sequence.desc())
         .limit(1)
     )
-    prev = result.scalar_one_or_none()
-    if prev is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="no previous published version to roll back to",
-        )
-
-    version = await session.get(ContentVersion, version_id)
-    version.status = ContentVersionStatus.ROLLED_BACK  # type: ignore[union-attr]
-    course.active_content_version_id = prev.id
+    previous = result.scalar_one_or_none()
+    if current is None or previous is None:
+        raise HTTPException(status_code=409, detail="no previous published version exists")
+    current.status = ContentVersionStatus.ROLLED_BACK
+    course.active_content_version_id = previous.id
+    run = await session.get(CourseRun, current.course_run_id)
+    if run is not None:
+        run.active_content_version_id = previous.id
+    _audit(
+        session,
+        principal,
+        "version.rollback",
+        "content_version",
+        current.id,
+        restored_version_id=str(previous.id),
+    )
     await session.commit()
-
     return VersionActionResponse(
-        version_id=version_id,
-        status="rolled_back",
-        published_at=prev.published_at.isoformat() if prev.published_at else None,
+        version_id=current.id,
+        active_version_id=previous.id,
+        status=current.status.value,
+        published_at=previous.published_at,
     )
