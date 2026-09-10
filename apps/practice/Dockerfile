@@ -23,7 +23,10 @@ ENV PATH="/app/.venv/bin:$PATH" \
     BUILD_VERSION="${BUILD_VERSION}" \
     BUILD_REVISION="${BUILD_REVISION}"
 WORKDIR /app
-RUN useradd --create-home --uid 10001 appuser
+RUN apt-get update \
+    && apt-get upgrade --yes --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 10001 appuser
 COPY --from=build /app/.venv /app/.venv
 COPY --from=build /app/apps/practice /app/apps/practice
 COPY --from=build /app/packages/auth /app/packages/auth

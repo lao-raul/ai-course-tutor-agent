@@ -17,6 +17,7 @@ LABEL org.opencontainers.image.title="course-tutor-web" \
       org.opencontainers.image.version="${BUILD_VERSION}" \
       org.opencontainers.image.revision="${BUILD_REVISION}" \
       org.opencontainers.image.source="${BUILD_SOURCE}"
+RUN apk upgrade --no-cache
 COPY apps/web/nginx.conf /etc/nginx/nginx.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 USER nginx

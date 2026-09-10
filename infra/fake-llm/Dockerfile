@@ -4,6 +4,9 @@ ARG BUILD_REVISION=unknown
 LABEL org.opencontainers.image.title="course-tutor-fake-llm" \
       org.opencontainers.image.version="${BUILD_VERSION}" \
       org.opencontainers.image.revision="${BUILD_REVISION}"
+RUN apt-get update \
+    && apt-get upgrade --yes --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY infra/fake-llm/server.py /app/server.py
 USER 65534:65534

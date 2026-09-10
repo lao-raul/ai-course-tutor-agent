@@ -176,6 +176,9 @@ jobs:
           output-file: build/reports/source.spdx.json
       - name: Scan source dependencies and configuration
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        env:
+          # Match the minimum version declared by Chart.yaml when Trivy renders Helm templates.
+          TRIVY_HELM_KUBE_VERSION: "1.28.0"
         with:
           scan-type: fs
           scan-ref: .
@@ -243,10 +246,43 @@ jobs:
         run: scripts/kind-smoke-test.sh course-tutor-ci
       - name: Collect Kubernetes diagnostics
         if: failure()
+        continue-on-error: true
         run: |
           mkdir -p build/reports/kubernetes
-          kubectl get all,jobs,pvc -n course-tutor -o wide > build/reports/kubernetes/resources.txt
-          kubectl get events -n course-tutor --sort-by=.lastTimestamp > build/reports/kubernetes/events.txt
+
+          {
+            echo "Available tools:"
+            command -v kind || true
+            command -v kubectl || true
+            echo
+            echo "Kind clusters:"
+            kind get clusters || true
+            echo
+            echo "Kubernetes contexts:"
+            kubectl config get-contexts || true
+          } > build/reports/kubernetes/environment.txt 2>&1
+
+          if ! command -v kind >/dev/null 2>&1 || \
+             ! kind get clusters 2>/dev/null | grep -Fxq course-tutor-ci; then
+            echo "Kind cluster course-tutor-ci is unavailable; an earlier step failed before cluster creation." \
+              > build/reports/kubernetes/cluster-unavailable.txt
+            exit 0
+          fi
+
+          kind export kubeconfig --name course-tutor-ci \
+            >> build/reports/kubernetes/environment.txt 2>&1 || true
+
+          if ! kubectl cluster-info \
+            >> build/reports/kubernetes/environment.txt 2>&1; then
+            echo "The Kind cluster exists, but its API server is unavailable." \
+              > build/reports/kubernetes/cluster-unavailable.txt
+            exit 0
+          fi
+
+          kubectl get all,jobs,pvc -n course-tutor -o wide \
+            > build/reports/kubernetes/resources.txt 2>&1 || true
+          kubectl get events -n course-tutor --sort-by=.lastTimestamp \
+            > build/reports/kubernetes/events.txt 2>&1 || true
           kubectl logs -n course-tutor -l app.kubernetes.io/instance=course-tutor \
             --all-containers --prefix --tail=500 > build/reports/kubernetes/pods.log || true
       - name: Upload chart, SBOM, and deployment diagnostics

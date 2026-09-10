@@ -17,7 +17,7 @@ dependencies = [
     "qdrant-client>=1.12,<1.13",
     "httpx>=0.28",
     "pyjwt[crypto]>=2.10,<3",
-    "cryptography>=43,<46",
+    "cryptography>=50.0.0,<51",
 ]
 
 [tool.uv.sources]
