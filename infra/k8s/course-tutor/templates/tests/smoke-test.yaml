@@ -8,7 +8,9 @@ metadata:
     app.kubernetes.io/component: helm-test
   annotations:
     helm.sh/hook: test
-    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+    # Preserve the completed Pod so `helm test --logs` can read its output.
+    # Helm removes it automatically before the next test run.
+    helm.sh/hook-delete-policy: before-hook-creation
 spec:
   restartPolicy: Never
   automountServiceAccountToken: false

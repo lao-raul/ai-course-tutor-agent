@@ -23,7 +23,9 @@ ENV PATH="/app/.venv/bin:$PATH" \
     BUILD_VERSION="${BUILD_VERSION}" \
     BUILD_REVISION="${BUILD_REVISION}"
 WORKDIR /app
-RUN apt-get update && apt-get install --yes --no-install-recommends \
+RUN apt-get update \
+    && apt-get upgrade --yes --no-install-recommends \
+    && apt-get install --yes --no-install-recommends \
       poppler-utils tesseract-ocr \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 appuser
