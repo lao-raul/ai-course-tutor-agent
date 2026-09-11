@@ -11,6 +11,23 @@ export interface ChatCitation {
 export interface ChatRequest {
   query: string;
   session_id?: string;
+  assessment_mode?: boolean;
+  attempt_number?: number;
+  response_language?: 'auto' | 'english' | 'chinese' | 'bilingual';
+}
+
+export interface MemoryFact {
+  id: string;
+  course_id: string;
+  type: string;
+  normalized_key: string;
+  normalized_value: string;
+  confidence: number;
+  importance: number;
+  status: 'active' | 'superseded' | 'conflicted' | 'tombstoned';
+  pinned: boolean;
+  evidence_turn_ids: string[];
+  reason: string;
 }
 
 export interface Course {

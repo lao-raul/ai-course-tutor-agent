@@ -1,6 +1,6 @@
 # Delivery Task Index
 
-**Status:** ready
+**Status:** in progress
 **Objective:** evolve the current prototype into a tested, Helm-packaged Kubernetes
 platform with two backend applications.
 
@@ -14,27 +14,29 @@ The existing `apps/api` path and `course_tutor_api` package name remain unchange
 
 ## Recommended execution order
 
-| Order | Task | Priority | Main outcome | Depends on |
-|---:|---|---|---|---|
-| 1 | [TASK-01](task-01-requirements-and-contract-baseline.md) | P0 | Approved v0.2 requirements and contracts | — |
-| 2 | [TASK-02](task-02-agent-security-and-resource-lifecycle.md) | P0 | Server-derived authorization and safe dependency lifecycle | TASK-01 |
-| 3 | [TASK-03](task-03-ingestion-and-content-version-lifecycle.md) | P0 | Repeatable periodic NAS ingestion and publish lifecycle | TASK-01 |
-| 4 | [TASK-04](task-04-rag-correctness-and-streaming.md) | P0 | Correct citations, ACL-filtered retrieval and real streaming | TASK-02, TASK-03 |
-| 5 | [TASK-05](task-05-safe-tests-and-rag-evaluation.md) | P0 | Disposable integration tests and measurable RAG gates | TASK-02–04 |
-| 6 | [TASK-06](task-06-agent-memory-and-teaching-policy.md) | P1 | Multi-turn and compact long-term memory | TASK-02, TASK-04 |
-| 7 | [TASK-07](task-07-practice-api-dummy-app.md) | P1 | Second backend app with stable dummy contract | TASK-01, TASK-02 |
-| 8 | [TASK-08](task-08-container-packaging.md) | P0 | Reproducible images for all workloads | TASK-02–04, TASK-07 |
-| 9 | [TASK-09](task-09-kubernetes-helm-deployment.md) | P0 | Helm-based Kubernetes deployment | TASK-08 |
-| 10 | [TASK-10](task-10-github-actions-ci.md) | P0 | CI including ephemeral cluster deployment test | TASK-05, TASK-08, TASK-09 |
-| 11 | [TASK-11](task-11-github-actions-cd.md) | P1 | GHCR publication and controlled cluster rollout | TASK-09, TASK-10 |
-| 12 | [TASK-12](task-12-observability-ha-and-release-readiness.md) | P1 | SLOs, resilience, runbooks and release gate | TASK-06, TASK-09–11 |
+| Order | Task | Status | Priority | Main outcome | Depends on |
+|---:|---|---|---|---|---|
+| 1 | [TASK-01](task-01-requirements-and-contract-baseline.md) | complete (2026-09-09) | P0 | Approved v0.2 requirements and contracts | — |
+| 2 | [TASK-02](task-02-agent-security-and-resource-lifecycle.md) | complete (2026-09-09) | P0 | Server-derived authorization and safe dependency lifecycle | TASK-01 |
+| 3 | [TASK-03](task-03-ingestion-and-content-version-lifecycle.md) | complete (2026-09-09) | P0 | Repeatable periodic NAS ingestion and publish lifecycle | TASK-01 |
+| 4 | [TASK-04](task-04-rag-correctness-and-streaming.md) | complete (2026-09-10) | P0 | Correct citations, ACL-filtered retrieval and real streaming | TASK-02, TASK-03 |
+| 5 | [TASK-05](task-05-safe-tests-and-rag-evaluation.md) | complete (2026-09-10) | P0 | Disposable integration tests and measurable RAG gates | TASK-02–04 |
+| 6 | [TASK-06](task-06-agent-memory-and-teaching-policy.md) | complete (2026-09-10) | P1 | Multi-turn and compact long-term memory | TASK-02, TASK-04 |
+| 7 | [TASK-07](task-07-practice-api-dummy-app.md) | complete (2026-09-10) | P1 | Second backend app with stable dummy contract | TASK-01, TASK-02 |
+| 8 | [TASK-08](task-08-container-packaging.md) | complete (2026-09-10) | P0 | Reproducible images for all workloads | TASK-02–04, TASK-07 |
+| 9 | [TASK-09](task-09-kubernetes-helm-deployment.md) | complete (2026-09-10) | P0 | Helm-based Kubernetes deployment | TASK-08 |
+| 10 | [TASK-10](task-10-github-actions-ci.md) | implementation complete / hosted verification pending | P0 | CI including ephemeral cluster deployment test | TASK-05, TASK-08, TASK-09 |
+| 11 | [TASK-11](task-11-github-actions-cd.md) | ready | P1 | GHCR publication and controlled cluster rollout | TASK-09, TASK-10 |
+| 12 | [TASK-12](task-12-observability-ha-and-release-readiness.md) | ready | P1 | SLOs, resilience, runbooks and release gate | TASK-06, TASK-09–11 |
+| 13 | [TASK-13](task-13-local-nas-and-lmstudio-integration.md) | ready | P0 | Real NAS/PVC and LM Studio integration for local Kubernetes | TASK-03, TASK-04, TASK-09 |
+| 14 | [TASK-14](task-14-course-bootstrap-and-e2e-validation.md) | ready | P0 | Idempotent Leeds course onboarding and browser-level validation | TASK-03, TASK-04, TASK-13 |
 
 Tasks may be implemented in separate branches and merged independently once their declared dependencies are present. A task is complete only when all acceptance criteria and verification steps in its file pass.
 
 **Progress:** TASK-01, TASK-02 and TASK-03 completed on 2026-09-09. TASK-04,
-TASK-05, TASK-07, TASK-08 and TASK-09 completed locally on 2026-09-10. TASK-10 is
-implemented and passed its local equivalent; its first GitHub-hosted run remains
-pending a user-controlled commit/push. TASK-06, TASK-11 and TASK-12 remain open.
+TASK-04–09 completed locally by 2026-09-10. TASK-10 implementation and its expanded
+local equivalent are complete, but hosted verification remains open until a pushed
+GitHub run passes every required job. TASK-11–14 remain open.
 
 ## Global rules
 

@@ -49,7 +49,7 @@
       "parameters": [{"$ref": "#/components/parameters/CourseId"}],
       "post": {
         "operationId": "streamCourseChat",
-        "x-implementation-status": "partial",
+        "x-implementation-status": "implemented",
         "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ChatRequest"}}}},
         "responses": {
           "200": {"description": "SSE events: token, citation, abstained, warning, done or error", "content": {"text/event-stream": {"schema": {"type": "string"}}}},
@@ -135,18 +135,50 @@
         "responses": {"200": {"description": "Previous valid version activated"}, "409": {"description": "No valid rollback target"}}
       }
     },
+    "/v1/admin/courses/{course_id}/teaching-policy": {
+      "parameters": [{"$ref": "#/components/parameters/CourseId"}],
+      "put": {
+        "operationId": "setTeachingPolicy",
+        "x-implementation-status": "implemented",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TeachingPolicy"}}}},
+        "responses": {"200": {"description": "Teaching policy updated"}, "403": {"$ref": "#/components/responses/Forbidden"}}
+      }
+    },
     "/v1/memories": {
       "get": {
         "operationId": "listMemories",
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
+        "parameters": [{"name": "course_id", "in": "query", "required": true, "schema": {"type": "string", "format": "uuid"}}],
         "responses": {"200": {"description": "Current user's scoped memory facts"}}
+      }
+    },
+    "/v1/memories/export": {
+      "get": {
+        "operationId": "exportMemories",
+        "x-implementation-status": "implemented",
+        "parameters": [{"name": "course_id", "in": "query", "required": true, "schema": {"type": "string", "format": "uuid"}}],
+        "responses": {"200": {"description": "Portable export of the current user's course memory"}}
+      }
+    },
+    "/v1/courses/{course_id}/memory-consent": {
+      "parameters": [{"$ref": "#/components/parameters/CourseId"}],
+      "get": {
+        "operationId": "getMemoryConsent",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Current opt-in state"}}
+      },
+      "put": {
+        "operationId": "setMemoryConsent",
+        "x-implementation-status": "implemented",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MemoryConsentUpdate"}}}},
+        "responses": {"200": {"description": "Opt-in state updated"}}
       }
     },
     "/v1/memories/{memory_id}": {
       "parameters": [{"$ref": "#/components/parameters/MemoryId"}],
       "patch": {
         "operationId": "updateMemory",
-        "x-implementation-status": "planned",
+        "x-implementation-status": "implemented",
         "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MemoryUpdate"}}}},
         "responses": {"200": {"description": "Memory corrected or pinned"}, "202": {"description": "Deletion tombstoned and purge queued"}}
       }
@@ -177,12 +209,14 @@
     "schemas": {
       "Health": {"type": "object", "required": ["status", "service", "version", "revision"], "properties": {"status": {"const": "ok"}, "service": {"type": "string"}, "version": {"type": "string"}, "revision": {"type": "string"}}},
       "Course": {"type": "object", "required": ["id", "tenant_id", "code", "name", "level"], "properties": {"id": {"type": "string", "format": "uuid"}, "tenant_id": {"type": "string", "format": "uuid"}, "programme_id": {"type": ["string", "null"], "format": "uuid"}, "course_run_id": {"type": ["string", "null"], "format": "uuid"}, "code": {"type": "string"}, "name": {"type": "string"}, "level": {"type": "string"}, "active_content_version_id": {"type": ["string", "null"], "format": "uuid"}}},
-      "ChatRequest": {"type": "object", "additionalProperties": false, "required": ["query"], "properties": {"query": {"type": "string", "minLength": 1, "maxLength": 2000}, "session_id": {"type": ["string", "null"], "format": "uuid"}}},
+      "ChatRequest": {"type": "object", "additionalProperties": false, "required": ["query"], "properties": {"query": {"type": "string", "minLength": 1, "maxLength": 2000}, "session_id": {"type": ["string", "null"], "format": "uuid"}, "assessment_mode": {"type": "boolean", "default": false}, "attempt_number": {"type": "integer", "minimum": 1, "maximum": 20, "default": 1}, "response_language": {"type": ["string", "null"], "enum": ["auto", "english", "chinese", "bilingual", null]}}},
       "CreateProgrammeRequest": {"type": "object", "additionalProperties": false, "required": ["code", "name"], "properties": {"code": {"type": "string", "minLength": 1, "maxLength": 64}, "name": {"type": "string", "minLength": 1, "maxLength": 255}}},
       "CreateCourseRequest": {"type": "object", "additionalProperties": false, "required": ["programme_id", "code", "name", "level", "run_key", "source_path"], "properties": {"programme_id": {"type": "string", "format": "uuid"}, "code": {"type": "string"}, "name": {"type": "string"}, "level": {"enum": ["primary", "middle_school", "high_school", "undergraduate", "postgraduate"]}, "run_key": {"type": "string"}, "source_path": {"type": "string"}, "scan_interval_seconds": {"type": "integer", "minimum": 30, "default": 900}}},
       "CreateIngestionRequest": {"type": "object", "additionalProperties": false, "properties": {"reason": {"type": "string", "maxLength": 500}, "force_rebuild": {"type": "boolean", "default": false}}},
       "IngestionJob": {"type": "object", "required": ["job_id", "course_id", "status"], "properties": {"job_id": {"type": "string", "format": "uuid"}, "course_id": {"type": "string", "format": "uuid"}, "version_id": {"type": ["string", "null"], "format": "uuid"}, "status": {"enum": ["pending", "building", "ready", "published", "failed", "dead_lettered"]}, "last_error": {"type": ["string", "null"]}}},
-      "MemoryUpdate": {"type": "object", "additionalProperties": false, "properties": {"normalized_value": {"type": "string"}, "pinned": {"type": "boolean"}, "action": {"enum": ["correct", "pin", "unpin", "delete"]}}},
+      "MemoryUpdate": {"type": "object", "additionalProperties": false, "required": ["action"], "properties": {"normalized_value": {"type": ["string", "null"], "maxLength": 500}, "action": {"enum": ["correct", "pin", "unpin", "delete"]}}},
+      "MemoryConsentUpdate": {"type": "object", "additionalProperties": false, "required": ["enabled"], "properties": {"enabled": {"type": "boolean"}}},
+      "TeachingPolicy": {"type": "object", "additionalProperties": false, "properties": {"education_level": {"enum": ["primary", "middle_school", "high_school", "undergraduate", "postgraduate"]}, "explanation_style": {"enum": ["concise", "balanced", "step_by_step", "detailed"]}, "response_language": {"enum": ["auto", "english", "chinese", "bilingual"]}, "solution_reveal_after_attempts": {"type": "integer", "minimum": 1, "maximum": 20}, "hint_stages": {"type": "array", "items": {"type": "string"}, "minItems": 1}}},
       "FeedbackRequest": {"type": "object", "additionalProperties": false, "required": ["trace_id", "rating"], "properties": {"trace_id": {"type": "string", "format": "uuid"}, "rating": {"type": "integer", "minimum": -1, "maximum": 1}, "comment": {"type": "string", "maxLength": 2000}}}
     }
   }

@@ -1,6 +1,7 @@
 # TASK-10 — GitHub Actions Continuous Integration
 
-**Status:** implemented; local gate passed, first GitHub-hosted run pending commit/push
+**Status:** implementation complete / hosted verification pending; the expanded local
+equivalent passed on 2026-09-10, but a fully successful GitHub-hosted run requires commit/push
 **Priority:** P0
 **Depends on:** TASK-05, TASK-08, TASK-09
 
@@ -41,3 +42,15 @@ Make every pull request prove code quality, image buildability, Kubernetes insta
 
 - Run the workflow on a branch with all jobs green.
 - Run controlled negative tests for an invalid manifest and broken readiness endpoint.
+
+## Local completion evidence
+
+- The generated Kind fixture is mounted only into the worker, then registered, ingested,
+  embedded by the deterministic fake provider, published, listed and queried by the Helm test.
+- The Helm test validates Agent, Practice and Web health, Practice's 501 contract, and ordered
+  `token -> citation -> done` SSE with a real fixture chunk UUID.
+- `scripts/kind-negative-gates.sh` proves invalid values and an isolated broken-readiness
+  Deployment fail, then removes the temporary negative-test resource.
+- Five images built and the chart installed successfully in `course-tutor-local`; see the
+  dated local verification record. Hosted status remains intentionally open until GitHub
+  reports every required job green.

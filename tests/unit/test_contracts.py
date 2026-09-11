@@ -23,6 +23,7 @@ ENTITY_PAIRS = [
     (dto.SourceDocument, orm.SourceDocument),
     (dto.Chunk, orm.Chunk),
     (dto.ChatSession, orm.ChatSession),
+    (dto.ChatTurn, orm.ChatTurn),
     (dto.MemoryFact, orm.MemoryFact),
 ]
 
@@ -64,11 +65,13 @@ def test_all_tables_are_registered() -> None:
     assert set(Base.metadata.tables) == {
         "audit_events",
         "chat_sessions",
+        "chat_turns",
         "chunks",
         "content_versions",
         "courses",
         "course_runs",
         "memory_facts",
+        "memory_settings",
         "outbox_events",
         "programmes",
         "retrieval_traces",

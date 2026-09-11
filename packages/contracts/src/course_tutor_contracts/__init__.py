@@ -6,6 +6,7 @@ behaviour and no I/O, so services can depend on it without depending on each oth
 
 from course_tutor_contracts.domain import (
     ChatSession,
+    ChatTurn,
     Chunk,
     ContentVersion,
     Course,
@@ -23,6 +24,13 @@ from course_tutor_contracts.enums import (
     MemoryFactStatus,
     MemoryFactType,
     UserRole,
+)
+from course_tutor_contracts.memory import (
+    MemoryConsentUpdate,
+    MemoryConsentView,
+    MemoryExport,
+    MemoryFactView,
+    MemoryUpdate,
 )
 from course_tutor_contracts.practice import (
     GeneratePracticeRequest,
@@ -45,6 +53,7 @@ __all__ = [
     "ChatRequest",
     "ChatResponse",
     "ChatSession",
+    "ChatTurn",
     "Chunk",
     "ChunkClass",
     "ContentVersion",
@@ -53,9 +62,14 @@ __all__ = [
     "EducationLevel",
     "ExtractionStatus",
     "GeneratePracticeRequest",
+    "MemoryConsentUpdate",
+    "MemoryConsentView",
+    "MemoryExport",
     "MemoryFact",
     "MemoryFactStatus",
     "MemoryFactType",
+    "MemoryFactView",
+    "MemoryUpdate",
     "PracticeCapabilities",
     "PracticeNotImplementedError",
     "RetrievalQuery",

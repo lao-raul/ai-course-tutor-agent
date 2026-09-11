@@ -21,6 +21,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -212,12 +213,47 @@ class ChatSession(Base, TimestampMixin):
     expires_at: Mapped[datetime | None] = mapped_column()
 
 
+class ChatTurn(Base, TimestampMixin):
+    __tablename__ = "chat_turns"
+    __table_args__ = (
+        Index("ix_chat_turns_session_created", "session_id", "created_at"),
+        CheckConstraint("role IN ('user', 'assistant')", name="role_known"),
+        CheckConstraint("token_count >= 0", name="token_count_non_negative"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("chat_sessions.id", ondelete="CASCADE")
+    )
+    role: Mapped[str] = mapped_column(String(16))
+    content: Mapped[str] = mapped_column(Text)
+    token_count: Mapped[int] = mapped_column(Integer)
+
+
+class MemorySetting(Base, TimestampMixin):
+    __tablename__ = "memory_settings"
+    __table_args__ = (UniqueConstraint("user_id", "course_id"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    course_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"))
+    enabled: Mapped[bool] = mapped_column(default=False)
+
+
 class MemoryFact(Base, TimestampMixin):
     __tablename__ = "memory_facts"
     __table_args__ = (
         # First-pass dedup is deterministic on the normalized key (design-spec §5);
         # semantic similarity only runs on what survives this.
-        UniqueConstraint("user_id", "course_id", "type", "normalized_key"),
+        Index(
+            "uq_memory_facts_active_key",
+            "user_id",
+            "course_id",
+            "type",
+            "normalized_key",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
         Index("ix_memory_facts_recall", "user_id", "course_id", "status"),
         CheckConstraint("confidence >= 0 AND confidence <= 1", name="confidence_range"),
         CheckConstraint("importance >= 0 AND importance <= 1", name="importance_range"),

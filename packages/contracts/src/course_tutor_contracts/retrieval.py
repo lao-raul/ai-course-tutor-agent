@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -45,6 +46,9 @@ class ChatRequest(BaseModel):
     # course_id is provided by the URL path, not the body.
     query: str = Field(..., min_length=1, max_length=2000)
     session_id: UUID | None = None
+    assessment_mode: bool = False
+    attempt_number: int = Field(default=1, ge=1, le=20)
+    response_language: Literal["auto", "english", "chinese", "bilingual"] | None = None
 
     model_config = {"extra": "forbid"}
 

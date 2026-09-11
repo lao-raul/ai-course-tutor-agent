@@ -26,6 +26,10 @@ async def main() -> None:
     from course_tutor_api.dependencies import get_dependencies
     from course_tutor_ingestion.embed_jobs import run_pending_embedding_jobs
     from course_tutor_ingestion.jobs import enqueue_due_scans, run_pending_jobs
+    from course_tutor_ingestion.memory_jobs import (
+        run_memory_retention_cleanup,
+        run_pending_memory_purges,
+    )
     from course_tutor_ingestion.object_store import MinioObjectStore
 
     settings = get_settings()
@@ -82,6 +86,20 @@ async def main() -> None:
             )
             if processed_embeds:
                 logger.info("embedding_batch_complete", count=processed_embeds)
+
+            processed_purges = await run_pending_memory_purges(session)
+            if processed_purges:
+                logger.info("memory_purge_batch_complete", count=processed_purges)
+            expired_sessions, expired_turns = await run_memory_retention_cleanup(
+                session,
+                chat_turn_retention_days=settings.chat_turn_retention_days,
+            )
+            if expired_sessions or expired_turns:
+                logger.info(
+                    "memory_retention_cleanup_complete",
+                    sessions=expired_sessions,
+                    turns=expired_turns,
+                )
 
         if running:
             await asyncio.sleep(settings.ingestion_poll_interval_seconds)

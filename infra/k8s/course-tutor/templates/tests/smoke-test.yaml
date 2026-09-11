@@ -8,8 +8,7 @@ metadata:
     app.kubernetes.io/component: helm-test
   annotations:
     helm.sh/hook: test
-    # Preserve the completed Pod so `helm test --logs` can read its output.
-    # Helm removes it automatically before the next test run.
+    # Keep the completed Pod until the next run so `helm test --logs` can read it.
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
   restartPolicy: Never
@@ -26,25 +25,43 @@ spec:
       command: ["python", "-c"]
       args:
         - |
-          import json, os, urllib.error, urllib.request, uuid
+          import json, os, time, urllib.error, urllib.request, uuid
           token = os.environ["LOCAL_AUTH_TOKEN"]
+          agent = "http://{{ include "course-tutor.fullname" . }}-agent:8000"
+          practice = "http://{{ include "course-tutor.fullname" . }}-practice:8001"
+
           def get(url, auth=False):
               request = urllib.request.Request(url)
               if auth:
                   request.add_header("Authorization", f"Bearer {token}")
               with urllib.request.urlopen(request, timeout=10) as response:
                   return response.status, json.load(response)
-          assert get("http://{{ include "course-tutor.fullname" . }}-agent:8000/healthz")[0] == 200
-          assert get("http://{{ include "course-tutor.fullname" . }}-agent:8000/readyz")[0] == 200
-          assert get("http://{{ include "course-tutor.fullname" . }}-practice:8001/healthz")[0] == 200
-          assert get("http://{{ include "course-tutor.fullname" . }}-practice:8001/readyz")[0] == 200
+
+          def request_json(method, url, body=None, expected=200, headers=None):
+              payload = json.dumps(body).encode() if body is not None else None
+              request_headers = {
+                  "Authorization": f"Bearer {token}",
+                  "Content-Type": "application/json",
+                  **(headers or {}),
+              }
+              request = urllib.request.Request(
+                  url, data=payload, headers=request_headers, method=method
+              )
+              with urllib.request.urlopen(request, timeout=15) as response:
+                  assert response.status == expected, (response.status, url)
+                  return json.load(response)
+
+          assert get(f"{agent}/healthz")[0] == 200
+          assert get(f"{agent}/readyz")[0] == 200
+          assert get(f"{practice}/healthz")[0] == 200
+          assert get(f"{practice}/readyz")[0] == 200
           with urllib.request.urlopen("http://{{ include "course-tutor.fullname" . }}-web/", timeout=10) as response:
               assert response.status == 200 and b"<div id=\"root\"></div>" in response.read()
-          status, body = get("http://{{ include "course-tutor.fullname" . }}-practice:8001/v1/practice/capabilities", True)
+          status, body = get(f"{practice}/v1/practice/capabilities", True)
           assert status == 200 and body["exercise_generation"] == "not_implemented"
           course_id = uuid.uuid4()
           request = urllib.request.Request(
-              f"http://{{ include "course-tutor.fullname" . }}-practice:8001/v1/practice/courses/{course_id}/exercises:generate",
+              f"{practice}/v1/practice/courses/{course_id}/exercises:generate",
               data=b'{"count": 1}',
               headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
               method="POST",
@@ -55,6 +72,78 @@ spec:
           except urllib.error.HTTPError as error:
               assert error.code == 501
               assert json.load(error)["code"] == "practice_generation_not_implemented"
+
+          suffix = uuid.uuid4().hex[:8]
+          programme = request_json(
+              "POST",
+              f"{agent}/v1/admin/programmes",
+              {"code": f"CI-{suffix}", "name": "Generated CI Programme"},
+              201,
+          )
+          course = request_json(
+              "POST",
+              f"{agent}/v1/admin/courses",
+              {
+                  "programme_id": programme["programme_id"],
+                  "code": f"CI-{suffix}",
+                  "name": "Generated CI Course",
+                  "level": "postgraduate",
+                  "run_key": f"ci-{suffix}",
+                  "source_path": {{ .Values.ciFixture.mountPath | quote }},
+                  "scan_interval_seconds": 900,
+              },
+              201,
+          )
+          course_id = course["course_id"]
+          queued = request_json(
+              "POST",
+              f"{agent}/v1/admin/courses/{course_id}/ingestions",
+              expected=202,
+              headers={"Idempotency-Key": f"helm-smoke-{suffix}"},
+          )
+          deadline = time.monotonic() + 180
+          while time.monotonic() < deadline:
+              ingestion = request_json(
+                  "GET", f"{agent}/v1/admin/ingestions/{queued['job_id']}"
+              )
+              if ingestion["status"] == "dead_lettered":
+                  raise AssertionError(ingestion)
+              if ingestion["version_status"] == "ready":
+                  break
+              time.sleep(2)
+          else:
+              raise AssertionError(f"ingestion did not become ready: {ingestion}")
+
+          version_id = ingestion["version_id"]
+          request_json(
+              "POST",
+              f"{agent}/v1/admin/courses/{course_id}/versions/{version_id}/publish",
+          )
+          courses = request_json("GET", f"{agent}/v1/courses")
+          assert any(item["id"] == course_id for item in courses)
+
+          chat_request = urllib.request.Request(
+              f"{agent}/v1/courses/{course_id}/chat",
+              data=json.dumps(
+                  {"query": "What must a grounded tutoring answer cite?"}
+              ).encode(),
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Content-Type": "application/json",
+              },
+              method="POST",
+          )
+          with urllib.request.urlopen(chat_request, timeout=30) as response:
+              assert response.status == 200
+              stream = response.read().decode()
+          print(stream)
+          token_at = stream.index("event: token")
+          citation_at = stream.index("event: citation")
+          done_at = stream.index("event: done")
+          assert token_at < citation_at < done_at
+          assert "week-01.md" in stream
+          assert "CITATIONS:" not in stream
+          print(f"Smoke flow published course {course_id} and returned ordered cited SSE.")
       env:
         - name: LOCAL_AUTH_TOKEN
           valueFrom:

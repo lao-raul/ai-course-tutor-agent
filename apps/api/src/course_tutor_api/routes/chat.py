@@ -12,11 +12,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated, Any
 
 import structlog
+from course_tutor_memory import TeachingPolicy, build_teaching_directive, solution_content_allowed
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from course_tutor_api.auth import Principal, get_current_principal
+from course_tutor_api.auth import Principal, get_current_principal, principal_can_access_course
 from course_tutor_api.db import ContentVersion, Course, RetrievalTrace
 from course_tutor_api.dependencies import (
     Dependencies,
@@ -24,7 +25,13 @@ from course_tutor_api.dependencies import (
     dependencies_from_request,
     get_session,
 )
-from course_tutor_contracts.enums import AccessLabel, ContentVersionStatus
+from course_tutor_api.memory_store import (
+    ConversationContext,
+    persist_assistant_turn,
+    prepare_conversation,
+    teaching_policy_for,
+)
+from course_tutor_contracts.enums import AccessLabel, ChunkClass, ContentVersionStatus
 from course_tutor_contracts.retrieval import ChatCitation, ChatRequest, RetrievedChunk
 
 if TYPE_CHECKING:
@@ -123,7 +130,40 @@ async def _build_evidence_pack(
     )
 
 
-def _build_prompt(query: str, evidence: tuple[RetrievedChunk, ...]) -> list[ChatMessage]:
+def _apply_teaching_policy(
+    pack: EvidencePack, policy: TeachingPolicy, body: ChatRequest
+) -> EvidencePack:
+    evidence = pack.evidence
+    if body.assessment_mode and not solution_content_allowed(policy, body.attempt_number):
+        evidence = tuple(
+            chunk
+            for chunk in evidence
+            if chunk.chunk_class not in {ChunkClass.EXERCISE_SOLUTION, ChunkClass.ASSESSMENT}
+        )
+    citation_map = {
+        number: ChatCitation(
+            chunk_id=chunk.chunk_id,
+            relative_path=chunk.relative_path,
+            anchor_type=chunk.anchor_type,
+            anchor_value=chunk.anchor_value,
+            text_excerpt=chunk.text[:200],
+        )
+        for number, chunk in enumerate(evidence, 1)
+    }
+    return EvidencePack(
+        candidates=pack.candidates,
+        evidence=evidence,
+        citation_map=citation_map,
+        timings_ms=pack.timings_ms,
+    )
+
+
+def _build_prompt(
+    query: str,
+    evidence: tuple[RetrievedChunk, ...],
+    conversation: ConversationContext | None = None,
+    teaching_directive: str | None = None,
+) -> list[ChatMessage]:
     from course_tutor_api.providers.base import ChatMessage
 
     evidence_lines = [
@@ -142,11 +182,28 @@ def _build_prompt(query: str, evidence: tuple[RetrievedChunk, ...]) -> list[Chat
         'CITATIONS:[{"source":1,"chunk_id":"UUID"}]. Include only sources actually '
         "used in the answer and preserve each supplied chunk_id exactly."
     )
+    if teaching_directive:
+        system_message = f"{system_message}\n\nTeaching policy:\n{teaching_directive}"
+    context_parts: list[str] = []
+    if conversation is not None:
+        if conversation.rolling_summary:
+            context_parts.append(f"Bounded session summary:\n{conversation.rolling_summary}")
+        if conversation.recent_turns:
+            turns = "\n".join(f"{turn.role}: {turn.content}" for turn in conversation.recent_turns)
+            context_parts.append(f"Recent course conversation:\n{turns}")
+        if conversation.recalled_facts:
+            facts = "\n".join(
+                f"- {fact.type.value}: {fact.value}" for fact in conversation.recalled_facts
+            )
+            context_parts.append(f"Learner-approved long-term memory:\n{facts}")
+    context = f"{'\n\n'.join(context_parts)}\n\n" if context_parts else ""
     return [
         ChatMessage(role="system", content=system_message),
         ChatMessage(
             role="user",
-            content=f"Course material:\n{'\n\n'.join(evidence_lines)}\n\nQuestion: {query}",
+            content=(
+                f"{context}Course material:\n{'\n\n'.join(evidence_lines)}\n\nQuestion: {query}"
+            ),
         ),
     ]
 
@@ -304,7 +361,11 @@ async def chat(
     course_id: uuid.UUID = Path(Ellipsis),
 ) -> StreamingResponse:
     course = await session.get(Course, course_id)
-    if course is None or course.tenant_id != principal.tenant_id:
+    if (
+        course is None
+        or course.tenant_id != principal.tenant_id
+        or not principal_can_access_course(principal, course_id)
+    ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course not found")
 
     await RedisRateLimiter(deps.redis).enforce(
@@ -317,6 +378,16 @@ async def chat(
     if version is None or version.status != ContentVersionStatus.PUBLISHED:
         raise HTTPException(status_code=400, detail="active content version is not published")
 
+    policy = teaching_policy_for(course, body)
+    conversation: ConversationContext | None = None
+    if getattr(deps, "engine", None) is not None:
+        try:
+            conversation = await prepare_conversation(
+                session, principal, course, body, deps.settings
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="chat session not found") from exc
+
     pack = await _build_evidence_pack(
         retrieval_service=_get_retrieval_service(deps),
         reranker=_get_reranker(),
@@ -326,6 +397,7 @@ async def chat(
         access_label=principal.access_label,
         query=body.query,
     )
+    pack = _apply_teaching_policy(pack, policy, body)
     stream_state = "started" if pack.evidence else "abstained"
     trace_id = await _create_trace(
         session, deps, course_id, version_id, body.query, pack, stream_state=stream_state
@@ -333,9 +405,20 @@ async def chat(
 
     stream: AsyncGenerator[str, None]
     if not pack.evidence:
-        stream = _abstention_stream(trace_id)
+        stream = _abstention_stream(deps, trace_id, conversation)
     else:
-        stream = _event_stream(deps, trace_id, body, pack)
+        stream = _event_stream(
+            deps,
+            trace_id,
+            body,
+            pack,
+            conversation=conversation,
+            teaching_directive=build_teaching_directive(
+                policy,
+                assessment_mode=body.assessment_mode,
+                attempt_number=body.attempt_number,
+            ),
+        )
     return StreamingResponse(
         stream,
         media_type="text/event-stream",
@@ -343,9 +426,23 @@ async def chat(
     )
 
 
-async def _abstention_stream(trace_id: uuid.UUID) -> AsyncGenerator[str, None]:
-    yield _sse("abstained", {"reason": "retrieval score below grounded-answer threshold"})
-    yield _sse("done", {"trace_id": str(trace_id), "answer_tokens": 0})
+async def _abstention_stream(
+    deps: Dependencies,
+    trace_id: uuid.UUID,
+    conversation: ConversationContext | None,
+) -> AsyncGenerator[str, None]:
+    reason = "retrieval score below grounded-answer threshold"
+    yield _sse("abstained", {"reason": reason})
+    if conversation is not None and getattr(deps, "engine", None) is not None:
+        await persist_assistant_turn(deps.engine, conversation.session_id, f"Abstained: {reason}")
+    yield _sse(
+        "done",
+        {
+            "trace_id": str(trace_id),
+            "answer_tokens": 0,
+            "session_id": str(conversation.session_id) if conversation else None,
+        },
+    )
 
 
 async def _event_stream(
@@ -353,6 +450,9 @@ async def _event_stream(
     trace_id: uuid.UUID,
     body: ChatRequest,
     pack: EvidencePack,
+    *,
+    conversation: ConversationContext | None = None,
+    teaching_directive: str | None = None,
 ) -> AsyncGenerator[str, None]:
     parser = CitationTrailerParser()
     answer_parts: list[str] = []
@@ -362,7 +462,9 @@ async def _event_stream(
     cancelled = False
 
     try:
-        provider_stream = deps.llm.stream_chat(_build_prompt(body.query, pack.evidence))
+        provider_stream = deps.llm.stream_chat(
+            _build_prompt(body.query, pack.evidence, conversation, teaching_directive)
+        )
         async for provider_token in provider_stream:
             for visible in parser.feed(provider_token):
                 answer_parts.append(visible)
@@ -398,9 +500,17 @@ async def _event_stream(
         except asyncio.CancelledError:
             await finish_task
             raise
+        if conversation is not None and getattr(deps, "engine", None) is not None:
+            await persist_assistant_turn(
+                deps.engine, conversation.session_id, "".join(answer_parts)
+            )
 
     if not cancelled:
         yield _sse(
             "done",
-            {"trace_id": str(trace_id), "answer_tokens": _estimate_tokens("".join(answer_parts))},
+            {
+                "trace_id": str(trace_id),
+                "answer_tokens": _estimate_tokens("".join(answer_parts)),
+                "session_id": str(conversation.session_id) if conversation else None,
+            },
         )

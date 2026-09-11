@@ -1,4 +1,4 @@
-import type { ChatCitation, ChatRequest, Course } from './types';
+import type { ChatCitation, ChatRequest, Course, MemoryFact } from './types';
 
 const API_BASE = '/v1';
 const LOCAL_AUTH_TOKEN = import.meta.env.VITE_LOCAL_AUTH_TOKEN ?? 'local-dev-token';
@@ -20,7 +20,7 @@ export interface ChatStreamCallbacks {
   onToken: (text: string) => void;
   onCitation: (citation: ChatCitation) => void;
   onAbstained: (reason: string) => void;
-  onDone: (traceId: string | null, answerTokens: number) => void;
+  onDone: (traceId: string | null, answerTokens: number, sessionId: string | null) => void;
   onError: (detail: string) => void;
 }
 
@@ -95,8 +95,12 @@ export async function streamChat(
             break;
           }
           case 'done': {
-            const d = data as { trace_id: string | null; answer_tokens: number };
-            callbacks.onDone(d.trace_id, d.answer_tokens);
+            const d = data as {
+              trace_id: string | null;
+              answer_tokens: number;
+              session_id?: string | null;
+            };
+            callbacks.onDone(d.trace_id, d.answer_tokens, d.session_id ?? null);
             return;
           }
           case 'error': {
@@ -115,6 +119,56 @@ export async function streamChat(
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
+}
+
+export async function listMemories(courseId: string): Promise<MemoryFact[]> {
+  const res = await fetch(`${API_BASE}/memories?course_id=${encodeURIComponent(courseId)}`, {
+    headers: authHeaders,
+  });
+  if (!res.ok) throw new Error(`listMemories failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getMemoryConsent(courseId: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/courses/${courseId}/memory-consent`, {
+    headers: authHeaders,
+  });
+  if (!res.ok) throw new Error(`getMemoryConsent failed: ${res.status}`);
+  return (await res.json()).enabled as boolean;
+}
+
+export async function setMemoryConsent(courseId: string, enabled: boolean): Promise<void> {
+  const res = await fetch(`${API_BASE}/courses/${courseId}/memory-consent`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) throw new Error(`setMemoryConsent failed: ${res.status}`);
+}
+
+export async function updateMemory(
+  memoryId: string,
+  action: 'correct' | 'pin' | 'unpin' | 'delete',
+  normalizedValue?: string,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/memories/${memoryId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    body: JSON.stringify({
+      action,
+      ...(normalizedValue === undefined ? {} : { normalized_value: normalizedValue }),
+    }),
+  });
+  if (!res.ok) throw new Error(`updateMemory failed: ${res.status}`);
+}
+
+export async function exportMemories(courseId: string): Promise<Blob> {
+  const res = await fetch(
+    `${API_BASE}/memories/export?course_id=${encodeURIComponent(courseId)}`,
+    { headers: authHeaders },
+  );
+  if (!res.ok) throw new Error(`exportMemories failed: ${res.status}`);
+  return res.blob();
 }
 
 export async function ingestCourse(

@@ -177,7 +177,7 @@ jobs:
       - name: Scan source dependencies and configuration
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         env:
-          # Match the minimum version declared by Chart.yaml when Trivy renders Helm templates.
+          # Match the minimum version declared by Chart.yaml during Helm rendering.
           TRIVY_HELM_KUBE_VERSION: "1.28.0"
         with:
           scan-type: fs
@@ -244,6 +244,8 @@ jobs:
             course-tutor-web:ci course-tutor-fake-llm:ci
       - name: Install chart and run smoke tests
         run: scripts/kind-smoke-test.sh course-tutor-ci
+      - name: Verify deployment failures fail closed
+        run: scripts/kind-negative-gates.sh course-tutor-ci
       - name: Collect Kubernetes diagnostics
         if: failure()
         continue-on-error: true

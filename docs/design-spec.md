@@ -1,7 +1,7 @@
 # Design Specification — Course Tutor Platform
 
 **Status:** Baseline v0.2
-**Date:** 2026-09-09
+**Date:** 2026-09-10
 **Companion:** [Function Specification](function-spec.md)
 **Task plan:** [Delivery Task Index](tasks/task-00-index.md)
 
@@ -21,16 +21,16 @@ See [ADR-004](adr/004-two-backend-apps-and-data-ownership.md).
 
 | Area | Status | Evidence/gap | Owning task |
 |---|---|---|---|
-| Python workspace, ORM, migration, health probes | partial | Unit/static checks exist; request dependency lifecycle and production security are unsafe | TASK-02 |
-| One-time Leeds ingestion and dense indexing | partial | Existing data is indexed; recurring version lifecycle, MinIO identity and concurrent claims are incomplete | TASK-03 |
+| Python workspace, ORM, migration, health probes | implemented | Strict checks, safe dependency lifecycle and production security validation | TASK-02 |
+| Incremental course ingestion and dense indexing | implemented | Outbox scans, immutable versions, artifacts, embedding and publish/rollback lifecycle | TASK-03 |
 | Grounded chat | implemented | ACL-filtered dense retrieval, bounded evidence, validated citations and true SSE streaming | TASK-02, TASK-04 |
-| RAG evaluation | planned | Current benchmark file defines fixtures but does not execute retrieval metrics | TASK-05 |
-| Session/long-term memory | planned | DTO/ORM tables only; no service/API/recall path | TASK-06 |
-| Teaching/assessment policy | planned | Course level exists; runtime policy is not enforced and chunk class is lost during coalescing | TASK-03, TASK-06 |
+| RAG evaluation | implemented | Disposable generated-course E2E and machine-readable metric gates | TASK-05 |
+| Session/long-term memory | implemented | Scoped persisted turns, bounded summaries/recall, opt-in facts and lifecycle APIs | TASK-06 |
+| Teaching/assessment policy | implemented | Course policy, bilingual directives and pre-generation solution filtering | TASK-03, TASK-06 |
 | Practice API | implemented dummy | Independent app exposes probes, capabilities and authenticated deterministic 501 | TASK-07 |
-| Reproducible production images | partial | Images build, but runtime dependencies/security/versioning need work | TASK-08 |
-| Kubernetes/Helm | planned | No manifests exist | TASK-09 |
-| CI | partial | Python checks exist; safe integration, frontend, image and Kind deployment gates are absent | TASK-05, TASK-10 |
+| Reproducible production images | implemented | Five non-root versioned images and Buildx bake graph | TASK-08 |
+| Kubernetes/Helm | implemented | One chart deploys the two-container backend plus worker/Web/dependencies | TASK-09 |
+| CI | hosted verification pending | Full workflow and local equivalent pass; next pushed GitHub run must confirm hosted jobs | TASK-05, TASK-10 |
 | CD/HA/runbooks | planned | Cluster/provider not selected | TASK-11, TASK-12 |
 
 No Phase 1 or Phase 2 completion claim is made by v0.2 until its mapped task acceptance tests pass.
@@ -79,7 +79,7 @@ Contracts live under `packages/contracts/openapi/`; operation IDs are stable int
 | `agentReady` | `GET /readyz` | implemented | TASK-12 completion |
 | `listCourses` | `GET /v1/courses` | implemented | TASK-02 tenancy |
 | `getCourse` | `GET /v1/courses/{course_id}` | implemented | TASK-02 tenancy |
-| `streamCourseChat` | `POST /v1/courses/{course_id}/chat` | partial | TASK-02, TASK-04, TASK-06 |
+| `streamCourseChat` | `POST /v1/courses/{course_id}/chat` | implemented | TASK-02, TASK-04, TASK-06 |
 | `createProgramme` | `POST /v1/admin/programmes` | implemented | TASK-03 |
 | `createCourse` | `POST /v1/admin/courses` | implemented | TASK-03 |
 | `createCourseIngestion` | `POST /v1/admin/courses/{course_id}/ingestions` | implemented | TASK-03 |
@@ -89,8 +89,12 @@ Contracts live under `packages/contracts/openapi/`; operation IDs are stable int
 | `getCourseSource` | `GET /v1/courses/{course_id}/sources/{source_id}` | implemented | TASK-02, TASK-03 |
 | `publishContentVersion` | `POST /v1/admin/courses/{course_id}/versions/{version_id}/publish` | implemented | TASK-03 |
 | `rollbackContentVersion` | `POST /v1/admin/courses/{course_id}/versions/{version_id}/rollback` | implemented | TASK-03 |
-| `listMemories` | `GET /v1/memories` | planned | TASK-06 |
-| `updateMemory` | `PATCH /v1/memories/{memory_id}` | planned | TASK-06 |
+| `setTeachingPolicy` | `PUT /v1/admin/courses/{course_id}/teaching-policy` | implemented | TASK-06 |
+| `getMemoryConsent` | `GET /v1/courses/{course_id}/memory-consent` | implemented | TASK-06 |
+| `setMemoryConsent` | `PUT /v1/courses/{course_id}/memory-consent` | implemented | TASK-06 |
+| `listMemories` | `GET /v1/memories` | implemented | TASK-06 |
+| `exportMemories` | `GET /v1/memories/export` | implemented | TASK-06 |
+| `updateMemory` | `PATCH /v1/memories/{memory_id}` | implemented | TASK-06 |
 | `createFeedback` | `POST /v1/feedback` | planned | TASK-05 |
 
 The legacy `POST /v1/admin/ingest` prototype has been removed. Registration does not create a content version; manual or scheduled ingestion creates one only after snapshot change detection.
@@ -153,7 +157,8 @@ stateDiagram-v2
 6. Stream safe visible content; hold only a bounded suffix needed to detect the hidden citation trailer.
 7. Validate cited source number and chunk ID against final evidence.
 8. Persist trace terminal state independently of client completion.
-9. Extract/update memory asynchronously after the response policy allows it.
+9. At configured meaningful-turn boundaries, extract/update opted-in memory through
+   the strict candidate boundary before prompt assembly.
 
 The baseline quality gate is Recall@5 ≥ 0.85, citation precision ≥ 0.95 and unsupported-query abstention F1 ≥ 0.90 on approved evaluation sets. TTFT targets are defined in the Function Specification.
 
