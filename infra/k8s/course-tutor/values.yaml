@@ -80,7 +80,10 @@ config:
   llmChatModel: ci-chat
   llmEmbeddingModel: ci-embedding
   llmEmbeddingDimension: 1024
-  expectedAlembicRevision: 8d90c87b7341
+  expectedAlembicRevision: a41c9e7d2b60
+  memoryExtractionInterval: 2
+  chatTurnRetentionDays: 30
+  sessionSummaryRetentionDays: 90
 
 secrets:
   existingSecret: ""
@@ -97,6 +100,11 @@ courseContent:
   accessModes: [ReadOnlyMany]
   size: 10Gi
   mountPath: /data/content
+
+# Synthetic content used only by the chart's isolated CI smoke flow.
+ciFixture:
+  enabled: false
+  mountPath: /fixtures/generated-course
 
 internalDependencies:
   enabled: false

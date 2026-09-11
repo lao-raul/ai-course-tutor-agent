@@ -27,3 +27,7 @@ config:
 
 courseContent:
   enabled: false
+
+ciFixture:
+  enabled: true
+  mountPath: /fixtures/generated-course

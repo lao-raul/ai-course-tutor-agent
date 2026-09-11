@@ -1,6 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { ChatCitation, Course } from './types';
-import { listCourses, streamChat } from './api';
+import type { ChatCitation, Course, MemoryFact } from './types';
+import {
+  exportMemories,
+  getMemoryConsent,
+  listCourses,
+  listMemories,
+  setMemoryConsent,
+  streamChat,
+  updateMemory,
+} from './api';
 
 interface Message {
   id: string;
@@ -16,6 +24,10 @@ export default function App() {
   const [selectedCourseId, setSelectedCourseId] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
+  const [sessionId, setSessionId] = useState<string | undefined>();
+  const [memoryEnabled, setMemoryEnabled] = useState(false);
+  const [memories, setMemories] = useState<MemoryFact[]>([]);
+  const [showMemory, setShowMemory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryRef = useRef<HTMLInputElement>(null);
   const streamControllerRef = useRef<AbortController | null>(null);
@@ -31,6 +43,26 @@ export default function App() {
   }, [messages]);
 
   useEffect(() => () => streamControllerRef.current?.abort(), []);
+
+  const refreshMemory = useCallback(async () => {
+    if (!selectedCourseId) {
+      setMemoryEnabled(false);
+      setMemories([]);
+      return;
+    }
+    const [enabled, facts] = await Promise.all([
+      getMemoryConsent(selectedCourseId),
+      listMemories(selectedCourseId),
+    ]);
+    setMemoryEnabled(enabled);
+    setMemories(facts);
+  }, [selectedCourseId]);
+
+  useEffect(() => {
+    setSessionId(undefined);
+    setMessages([]);
+    refreshMemory().catch(console.error);
+  }, [refreshMemory]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -66,7 +98,7 @@ export default function App() {
       try {
         await streamChat(
           selectedCourseId,
-          { query: q },
+          { query: q, session_id: sessionId },
           {
             onToken: (token) => {
               updateAssistant((message) => ({ ...message, text: message.text + token }));
@@ -82,7 +114,10 @@ export default function App() {
             onAbstained: (reason) => {
               updateAssistant((message) => ({ ...message, abstained: reason }));
             },
-            onDone: () => undefined,
+            onDone: (_traceId, _answerTokens, nextSessionId) => {
+              if (nextSessionId) setSessionId(nextSessionId);
+              refreshMemory().catch(console.error);
+            },
             onError: (detail) => {
               updateAssistant((message) => ({ ...message, error: detail }));
             },
@@ -94,14 +129,38 @@ export default function App() {
         setStreaming(false);
       }
     },
-    [selectedCourseId, streaming],
+    [refreshMemory, selectedCourseId, sessionId, streaming],
   );
+
+  const handleMemoryAction = async (
+    fact: MemoryFact,
+    action: 'correct' | 'pin' | 'unpin' | 'delete',
+  ) => {
+    let value: string | undefined;
+    if (action === 'correct') {
+      value = window.prompt('Correct this memory', fact.normalized_value)?.trim();
+      if (!value || value === fact.normalized_value) return;
+    }
+    await updateMemory(fact.id, action, value);
+    await refreshMemory();
+  };
+
+  const handleExport = async () => {
+    const blob = await exportMemories(selectedCourseId);
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `course-memory-${selectedCourseId}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div style={styles.root}>
       {/* Header */}
       <header style={styles.header}>
         <h1 style={styles.title}>Course Tutor</h1>
+        <span style={styles.hint}>AI-generated tutoring guidance</span>
         {courses.length > 0 && (
           <select
             value={selectedCourseId}
@@ -116,7 +175,53 @@ export default function App() {
             ))}
           </select>
         )}
+        {selectedCourseId && (
+          <button type="button" onClick={() => setShowMemory((value) => !value)}>
+            Memory ({memories.filter((fact) => fact.status === 'active').length})
+          </button>
+        )}
       </header>
+
+      {showMemory && selectedCourseId && (
+        <aside style={styles.memoryPanel} aria-label="Learner memory">
+          <label>
+            <input
+              type="checkbox"
+              checked={memoryEnabled}
+              onChange={async (event) => {
+                await setMemoryConsent(selectedCourseId, event.target.checked);
+                await refreshMemory();
+              }}
+            />{' '}
+            Remember compact learning preferences for this course
+          </label>
+          <button type="button" onClick={handleExport}>Export</button>
+          {memories.length === 0 ? (
+            <span style={styles.hint}> No saved facts.</span>
+          ) : (
+            <ul>
+              {memories.map((fact) => (
+                <li key={fact.id}>
+                  <strong>{fact.type}</strong>: {fact.normalized_value}{' '}
+                  <small title={fact.reason}>{fact.status} · Why?</small>{' '}
+                  <button
+                    type="button"
+                    onClick={() => handleMemoryAction(fact, fact.pinned ? 'unpin' : 'pin')}
+                  >
+                    {fact.pinned ? 'Unpin' : 'Pin'}
+                  </button>{' '}
+                  <button type="button" onClick={() => handleMemoryAction(fact, 'correct')}>
+                    Correct
+                  </button>{' '}
+                  <button type="button" onClick={() => handleMemoryAction(fact, 'delete')}>
+                    Delete
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
+      )}
 
       {/* Chat area */}
       <main style={styles.chatArea}>
@@ -203,6 +308,12 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '18px',
     fontWeight: 700,
     color: '#111827',
+  },
+  memoryPanel: {
+    padding: '12px 20px',
+    borderBottom: '1px solid #e5e7eb',
+    backgroundColor: '#fff',
+    fontSize: '13px',
   },
   select: {
     fontSize: '14px',

@@ -79,6 +79,12 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   value: {{ .Values.config.llmEmbeddingModel | quote }}
 - name: LLM_EMBEDDING_DIMENSION
   value: {{ .Values.config.llmEmbeddingDimension | quote }}
+- name: MEMORY_EXTRACTION_INTERVAL
+  value: {{ .Values.config.memoryExtractionInterval | quote }}
+- name: CHAT_TURN_RETENTION_DAYS
+  value: {{ .Values.config.chatTurnRetentionDays | quote }}
+- name: SESSION_SUMMARY_RETENTION_DAYS
+  value: {{ .Values.config.sessionSummaryRetentionDays | quote }}
 - name: BUILD_VERSION
   value: {{ .Chart.AppVersion | quote }}
 - name: BUILD_REVISION

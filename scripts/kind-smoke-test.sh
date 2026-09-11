@@ -21,7 +21,19 @@ helm upgrade --install "${release}" "${repo_root}/infra/k8s/course-tutor" \
   --wait-for-jobs \
   --timeout 10m
 
+# Local development and CI both reuse immutable-looking local tags. Restart the
+# application workloads so a newly loaded image cannot be masked by a stale Pod.
+kubectl rollout restart \
+  deployment/course-tutor-backend \
+  deployment/course-tutor-worker \
+  deployment/course-tutor-web \
+  deployment/course-tutor-fake-llm \
+  -n "${namespace}"
+
 kubectl rollout status deployment/course-tutor-backend -n "${namespace}" --timeout=5m
+kubectl rollout status deployment/course-tutor-worker -n "${namespace}" --timeout=5m
+kubectl rollout status deployment/course-tutor-web -n "${namespace}" --timeout=5m
+kubectl rollout status deployment/course-tutor-fake-llm -n "${namespace}" --timeout=5m
 
 backend_pod="$(
   kubectl get pods -n "${namespace}" \
@@ -33,11 +45,6 @@ containers="$(
     -o jsonpath='{range .spec.containers[*]}{.name}{"\n"}{end}' | sort | paste -sd, -
 )"
 test "${containers}" = "agent-api,practice-api"
-
-kubectl wait -n "${namespace}" \
-  --for=condition=Ready pod \
-  -l "app.kubernetes.io/instance=${release},app.kubernetes.io/component!=migration,app.kubernetes.io/component!=helm-test" \
-  --timeout=5m
 
 helm test "${release}" --namespace "${namespace}" --logs --timeout 2m
 

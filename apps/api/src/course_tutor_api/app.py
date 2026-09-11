@@ -9,7 +9,7 @@ from fastapi import FastAPI
 
 from course_tutor_api.dependencies import get_dependencies
 from course_tutor_api.local_bootstrap import ensure_local_identity
-from course_tutor_api.routes import admin, chat, courses, health
+from course_tutor_api.routes import admin, chat, courses, health, memories
 from course_tutor_shared import (
     CorrelationIdMiddleware,
     Settings,
@@ -57,4 +57,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin.router)
     app.include_router(chat.router)
     app.include_router(courses.router)
+    app.include_router(memories.router)
     return app

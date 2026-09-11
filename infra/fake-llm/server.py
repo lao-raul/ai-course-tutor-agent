@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
-import math
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DIMENSION = 1024
 
 
 def _vector(value: str) -> list[float]:
-    digest = hashlib.sha256(value.encode()).digest()
-    values = [(digest[index % len(digest)] - 127.5) / 127.5 for index in range(DIMENSION)]
-    norm = math.sqrt(sum(item * item for item in values)) or 1.0
-    return [item / norm for item in values]
+    """Return a stable vector that makes the generated CI fixture retrievable."""
+    return [1.0, *([0.0] * (DIMENSION - 1))] if value else [0.0] * DIMENSION
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -48,9 +45,22 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
         if self.path == "/v1/chat/completions":
-            payload = (
-                b'data: {"choices":[{"delta":{"content":"CI fake answer."}}]}\n\ndata: [DONE]\n\n'
+            messages = body.get("messages", [])
+            prompt = "\n".join(str(message.get("content", "")) for message in messages)
+            chunk_match = re.search(r"\[chunk_id=([0-9a-f-]{36})\]", prompt, re.IGNORECASE)
+            if chunk_match is None:
+                self._json(422, {"detail": "CI prompt did not contain grounded evidence"})
+                return
+            answer = (
+                "The generated fixture says grounded tutoring answers must cite "
+                f"the supplied course material [Source 1].\nCITATIONS:"
+                f'[{{"source":1,"chunk_id":"{chunk_match.group(1)}"}}]'
             )
+            events = [
+                f"data: {json.dumps({'choices': [{'delta': {'content': answer}}]})}\n\n",
+                "data: [DONE]\n\n",
+            ]
+            payload = "".join(events).encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Content-Length", str(len(payload)))

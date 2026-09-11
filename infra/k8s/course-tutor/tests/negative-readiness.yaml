@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: course-tutor-negative-readiness
+  namespace: course-tutor
+  labels:
+    app.kubernetes.io/name: course-tutor-negative-readiness
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 20
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: course-tutor-negative-readiness
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: course-tutor-negative-readiness
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: fake-llm
+          image: course-tutor-fake-llm:ci
+          imagePullPolicy: Never
+          ports:
+            - {name: http, containerPort: 8082}
+          readinessProbe:
+            httpGet: {path: /deliberately-broken, port: http}
+            periodSeconds: 2
+            failureThreshold: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 5m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+          volumeMounts:
+            - {name: runtime-tmp, mountPath: /tmp}
+      volumes:
+        - {name: runtime-tmp, emptyDir: {}}

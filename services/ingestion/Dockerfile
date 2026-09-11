@@ -35,6 +35,7 @@ COPY --from=build /app/packages/auth /app/packages/auth
 COPY --from=build /app/packages/contracts /app/packages/contracts
 COPY --from=build /app/packages/shared /app/packages/shared
 COPY --from=build /app/services/ingestion /app/services/ingestion
+COPY --from=build /app/services/memory /app/services/memory
 COPY --from=build /app/services/retrieval /app/services/retrieval
 USER 10001:10001
 ENTRYPOINT ["python", "-m", "course_tutor_ingestion"]

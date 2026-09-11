@@ -1,6 +1,6 @@
 # TASK-06 — Agent Memory and Teaching Policy
 
-**Status:** ready
+**Status:** complete (2026-09-10)
 **Priority:** P1
 **Depends on:** TASK-02, TASK-04
 
@@ -43,3 +43,15 @@ Implement useful multi-turn tutoring memory while keeping long-term memory compa
 ```bash
 uv run pytest tests/unit/memory tests/integration/memory tests/e2e/teaching -q
 ```
+
+## Completion evidence
+
+- `services/memory` enforces strict candidate validation, deterministic/semantic
+  deduplication, conflict handling, confidence decay, expiry and bounded recall.
+- Agent chat persists scoped turns, maintains a rolling summary, recalls only opted-in
+  active facts and applies configurable education/assessment policies before generation.
+- Memory consent, inspect, correct, pin/unpin, export and tombstone APIs are exposed in
+  the canonical contract; the worker purges tombstoned facts and derived summaries.
+- The React UI labels AI guidance and provides learner memory consent and lifecycle controls.
+- Unit, PostgreSQL integration and bilingual teaching-policy suites passed locally on
+  2026-09-10; see `docs/verification/2026-09-10-task-05-10-local.md`.

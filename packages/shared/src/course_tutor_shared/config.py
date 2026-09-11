@@ -97,6 +97,13 @@ class Settings(BaseSettings):
     ingestion_poll_interval_seconds: int = Field(default=5, ge=1)
     ingestion_max_attempts: int = Field(default=5, ge=1, le=100)
 
+    # --- Learner memory ---------------------------------------------------------
+    # Long-term memory is opt-in in every environment. Session context is always
+    # bounded independently from this preference.
+    memory_extraction_interval: int = Field(default=2, ge=1, le=20)
+    chat_turn_retention_days: int = Field(default=30, ge=1, le=365)
+    session_summary_retention_days: int = Field(default=90, ge=1, le=730)
+
     # --- Tracing ----------------------------------------------------------------
     otel_enabled: bool = False
     otel_exporter_otlp_endpoint: str | None = None

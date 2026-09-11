@@ -1,0 +1,19 @@
+[project]
+name = "course-tutor-memory"
+version = "0.1.0"
+description = "Bounded tutoring memory and teaching-policy primitives"
+requires-python = ">=3.12"
+dependencies = [
+    "course-tutor-contracts",
+    "pydantic>=2.10",
+]
+
+[tool.uv.sources]
+course-tutor-contracts = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/course_tutor_memory"]

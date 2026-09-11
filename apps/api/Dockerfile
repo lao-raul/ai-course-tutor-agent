@@ -32,6 +32,7 @@ COPY --from=build /app/apps/api /app/apps/api
 COPY --from=build /app/packages/auth /app/packages/auth
 COPY --from=build /app/packages/contracts /app/packages/contracts
 COPY --from=build /app/packages/shared /app/packages/shared
+COPY --from=build /app/services/memory /app/services/memory
 COPY --from=build /app/services/retrieval /app/services/retrieval
 USER 10001:10001
 EXPOSE 8000

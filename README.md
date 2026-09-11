@@ -14,7 +14,7 @@ Ingestion worker 和 React Web 是支持工作负载，不计为额外后端产�
 ## 当前状态
 
 - Agent API 已完成本地/OIDC 身份边界、tenant/role/ACL 隔离、增量不可变内容版本、严格引用校验和真正的 SSE 增量输出。
-- Practice API dummy 边界已实现；记忆、教学策略、Kubernetes 和完整 CI/CD 尚为 planned。
+- 会话/长期记忆、教学策略、Practice dummy、Helm/Kind 部署和完整 CI 工作流均已实现并通过本地门禁；TASK-10 仍等待下一次 GitHub-hosted 全绿验证。
 - 详细状态和验收责任以 Design Spec 和 `docs/tasks/` 为准；README 不单独声明 Phase 完成。
 
 Kubernetes 交付统一使用 `infra/k8s/course-tutor` 下的 Helm v3 Chart。该 Chart
@@ -61,8 +61,10 @@ curl http://localhost:8000/readyz
 `POST /v1/admin/courses/{course_id}/ingestions` 手动触发；worker 也会按配置周期扫描。
 只有 READY 版本经显式 publish 后才会成为聊天使用的 active version。
 
-当前 Agent chat 使用 `POST /v1/courses/{course_id}/chat`。请求体只包含 `query` 和可选
-`session_id`；tenant、用户和内容访问级别全部由服务端认证上下文决定。
+当前 Agent chat 使用 `POST /v1/courses/{course_id}/chat`。请求体包含 `query`、可选
+`session_id`，以及可选的 assessment/attempt/language 策略参数；tenant、用户和内容访问
+级别全部由服务端认证上下文决定。长期记忆默认关闭，可通过课程级 memory-consent API
+显式开启；Web 中可查看原因、纠正、置顶、导出或删除事实。
 
 ## NAS
 

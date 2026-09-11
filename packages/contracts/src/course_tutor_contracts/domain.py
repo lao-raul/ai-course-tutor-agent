@@ -82,6 +82,15 @@ class ChatSession(DomainModel):
     expires_at: datetime | None = None
 
 
+class ChatTurn(DomainModel):
+    id: UUID
+    session_id: UUID
+    role: str
+    content: str
+    token_count: int = Field(ge=0)
+    created_at: datetime
+
+
 class MemoryFact(DomainModel):
     """An atomic, typed learner fact. Never a free-form blob (design-spec §5)."""
 

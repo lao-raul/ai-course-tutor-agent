@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
 
+from course_tutor_memory import TeachingPolicy
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -119,6 +120,11 @@ class VersionActionResponse(BaseModel, frozen=True):
     published_at: datetime | None
 
 
+class TeachingPolicyResponse(BaseModel, frozen=True):
+    course_id: UUID
+    policy: TeachingPolicy
+
+
 def _validated_source_path(raw: str) -> str:
     if "://" in raw:
         raise HTTPException(
@@ -161,6 +167,24 @@ async def _tenant_course(session: AsyncSession, course_id: UUID, principal: Prin
     if course is None or course.tenant_id != principal.tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course not found")
     return course
+
+
+@router.put(
+    "/courses/{course_id}/teaching-policy",
+    response_model=TeachingPolicyResponse,
+    operation_id="setTeachingPolicy",
+)
+async def set_teaching_policy(
+    course_id: UUID,
+    body: TeachingPolicy,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    principal: Annotated[Principal, Depends(require_course_admin)],
+) -> TeachingPolicyResponse:
+    course = await _tenant_course(session, course_id, principal)
+    course.teaching_policy = body.model_dump(mode="json")
+    _audit(session, principal, "teaching_policy.update", "course", course.id)
+    await session.commit()
+    return TeachingPolicyResponse(course_id=course.id, policy=body)
 
 
 @router.post(

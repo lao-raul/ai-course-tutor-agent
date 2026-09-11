@@ -1,0 +1,15 @@
+{{- if .Values.ciFixture.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-ci-course-fixture
+  labels:
+    {{- include "course-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ci-fixture
+data:
+  week-01.md: |
+    # Generated CI Course Fixture
+
+    A grounded tutoring answer must cite the supplied course material.
+    This synthetic document contains no private or real course content.
+{{- end }}

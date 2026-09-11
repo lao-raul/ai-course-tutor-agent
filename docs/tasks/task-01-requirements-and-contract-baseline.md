@@ -1,6 +1,6 @@
 # TASK-01 — Requirements and Contract Baseline
 
-**Status:** complete
+**Status:** complete (2026-09-09)
 **Priority:** P0
 **Can run in parallel:** no; baseline task
 

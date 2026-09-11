@@ -32,7 +32,10 @@
         "postgresDsn": {"type": "string", "minLength": 1},
         "redisUrl": {"type": "string", "minLength": 1},
         "qdrantUrl": {"type": "string", "minLength": 1},
-        "llmBaseUrl": {"type": "string", "minLength": 1}
+        "llmBaseUrl": {"type": "string", "minLength": 1},
+        "memoryExtractionInterval": {"type": "integer", "minimum": 1, "maximum": 20},
+        "chatTurnRetentionDays": {"type": "integer", "minimum": 1, "maximum": 365},
+        "sessionSummaryRetentionDays": {"type": "integer", "minimum": 1, "maximum": 730}
       }
     },
     "secrets": {
@@ -46,6 +49,14 @@
         "enabled": {"type": "boolean"},
         "existingClaim": {"type": "string"},
         "createPvc": {"type": "boolean"},
+        "mountPath": {"type": "string", "pattern": "^/"}
+      }
+    },
+    "ciFixture": {
+      "type": "object",
+      "required": ["enabled", "mountPath"],
+      "properties": {
+        "enabled": {"type": "boolean"},
         "mountPath": {"type": "string", "pattern": "^/"}
       }
     }
@@ -63,7 +74,10 @@
     "workload": {
       "type": "object",
       "required": ["image"],
-      "properties": {"image": {"$ref": "#/definitions/image"}}
+      "properties": {
+        "image": {"$ref": "#/definitions/image"},
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535}
+      }
     },
     "optionalWorkload": {
       "allOf": [

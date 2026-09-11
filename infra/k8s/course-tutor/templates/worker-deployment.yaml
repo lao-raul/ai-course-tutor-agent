@@ -59,6 +59,11 @@ spec:
             capabilities: {drop: ["ALL"]}
           volumeMounts:
             - {name: runtime-tmp, mountPath: /tmp}
+          {{- if .Values.ciFixture.enabled }}
+            - name: ci-course-fixture
+              mountPath: {{ .Values.ciFixture.mountPath }}
+              readOnly: true
+          {{- end }}
           {{- if .Values.courseContent.enabled }}
             - name: course-content
               mountPath: {{ .Values.courseContent.mountPath }}
@@ -66,6 +71,11 @@ spec:
           {{- end }}
       volumes:
         - {name: runtime-tmp, emptyDir: {}}
+      {{- if .Values.ciFixture.enabled }}
+        - name: ci-course-fixture
+          configMap:
+            name: {{ include "course-tutor.fullname" . }}-ci-course-fixture
+      {{- end }}
       {{- if .Values.courseContent.enabled }}
         - name: course-content
           persistentVolumeClaim:

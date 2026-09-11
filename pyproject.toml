@@ -8,6 +8,7 @@ dependencies = [
     "course-tutor-auth",
     "course-tutor-contracts",
     "course-tutor-ingestion",
+    "course-tutor-memory",
     "course-tutor-practice",
     "course-tutor-shared",
 ]
@@ -25,13 +26,14 @@ dev = [
 
 [tool.uv.workspace]
 # services/* join the workspace as each is implemented (Phase 1 onward).
-members = ["apps/api", "apps/practice", "packages/*", "services/ingestion", "services/retrieval"]
+members = ["apps/api", "apps/practice", "packages/*", "services/ingestion", "services/memory", "services/retrieval"]
 
 [tool.uv.sources]
 course-tutor-api = { workspace = true }
 course-tutor-auth = { workspace = true }
 course-tutor-contracts = { workspace = true }
 course-tutor-ingestion = { workspace = true }
+course-tutor-memory = { workspace = true }
 course-tutor-practice = { workspace = true }
 course-tutor-shared = { workspace = true }
 

@@ -12,8 +12,11 @@ synthetic; no suite reads the Leeds NAS or calls the LAN LM Studio endpoint.
 | Repeated ingestion and version readiness | Integration | `tests/integration/test_ingestion_idempotency.py`, `tests/integration/ingestion/` | `integration` |
 | Safe destructive database setup | Integration harness | `tests/support/postgres.py` | `integration` |
 | Generated course: ingest, embed, publish, list, ask, cite | E2E | `tests/e2e/test_grounded_course_flow.py` | `integration` |
+| Scoped session and compact long-term memory lifecycle | Unit / integration | `tests/unit/memory/`, `tests/integration/memory/` | `quality`, `integration` |
+| Bilingual teaching and assessed-work solution policy | E2E policy | `tests/e2e/teaching/` | `integration` |
 | Retrieval quality and abstention | Benchmark | `tests/retrieval_benchmark.py` | `integration` |
-| Helm install and two-container backend Pod | Deployment smoke | `scripts/kind-smoke-test.sh`, Helm test Pod | `package-and-deploy` |
+| Helm install, generated ingestion/cited chat and two-container backend Pod | Deployment smoke | `scripts/kind-smoke-test.sh`, Helm test Pod | `package-and-deploy` |
+| Invalid values and broken readiness fail closed | Deployment negative | `scripts/kind-negative-gates.sh` | `package-and-deploy` |
 
 The destructive database guard requires the `course_tutor_test_` database-name prefix.
 Before `DROP SCHEMA`, a non-empty database must also contain a matching
