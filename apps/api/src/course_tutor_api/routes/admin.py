@@ -76,11 +76,26 @@ class ProgrammeRegistrationResponse(BaseModel, frozen=True):
     programme_id: UUID
 
 
+class ProgrammeSummaryResponse(BaseModel, frozen=True):
+    programme_id: UUID
+    code: str
+    name: str
+
+
 class CourseRegistrationResponse(BaseModel, frozen=True):
     course_id: UUID
     course_run_id: UUID
     source_root_id: UUID
     resolved_path: str
+
+
+class CourseRegistrationDetailResponse(CourseRegistrationResponse, frozen=True):
+    programme_id: UUID
+    code: str
+    name: str
+    level: str
+    run_key: str
+    scan_interval_seconds: int
 
 
 class IngestionQueuedResponse(BaseModel, frozen=True):
@@ -117,6 +132,16 @@ class VersionActionResponse(BaseModel, frozen=True):
     version_id: UUID
     active_version_id: UUID
     status: str
+    published_at: datetime | None
+
+
+class ContentVersionSummaryResponse(BaseModel, frozen=True):
+    version_id: UUID
+    sequence: int
+    status: str
+    source_snapshot_hash: str | None
+    embedding_model_version: str
+    embedding_dimension: int
     published_at: datetime | None
 
 
@@ -212,6 +237,22 @@ async def register_programme(
     return ProgrammeRegistrationResponse(programme_id=programme.id)
 
 
+@router.get("/programmes", response_model=list[ProgrammeSummaryResponse])
+async def list_programmes(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    principal: Annotated[Principal, Depends(require_course_admin)],
+    code: str | None = None,
+) -> list[ProgrammeSummaryResponse]:
+    query = select(Programme).where(Programme.tenant_id == principal.tenant_id)
+    if code is not None:
+        query = query.where(Programme.code == code)
+    result = await session.execute(query.order_by(Programme.code))
+    return [
+        ProgrammeSummaryResponse(programme_id=item.id, code=item.code, name=item.name)
+        for item in result.scalars().all()
+    ]
+
+
 @router.post(
     "/courses",
     response_model=CourseRegistrationResponse,
@@ -279,6 +320,46 @@ async def register_course(
     )
 
 
+@router.get(
+    "/courses/{course_id}/registration",
+    response_model=CourseRegistrationDetailResponse,
+)
+async def get_course_registration(
+    course_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    principal: Annotated[Principal, Depends(require_course_admin)],
+) -> CourseRegistrationDetailResponse:
+    course = await _tenant_course(session, course_id, principal)
+    if course.source_root_id is None:
+        raise HTTPException(status_code=409, detail="course registration is incomplete")
+    source_root = await session.get(SourceRoot, course.source_root_id)
+    run_result = (
+        await session.execute(
+            select(CourseRun)
+            .where(CourseRun.course_id == course.id, CourseRun.source_root_id == source_root.id)
+            .order_by(CourseRun.created_at.desc())
+            .limit(1)
+        )
+        if source_root is not None
+        else None
+    )
+    course_run = run_result.scalar_one_or_none() if run_result is not None else None
+    if source_root is None or course_run is None:
+        raise HTTPException(status_code=409, detail="course registration is incomplete")
+    return CourseRegistrationDetailResponse(
+        course_id=course.id,
+        course_run_id=course_run.id,
+        source_root_id=source_root.id,
+        resolved_path=source_root.absolute_path,
+        programme_id=course.programme_id,
+        code=course.code,
+        name=course.name,
+        level=course.level.value,
+        run_key=course_run.run_key,
+        scan_interval_seconds=source_root.scan_interval_seconds,
+    )
+
+
 @router.post(
     "/courses/{course_id}/ingestions",
     response_model=IngestionQueuedResponse,
@@ -306,6 +387,25 @@ async def queue_ingestion(
     course_run = run_result.scalar_one_or_none()
     if course_run is None:
         raise HTTPException(status_code=409, detail="course has no registered run")
+
+    pending_result = await session.execute(
+        select(OutboxEvent)
+        .where(
+            OutboxEvent.topic == "ingestion.scan",
+            OutboxEvent.processed_at.is_(None),
+            OutboxEvent.dead_lettered_at.is_(None),
+            OutboxEvent.payload["course_id"].astext == str(course.id),
+        )
+        .order_by(OutboxEvent.created_at)
+        .limit(1)
+    )
+    if pending := pending_result.scalar_one_or_none():
+        raw_version = pending.payload.get("version_id")
+        return IngestionQueuedResponse(
+            job_id=pending.id,
+            course_id=course_id,
+            version_id=UUID(raw_version) if raw_version else None,
+        )
 
     event_key = f"scan:{course_id}:{idempotency_key or uuid.uuid4()}"
     existing_result = await session.execute(
@@ -362,12 +462,22 @@ async def get_ingestion_status(
         raise HTTPException(status_code=404, detail="ingestion job not found")
     raw_version = event.payload.get("version_id")
     version = await session.get(ContentVersion, UUID(raw_version)) if raw_version else None
+    embedding_event = None
+    if version is not None:
+        embedding_result = await session.execute(
+            select(OutboxEvent).where(OutboxEvent.idempotency_key == f"embed:{version.id}")
+        )
+        embedding_event = embedding_result.scalar_one_or_none()
     state = (
         "dead_lettered"
         if event.dead_lettered_at
+        or (embedding_event is not None and embedding_event.dead_lettered_at is not None)
         else "processed"
         if event.processed_at
         else "pending"
+    )
+    failure_event = (
+        embedding_event if embedding_event is not None and embedding_event.last_error else event
     )
     return IngestionStatusResponse(
         job_id=event.id,
@@ -375,10 +485,14 @@ async def get_ingestion_status(
         version_id=version.id if version else None,
         status=state,
         version_status=version.status.value if version else None,
-        attempts=event.attempts,
+        attempts=failure_event.attempts,
         processed_at=event.processed_at,
-        dead_lettered_at=event.dead_lettered_at,
-        last_error=event.last_error,
+        dead_lettered_at=(
+            embedding_event.dead_lettered_at
+            if embedding_event is not None and embedding_event.dead_lettered_at is not None
+            else event.dead_lettered_at
+        ),
+        last_error=failure_event.last_error,
         stats=event.payload.get("stats", {}),
     )
 
@@ -396,12 +510,36 @@ async def retry_ingestion(
         or event.payload.get("tenant_id") != str(principal.tenant_id)
     ):
         raise HTTPException(status_code=404, detail="ingestion job not found")
+    retry_event = event
     if event.processed_at is not None:
-        raise HTTPException(status_code=409, detail="processed jobs cannot be retried")
-    event.dead_lettered_at = None
-    event.last_error = None
-    event.attempts = 0
-    _audit(session, principal, "ingestion.retry", "outbox_event", event.id)
+        raw_version = event.payload.get("version_id")
+        if not raw_version:
+            raise HTTPException(status_code=409, detail="processed jobs cannot be retried")
+        version = await session.get(ContentVersion, UUID(raw_version))
+        embedding_result = await session.execute(
+            select(OutboxEvent).where(OutboxEvent.idempotency_key == f"embed:{raw_version}")
+        )
+        embedding_event = embedding_result.scalar_one_or_none()
+        if (
+            version is None
+            or embedding_event is None
+            or embedding_event.processed_at is not None
+            or embedding_event.dead_lettered_at is None
+        ):
+            raise HTTPException(status_code=409, detail="processed jobs cannot be retried")
+        retry_event = embedding_event
+        version.status = ContentVersionStatus.BUILDING
+    retry_event.dead_lettered_at = None
+    retry_event.last_error = None
+    retry_event.attempts = 0
+    _audit(
+        session,
+        principal,
+        "ingestion.retry",
+        "outbox_event",
+        retry_event.id,
+        root_job_id=str(event.id),
+    )
     await session.commit()
     raw_version = event.payload.get("version_id")
     return IngestionQueuedResponse(
@@ -439,6 +577,35 @@ async def list_sources(
             extraction_status=item.extraction_status.value,
             failure_reason=item.failure_reason,
             artifact_key=item.artifact_key,
+        )
+        for item in result.scalars().all()
+    ]
+
+
+@router.get(
+    "/courses/{course_id}/versions",
+    response_model=list[ContentVersionSummaryResponse],
+)
+async def list_versions(
+    course_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    principal: Annotated[Principal, Depends(require_course_admin)],
+) -> list[ContentVersionSummaryResponse]:
+    course = await _tenant_course(session, course_id, principal)
+    result = await session.execute(
+        select(ContentVersion)
+        .where(ContentVersion.course_id == course.id)
+        .order_by(ContentVersion.sequence.desc())
+    )
+    return [
+        ContentVersionSummaryResponse(
+            version_id=item.id,
+            sequence=item.sequence,
+            status=item.status.value,
+            source_snapshot_hash=item.source_snapshot_hash,
+            embedding_model_version=item.embedding_model_version,
+            embedding_dimension=item.embedding_dimension,
+            published_at=item.published_at,
         )
         for item in result.scalars().all()
     ]

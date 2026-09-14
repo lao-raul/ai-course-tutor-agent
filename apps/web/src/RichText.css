@@ -1,0 +1,16 @@
+.course-rich-text {
+  max-width: 100%;
+}
+
+.course-rich-text .katex-display {
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 0.85em 0;
+  padding: 0.45em 0.25em;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.course-rich-text .katex-display > .katex {
+  min-width: max-content;
+}

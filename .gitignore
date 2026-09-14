@@ -5,6 +5,7 @@
 *.pem
 *.key
 credentials.json
+.local/
 
 # Python
 .venv/

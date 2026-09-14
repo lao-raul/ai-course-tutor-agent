@@ -68,7 +68,12 @@ def _coalesce_chunks(
         if not parts or active_type is None or active_class is None:
             return
         text = " ".join(parts).strip()
-        anchor = anchors[0] if len(anchors) == 1 else f"{anchors[0]}-{anchors[-1]}"[:120]
+        unique_anchors = list(dict.fromkeys(anchors))
+        anchor = (
+            unique_anchors[0]
+            if len(unique_anchors) == 1
+            else f"{unique_anchors[0]}-{unique_anchors[-1]}"[:120]
+        )
         result.append(
             ParserChunk(
                 text=text,
@@ -83,8 +88,13 @@ def _coalesce_chunks(
         text = fragment.text.strip()
         if not text:
             continue
+        preserve_visual_boundary = (
+            active_type in {"page", "slide"} and fragment.anchor_value != anchors[-1]
+        )
         boundary = active_type is not None and (
-            fragment.anchor_type != active_type or fragment.chunk_class != active_class
+            fragment.anchor_type != active_type
+            or fragment.chunk_class != active_class
+            or preserve_visual_boundary
         )
         oversized = parts and len(" ".join(parts)) + len(text) + 1 > target_size
         if boundary or oversized:
@@ -184,7 +194,11 @@ class IngestionJob:
                     ContentVersion.pipeline_version == self._pipeline_version,
                     ContentVersion.source_snapshot_hash == current_snapshot,
                     ContentVersion.status.in_(
-                        [ContentVersionStatus.READY, ContentVersionStatus.PUBLISHED]
+                        [
+                            ContentVersionStatus.BUILDING,
+                            ContentVersionStatus.READY,
+                            ContentVersionStatus.PUBLISHED,
+                        ]
                     ),
                 )
             )

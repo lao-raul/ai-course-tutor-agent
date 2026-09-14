@@ -1,0 +1,18 @@
+# Synthetic example only. Copy to .local/leeds-course.yaml and map one explicit
+# module directory. Do not commit the copied file or private module metadata.
+api:
+  base_url: http://127.0.0.1:8000
+  token_env: COURSE_TUTOR_AUTH_TOKEN
+programme:
+  code: LEEDS-MSC-AI
+  name: University of Leeds MSc Artificial Intelligence
+course:
+  code: EXAMPLE-MODULE
+  name: Example AI Module
+  level: postgraduate
+  run_key: 2026-example
+  source_path: /data/content/example-module
+  scan_interval_seconds: 900
+e2e:
+  in_scope_question: What concept is introduced in the first lecture?
+  out_of_scope_question: What is today's weather on Mars?

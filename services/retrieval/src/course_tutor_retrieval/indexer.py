@@ -10,10 +10,12 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
 
 from course_tutor_retrieval.collection import COLLECTION_NAME, ensure_collection
+from course_tutor_retrieval.scope import extract_content_scopes
 
 logger = structlog.get_logger(__name__)
 
-BATCH_SIZE = 100
+EMBEDDING_BATCH_SIZE = 32
+UPSERT_BATCH_SIZE = 100
 
 
 class EmbeddingIndexer:
@@ -44,7 +46,16 @@ class EmbeddingIndexer:
         await ensure_collection(self._client)
 
         texts = [c["text"] for c in chunks]
-        vectors = await self._embed.embed(texts)
+        vectors: list[list[float]] = []
+        for i in range(0, len(texts), EMBEDDING_BATCH_SIZE):
+            text_batch = texts[i : i + EMBEDDING_BATCH_SIZE]
+            vector_batch = await self._embed.embed(text_batch)
+            if len(vector_batch) != len(text_batch):
+                raise ValueError(
+                    "embedding provider returned "
+                    f"{len(vector_batch)} vectors for {len(text_batch)} texts"
+                )
+            vectors.extend(vector_batch)
 
         points = []
         for chunk, vector in zip(chunks, vectors, strict=True):
@@ -64,6 +75,7 @@ class EmbeddingIndexer:
                 "text": chunk["text"],
                 "ordinal": chunk["ordinal"],
                 "relative_path": chunk["relative_path"],
+                "content_scopes": list(extract_content_scopes(str(chunk["relative_path"]))),
                 "mime_type": chunk["mime_type"],
                 "anchor_type": _val(anchor_type),
                 "anchor_value": chunk["anchor_value"],
@@ -79,8 +91,8 @@ class EmbeddingIndexer:
                 )
             )
 
-        for i in range(0, len(points), BATCH_SIZE):
-            batch = points[i : i + BATCH_SIZE]
+        for i in range(0, len(points), UPSERT_BATCH_SIZE):
+            batch = points[i : i + UPSERT_BATCH_SIZE]
             self._client.upsert(collection_name=COLLECTION_NAME, points=batch)
             logger.debug("qdrant_batch_upserted", count=len(batch))
 

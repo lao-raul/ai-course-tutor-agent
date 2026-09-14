@@ -32,7 +32,10 @@
         "postgresDsn": {"type": "string", "minLength": 1},
         "redisUrl": {"type": "string", "minLength": 1},
         "qdrantUrl": {"type": "string", "minLength": 1},
-        "llmBaseUrl": {"type": "string", "minLength": 1},
+        "llmBaseUrl": {"type": "string", "minLength": 1, "pattern": "/v1/?$"},
+        "llmChatModel": {"type": "string", "minLength": 1},
+        "llmEmbeddingModel": {"type": "string", "minLength": 1},
+        "llmEmbeddingDimension": {"type": "integer", "minimum": 1},
         "memoryExtractionInterval": {"type": "integer", "minimum": 1, "maximum": 20},
         "chatTurnRetentionDays": {"type": "integer", "minimum": 1, "maximum": 365},
         "sessionSummaryRetentionDays": {"type": "integer", "minimum": 1, "maximum": 730}
@@ -49,8 +52,22 @@
         "enabled": {"type": "boolean"},
         "existingClaim": {"type": "string"},
         "createPvc": {"type": "boolean"},
+        "storageClassName": {"type": "string"},
+        "accessModes": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "size": {"type": "string", "minLength": 1},
         "mountPath": {"type": "string", "pattern": "^/"}
-      }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"enabled": {"const": true}}},
+          "then": {
+            "anyOf": [
+              {"properties": {"createPvc": {"const": true}}},
+              {"properties": {"existingClaim": {"type": "string", "minLength": 1}}}
+            ]
+          }
+        }
+      ]
     },
     "ciFixture": {
       "type": "object",

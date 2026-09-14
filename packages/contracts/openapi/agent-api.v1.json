@@ -59,6 +59,12 @@
       }
     },
     "/v1/admin/programmes": {
+      "get": {
+        "operationId": "listProgrammes",
+        "x-implementation-status": "implemented",
+        "parameters": [{"name": "code", "in": "query", "required": false, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Tenant-scoped programme registrations"}, "403": {"$ref": "#/components/responses/Forbidden"}}
+      },
       "post": {
         "operationId": "createProgramme",
         "x-implementation-status": "implemented",
@@ -72,6 +78,14 @@
         "x-implementation-status": "implemented",
         "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateCourseRequest"}}}},
         "responses": {"201": {"description": "Course and course run registered"}, "403": {"$ref": "#/components/responses/Forbidden"}}
+      }
+    },
+    "/v1/admin/courses/{course_id}/registration": {
+      "parameters": [{"$ref": "#/components/parameters/CourseId"}],
+      "get": {
+        "operationId": "getCourseRegistration",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Course, run and source-root registration"}, "404": {"$ref": "#/components/responses/NotFound"}}
       }
     },
     "/v1/admin/courses/{course_id}/ingestions": {
@@ -97,9 +111,9 @@
         "operationId": "retryIngestion",
         "x-implementation-status": "implemented",
         "responses": {
-          "200": {"description": "Dead-lettered ingestion reset and queued"},
+          "200": {"description": "Dead-lettered scan or embedding stage reset and queued"},
           "404": {"$ref": "#/components/responses/NotFound"},
-          "409": {"description": "Completed ingestion cannot be retried"}
+          "409": {"description": "Ingestion has no retryable failed stage"}
         }
       }
     },
@@ -109,6 +123,14 @@
         "operationId": "listCourseSources",
         "x-implementation-status": "implemented",
         "responses": {"200": {"description": "Source and extraction status list"}, "403": {"$ref": "#/components/responses/Forbidden"}}
+      }
+    },
+    "/v1/admin/courses/{course_id}/versions": {
+      "parameters": [{"$ref": "#/components/parameters/CourseId"}],
+      "get": {
+        "operationId": "listContentVersions",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Immutable content versions newest first"}, "403": {"$ref": "#/components/responses/Forbidden"}}
       }
     },
     "/v1/courses/{course_id}/sources/{source_id}": {

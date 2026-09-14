@@ -10,6 +10,7 @@ shape, so the extraction pipeline is format-agnostic at the call site.
 from __future__ import annotations
 
 import re
+import unicodedata
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -85,6 +86,16 @@ class Parser(ABC):
 _PDF_TEXT_THRESHOLD = 100
 
 
+def _normalize_extracted_text(value: str) -> str:
+    """Normalize PDF/OCR text while preserving language-bearing Unicode characters."""
+    normalized = unicodedata.normalize("NFKC", value).replace("\ufffd", " ")
+    return "".join(
+        character
+        for character in normalized
+        if character in {"\n", "\t"} or not unicodedata.category(character).startswith("C")
+    )
+
+
 class PDFParser(Parser):
     """Extract text from PDF by page, with heading detection and OCR fallback."""
 
@@ -98,7 +109,7 @@ class PDFParser(Parser):
         total_chars = 0
 
         for page_num, page in enumerate(reader.pages, start=1):
-            text = page.extract_text() or ""
+            text = _normalize_extracted_text(page.extract_text() or "")
             total_chars += len(text)
             if not text.strip():
                 continue
@@ -183,7 +194,7 @@ class PDFParser(Parser):
         chunks: list[Chunk] = []
         for page_num, image in enumerate(images, start=1):
             try:
-                text = pytesseract.image_to_string(image, timeout=30)
+                text = _normalize_extracted_text(pytesseract.image_to_string(image, timeout=30))
             except Exception as exc:
                 logger.warning(
                     "pdf_ocr_page_failed",

@@ -11,6 +11,7 @@ dependencies = [
     "course-tutor-memory",
     "course-tutor-practice",
     "course-tutor-shared",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

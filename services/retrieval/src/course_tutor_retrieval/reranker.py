@@ -19,7 +19,12 @@ class Reranker:
     def __init__(self, max_from_same_source: int = 2) -> None:
         self._max_from_same_source = max_from_same_source
 
-    def rerank(self, candidates: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    def rerank(
+        self,
+        candidates: list[RetrievedChunk],
+        *,
+        max_from_same_source: int | None = None,
+    ) -> list[RetrievedChunk]:
         """Reorder candidates for prompt diversity and relevance.
 
         Strategy:
@@ -34,13 +39,14 @@ class Reranker:
         # Sort by score descending
         sorted_cand = sorted(candidates, key=lambda c: c.score, reverse=True)
 
+        source_limit = max_from_same_source or self._max_from_same_source
         chosen: list[RetrievedChunk] = []
         source_count: dict[str, int] = {}
 
         for chunk in sorted_cand:
             path = chunk.relative_path
             count = source_count.get(path, 0)
-            if count < self._max_from_same_source:
+            if count < source_limit:
                 chosen.append(chunk)
                 source_count[path] = count + 1
 

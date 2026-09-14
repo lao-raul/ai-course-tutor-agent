@@ -2,6 +2,19 @@
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
+{{/* Fail closed for unsafe or contradictory storage/provider profiles. */}}
+{{- define "course-tutor.validate" -}}
+{{- if and .Values.courseContent.enabled .Values.fakeLlm.enabled -}}
+{{- fail "courseContent.enabled and fakeLlm.enabled cannot both be true; use a real provider for local-real content" -}}
+{{- end -}}
+{{- if and .Values.courseContent.enabled (not .Values.courseContent.createPvc) (not .Values.courseContent.existingClaim) -}}
+{{- fail "courseContent.existingClaim is required when course content is enabled and createPvc is false" -}}
+{{- end -}}
+{{- if and .Values.courseContent.enabled .Values.ciFixture.enabled -}}
+{{- fail "courseContent.enabled and ciFixture.enabled cannot both be true" -}}
+{{- end -}}
+{{- end }}
+
 {{- define "course-tutor.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}

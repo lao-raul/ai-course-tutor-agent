@@ -36,7 +36,7 @@ class LMStudioProvider:
 
     @property
     def embedding_dimension(self) -> int:
-        return self._settings.llm_embedding_dimension
+        return int(self._settings.llm_embedding_dimension)
 
     async def embed(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:

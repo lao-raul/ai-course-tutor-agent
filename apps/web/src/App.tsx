@@ -9,6 +9,7 @@ import {
   streamChat,
   updateMemory,
 } from './api';
+import { RichText } from './RichText';
 
 interface Message {
   id: string;
@@ -59,10 +60,32 @@ export default function App() {
   }, [selectedCourseId]);
 
   useEffect(() => {
+    if (!selectedCourseId) return;
+    let active = true;
+    Promise.all([
+      getMemoryConsent(selectedCourseId),
+      listMemories(selectedCourseId),
+    ])
+      .then(([enabled, facts]) => {
+        if (!active) return;
+        setMemoryEnabled(enabled);
+        setMemories(facts);
+      })
+      .catch(console.error);
+    return () => {
+      active = false;
+    };
+  }, [selectedCourseId]);
+
+  const handleCourseChange = (courseId: string) => {
+    streamControllerRef.current?.abort();
+    setSelectedCourseId(courseId);
     setSessionId(undefined);
     setMessages([]);
-    refreshMemory().catch(console.error);
-  }, [refreshMemory]);
+    setMemoryEnabled(false);
+    setMemories([]);
+    setShowMemory(false);
+  };
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -164,7 +187,7 @@ export default function App() {
         {courses.length > 0 && (
           <select
             value={selectedCourseId}
-            onChange={(e) => setSelectedCourseId(e.target.value)}
+            onChange={(e) => handleCourseChange(e.target.value)}
             style={styles.select}
           >
             <option value="">Select a course…</option>
@@ -244,7 +267,7 @@ export default function App() {
             ) : msg.error ? (
               <p style={styles.error}>Error: {msg.error}</p>
             ) : (
-              <p style={styles.msgText}>{msg.text}</p>
+              <RichText text={msg.text} />
             )}
             {msg.citations.length > 0 && (
               <div style={styles.citations}>
@@ -354,13 +377,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#9ca3af',
     marginBottom: '2px',
     textTransform: 'uppercase',
-  },
-  msgText: {
-    margin: 0,
-    fontSize: '15px',
-    lineHeight: 1.6,
-    color: '#111827',
-    whiteSpace: 'pre-wrap',
   },
   abstained: {
     margin: 0,

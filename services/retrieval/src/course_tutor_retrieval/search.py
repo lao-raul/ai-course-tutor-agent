@@ -3,18 +3,27 @@
 from __future__ import annotations
 
 import asyncio
-import re
 import time
 import uuid
 
 import structlog
 from qdrant_client import QdrantClient
-from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
+from qdrant_client.models import (
+    FieldCondition,
+    Filter,
+    HasIdCondition,
+    IsEmptyCondition,
+    IsNullCondition,
+    MatchAny,
+    MatchValue,
+    NestedCondition,
+)
 
 from course_tutor_api.providers.base import EmbeddingProvider
 from course_tutor_contracts.enums import AccessLabel, AnchorType, ChunkClass
 from course_tutor_contracts.retrieval import RetrievalResult, RetrievedChunk
 from course_tutor_retrieval.collection import COLLECTION_NAME
+from course_tutor_retrieval.scope import extract_content_scopes
 
 logger = structlog.get_logger(__name__)
 
@@ -26,12 +35,17 @@ _ACCESS_LABEL_RANK = {
     AccessLabel.RESTRICTED: 3,
 }
 
+_FilterCondition = (
+    FieldCondition | IsEmptyCondition | IsNullCondition | HasIdCondition | NestedCondition | Filter
+)
+
 
 class DenseRetrievalService:
-    """Dense vector recall followed by a deterministic lexical score adjustment.
+    """Scope-filtered dense recall followed by a lexical score adjustment.
 
-    This is not called hybrid retrieval: the lexical pass only reorders the dense
-    result set and cannot recall a document that dense search did not return.
+    Explicit Unit/Week references become a Qdrant payload filter before dense recall.
+    This prevents similarly numbered but semantically different course sections from
+    occupying the evidence set.
     """
 
     def __init__(
@@ -54,20 +68,27 @@ class DenseRetrievalService:
         """Execute dense retrieval and return ranked candidates.
 
         Flow:
-        1. Embed query → Qdrant dense search
-        2. Python-side keyword re-score (boost docs with query terms)
-        3. Filter by access_label
+        1. Parse an optional typed Unit/Week scope
+        2. Embed query → scope- and ACL-filtered Qdrant dense search
+        3. Python-side keyword re-score
         """
         t0 = time.monotonic()
 
         query_vector = await self._embed.embed([query])
         t_embed = (time.monotonic() - t0) * 1000
         t_query = time.monotonic()
+        query_scopes = extract_content_scopes(query)
         results = await asyncio.to_thread(
             self._client.query_points,
             collection_name=COLLECTION_NAME,
             query=query_vector[0],
-            query_filter=self._build_filter(tenant_id, course_id, content_version_id, access_label),
+            query_filter=self._build_filter(
+                tenant_id,
+                course_id,
+                content_version_id,
+                access_label,
+                content_scopes=query_scopes,
+            ),
             limit=limit * 3,
             with_payload=True,
         )
@@ -98,29 +119,9 @@ class DenseRetrievalService:
             if keyword_hits > 0:
                 score = score + (0.05 * keyword_hits)
 
-            # Explicit unit/section path boost: when the query references a specific
-            # unit or section by name (e.g. "unit 3", "unit3", "week 2"), boost chunks
-            # whose relative_path points to that unit.  This reliably surfaces the right
-            # unit even when the embedding model is biased toward overview content or
-            # when query language (e.g. Chinese + English unit names) creates a semantic
-            # gap between query and specific-unit content.
-            def unit_boost(query_text: str, path: str) -> float:
-                """Return a boost value if query references the same unit as the path."""
-                query_lower = query_text.lower()
-                # Extract unit/week references: "unit 3", "unit3", "week2", etc.
-                unit_refs = re.findall(r"(?:unit|week)[_\s]*(\d+)", query_lower)
-                if not unit_refs:
-                    return 0.0
-                path_lower = path.lower()
-                for ref in unit_refs:
-                    # Match "unitN" or "unit/N" style path segments
-                    if re.search(
-                        rf"(?:^|/)unit[_\s]*{re.escape(ref)}(?:[/_\s]|$)", path_lower
-                    ) or re.search(rf"(?:^|/)week[_\s]*{re.escape(ref)}(?:[/_\s]|$)", path_lower):
-                        return 0.35  # strong enough to overcome embedding bias for overview content
-                return 0.0
-
-            score += unit_boost(query, payload.get("relative_path", ""))
+            path_scopes = set(extract_content_scopes(payload.get("relative_path", "")))
+            if set(query_scopes) & path_scopes:
+                score += 0.35
 
             candidates.append(
                 RetrievedChunk(
@@ -159,22 +160,29 @@ class DenseRetrievalService:
         course_id: uuid.UUID,
         content_version_id: uuid.UUID,
         access_label: AccessLabel,
+        content_scopes: tuple[str, ...] = (),
     ) -> Filter:
         allowed_labels = [
             label.value
             for label, rank in _ACCESS_LABEL_RANK.items()
             if rank <= _ACCESS_LABEL_RANK[access_label]
         ]
-        return Filter(
-            must=[
-                FieldCondition(key="tenant_id", match=MatchValue(value=str(tenant_id))),
-                FieldCondition(key="course_id", match=MatchValue(value=str(course_id))),
+        conditions: list[_FilterCondition] = [
+            FieldCondition(key="tenant_id", match=MatchValue(value=str(tenant_id))),
+            FieldCondition(key="course_id", match=MatchValue(value=str(course_id))),
+            FieldCondition(
+                key="content_version_id", match=MatchValue(value=str(content_version_id))
+            ),
+            FieldCondition(key="access_label", match=MatchAny(any=allowed_labels)),
+        ]
+        if content_scopes:
+            conditions.append(
                 FieldCondition(
-                    key="content_version_id", match=MatchValue(value=str(content_version_id))
-                ),
-                FieldCondition(key="access_label", match=MatchAny(any=allowed_labels)),
-            ]
-        )
+                    key="content_scopes",
+                    match=MatchAny(any=list(content_scopes)),
+                )
+            )
+        return Filter(must=conditions)
 
     def _count_indexed(
         self,

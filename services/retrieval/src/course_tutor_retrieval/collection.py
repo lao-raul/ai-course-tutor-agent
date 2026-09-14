@@ -15,7 +15,7 @@ COLLECTION_NAME = "course_chunks"
 
 def get_embedding_dimension() -> int:
     """Read the expected vector dimension from settings."""
-    return get_settings().llm_embedding_dimension
+    return int(get_settings().llm_embedding_dimension)
 
 
 async def ensure_collection(client: QdrantClient) -> None:
@@ -26,21 +26,24 @@ async def ensure_collection(client: QdrantClient) -> None:
     >= 1.19; keyword fallback is handled at query time via Python-side filtering.
     """
     existing = [c.name for c in client.get_collections().collections]
-    if COLLECTION_NAME in existing:
+    if COLLECTION_NAME not in existing:
+        dim = get_embedding_dimension()
+        client.create_collection(
+            collection_name=COLLECTION_NAME,
+            vectors_config={
+                "": VectorParams(
+                    size=dim,
+                    distance=Distance.COSINE,
+                    on_disk=True,
+                ),
+            },
+        )
+        logger.info("qdrant_collection_created", collection=COLLECTION_NAME, dimension=dim)
+    else:
         logger.debug("qdrant_collection_exists", collection=COLLECTION_NAME)
-        return
 
-    dim = get_embedding_dimension()
-    client.create_collection(
-        collection_name=COLLECTION_NAME,
-        vectors_config={
-            "": VectorParams(
-                size=dim,
-                distance=Distance.COSINE,
-                on_disk=True,
-            ),
-        },
-    )
+    collection = client.get_collection(collection_name=COLLECTION_NAME)
+    indexed_fields = set((collection.payload_schema or {}).keys())
 
     # Payload indexes for filtering.
     for field, schema in [
@@ -52,16 +55,18 @@ async def ensure_collection(client: QdrantClient) -> None:
         ("access_label", PayloadSchemaType.KEYWORD),
         ("chunk_class", PayloadSchemaType.KEYWORD),
         ("relative_path", PayloadSchemaType.KEYWORD),
+        ("content_scopes", PayloadSchemaType.KEYWORD),
         ("anchor_type", PayloadSchemaType.KEYWORD),
         ("mime_type", PayloadSchemaType.KEYWORD),
     ]:
+        if field in indexed_fields:
+            continue
         client.create_payload_index(
             collection_name=COLLECTION_NAME,
             field_name=field,
             field_schema=schema,
         )
-
-    logger.info("qdrant_collection_created", collection=COLLECTION_NAME, dimension=dim)
+        logger.info("qdrant_payload_index_created", collection=COLLECTION_NAME, field=field)
 
 
 async def recreate_collection(client: QdrantClient) -> None:

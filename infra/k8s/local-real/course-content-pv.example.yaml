@@ -1,0 +1,27 @@
+# Non-secret reference manifest. The setup script applies an equivalent PV/PVC.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: course-tutor-content
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadOnlyMany]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: course-tutor-local
+  hostPath:
+    path: /mnt/course-content
+    type: Directory
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: course-tutor-content
+  namespace: course-tutor
+spec:
+  accessModes: [ReadOnlyMany]
+  storageClassName: course-tutor-local
+  volumeName: course-tutor-content
+  resources:
+    requests:
+      storage: 10Gi

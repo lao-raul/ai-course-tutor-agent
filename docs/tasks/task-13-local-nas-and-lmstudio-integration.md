@@ -1,6 +1,6 @@
 # TASK-13 — Local NAS and LM Studio Integration
 
-**Status:** ready
+**Status:** complete (2026-09-13)
 **Priority:** P0
 **Depends on:** TASK-03, TASK-04, TASK-09
 
@@ -64,9 +64,30 @@ scripts/local-real-preflight.sh
 helm upgrade --install course-tutor infra/k8s/course-tutor \
   --namespace course-tutor --create-namespace \
   -f infra/k8s/course-tutor/values-local-real.example.yaml \
-  -f .local/course-tutor.values.yaml --atomic --wait
+  -f .local/course-tutor.values.yaml --rollback-on-failure --wait
 ```
 
 Completion requires a dated local verification record identifying the Helm revision,
 PVC name, redacted LM Studio endpoint and successful preflight checks. It must not
 contain credentials or course content.
+
+## Implementation evidence
+
+- Placeholder-only profile: `infra/k8s/course-tutor/values-local-real.example.yaml`.
+- Non-destructive Kind/PV setup: `scripts/local-real-kind-setup.sh`.
+- Volume, model and workload isolation gate: `scripts/local-real-preflight.sh`.
+- Operator procedure: `docs/runbooks/local-real-deployment.md`.
+- Helm lint/template, unsafe-profile rejection and isolated CI Helm revision 15 smoke
+  passed on 2026-09-13.
+- A dedicated `course-tutor-real` Kind cluster bound the externally managed
+  `course-tutor-content` PVC and installed Helm revision 2 successfully.
+- Both pre-install and final post-install in-cluster preflight passed against the
+  redacted LAN LM Studio endpoint: model discovery, a 1024-dimension embedding and a
+  bounded chat request all succeeded.
+- Agent API and Worker received the read-only course volume; their write probes
+  failed as required. Practice API and Web received no course volume, and no fake LLM
+  resource was deployed.
+- The pinned MinIO release was moved from its unavailable Docker Hub location to the
+  same verified multi-architecture digest on Quay for clean-machine reproducibility.
+- Full dated evidence is recorded in
+  `docs/verification/2026-09-13-task-13-14-implementation.md`.
