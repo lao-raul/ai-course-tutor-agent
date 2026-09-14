@@ -162,7 +162,7 @@ class Settings(BaseSettings):
             if "://" in value:
                 raise ValueError(
                     "COURSE_SOURCE_PATH must be a mounted local POSIX directory "
-                    "(e.g. /Volumes/L-NAS/...), not a URL such as smb://"
+                    "(e.g. /Volumes/CourseContent/...), not a URL such as smb://"
                 )
         return value
 

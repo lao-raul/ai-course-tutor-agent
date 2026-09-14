@@ -43,9 +43,25 @@ def test_coalescing_preserves_classes_anchors_and_token_counts() -> None:
     )
     assert [item.chunk_class for item in chunks] == [
         "exercise_question",
+        "exercise_question",
         "exercise_solution",
         "assessment",
     ]
     assert chunks[0].anchor_type == "slide"
-    assert chunks[0].anchor_value == "3-4"
+    assert [item.anchor_value for item in chunks] == ["3", "4", "5", "6"]
     assert all(item.token_count and item.token_count > 0 for item in chunks)
+
+
+def test_coalescing_keeps_pdf_pages_as_independent_citation_units() -> None:
+    chunks = _coalesce_chunks(
+        [
+            Chunk("Page one title", "page", "1"),
+            Chunk("Page one body", "page", "1"),
+            Chunk("Page two body", "page", "2"),
+        ]
+    )
+
+    assert [(item.anchor_value, item.text) for item in chunks] == [
+        ("1", "Page one title Page one body"),
+        ("2", "Page two body"),
+    ]

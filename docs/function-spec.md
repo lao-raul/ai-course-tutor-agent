@@ -48,12 +48,12 @@ The ingestion worker and React Web UI are supporting workloads, not additional b
 | Programme | Group of courses | MSc Artificial Intelligence |
 | Course | Academic module | OCOM5105M Mathematical Foundations of AI |
 | CourseRun | Time-bounded delivery | 2026–27 semester 1 |
-| SourceRoot | Mounted read-only directory registered to a course run | `/Volumes/home/University of Leeds/modules/OCOM5105M` |
-| ContentVersion | Immutable snapshot built by one ingestion pipeline version | sequence 4, pipeline 1.2.0 |
+| SourceRoot | Mounted read-only directory registered to a course run | `/data/content/EXAMPLE-MODULE` |
+| ContentVersion | Immutable snapshot built by one ingestion pipeline version | sequence 4, pipeline 1.3.0 |
 
 A SourceRoot belongs to one CourseRun. One higher-level NAS directory may contain multiple modules, but each module must have an explicit SourceRoot mapping; the scanner must not infer tenant/course ownership from arbitrary folder names. The first migration may map the existing `Course` row to both Course and current CourseRun, but the API contract uses explicit course-run semantics for new data.
 
-`smb://L-NAS` is mounted by the host or Kubernetes SMB CSI driver. Applications receive a read-only POSIX path/PVC and never receive an SMB URL as a source path. Credentials are referenced from a secret store and are not committed.
+The private SMB share is mounted by the host or Kubernetes SMB CSI driver. Applications receive a read-only POSIX path/PVC and never receive an SMB URL as a source path. Credentials are referenced from a secret store and are not committed.
 
 ## 4. Functional requirements
 

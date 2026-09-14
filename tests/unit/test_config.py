@@ -27,7 +27,7 @@ def test_llm_base_url_strips_trailing_slash() -> None:
 
 def test_course_source_path_rejects_smb_url() -> None:
     with pytest.raises(ValidationError, match="mounted local POSIX directory"):
-        Settings(course_source_path="smb://L-NAS/volume1/modules")
+        Settings(course_source_path="smb://example.invalid/share/modules")
 
 
 def test_course_source_path_rejects_relative_path() -> None:

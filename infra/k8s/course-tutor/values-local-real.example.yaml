@@ -1,0 +1,52 @@
+# Safe, tracked example only. Put machine-specific endpoint/model/path choices and
+# secrets in .local/course-tutor.values.yaml (the .local directory is gitignored).
+global:
+  imagePullPolicy: IfNotPresent
+
+backend:
+  agent:
+    image: {repository: course-tutor-agent, tag: local, digest: ""}
+  practice:
+    image: {repository: course-tutor-practice, tag: local, digest: ""}
+
+worker:
+  image: {repository: course-tutor-worker, tag: local, digest: ""}
+  # Text extraction from image-heavy or textbook-sized PDFs can peak above the
+  # conservative chart default. Tune this to the largest expected source file.
+  resources:
+    requests: {cpu: 100m, memory: 512Mi}
+    limits: {cpu: "2", memory: 2Gi}
+
+web:
+  image: {repository: course-tutor-web, tag: local, digest: ""}
+
+fakeLlm:
+  enabled: false
+
+internalDependencies:
+  enabled: true
+
+config:
+  environment: local
+  llmBaseUrl: http://lm-studio-host.example:1234/v1
+  llmChatModel: replace-with-loaded-chat-model
+  llmEmbeddingModel: replace-with-loaded-embedding-model
+  llmEmbeddingDimension: 1024
+
+secrets:
+  # Create this Secret out of band; never put its values in a Helm values file.
+  existingSecret: course-tutor-local-runtime
+
+courseContent:
+  enabled: true
+  existingClaim: course-tutor-content
+  createPvc: false
+  mountPath: /data/content
+
+ciFixture:
+  enabled: false
+
+# The CI Helm hook expects its generated fixture. Real-course validation uses
+# scripts/local-course-e2e.sh after explicit bootstrap/publication instead.
+tests:
+  enabled: false

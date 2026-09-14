@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import re
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -13,6 +14,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 import structlog
 from course_tutor_memory import TeachingPolicy, build_teaching_directive, solution_content_allowed
+from course_tutor_retrieval.scope import extract_content_scopes
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,8 +45,31 @@ logger = structlog.get_logger(__name__)
 MAX_EVIDENCE_CHUNKS = 5
 MAX_EVIDENCE_TOKENS = 3500
 MIN_RELEVANCE_SCORE = 0.2
+HIGH_CONFIDENCE_RELEVANCE_SCORE = 0.5
 CITATION_MARKER = "CITATIONS:"
 MAX_CITATION_TRAILER_CHARS = 16_384
+
+_RELEVANCE_TOKEN = re.compile(r"[\w*]+", re.UNICODE)
+_RELEVANCE_STOPWORDS = {
+    "about",
+    "and",
+    "are",
+    "does",
+    "for",
+    "from",
+    "how",
+    "into",
+    "the",
+    "this",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "why",
+    "will",
+    "with",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,11 +97,31 @@ def _estimate_tokens(text: str) -> int:
     return max(1, math.ceil(len(text) / 4)) if text else 0
 
 
-def _bounded_evidence(candidates: list[RetrievedChunk]) -> list[RetrievedChunk]:
+def _relevance_terms(value: str) -> set[str]:
+    return {
+        token
+        for token in _RELEVANCE_TOKEN.findall(value.lower())
+        if len(token) >= 3 and token not in _RELEVANCE_STOPWORDS
+    }
+
+
+def _has_lexical_support(query: str, chunk: RetrievedChunk) -> bool:
+    if set(extract_content_scopes(query)) & set(extract_content_scopes(chunk.relative_path)):
+        return True
+    query_terms = _relevance_terms(query)
+    if not query_terms:
+        return False
+    evidence_terms = _relevance_terms(f"{chunk.relative_path} {chunk.text}")
+    return bool(query_terms & evidence_terms)
+
+
+def _bounded_evidence(candidates: list[RetrievedChunk], query: str) -> list[RetrievedChunk]:
     evidence: list[RetrievedChunk] = []
     remaining = MAX_EVIDENCE_TOKENS
     for chunk in candidates:
         if len(evidence) >= MAX_EVIDENCE_CHUNKS or chunk.score < MIN_RELEVANCE_SCORE:
+            continue
+        if chunk.score < HIGH_CONFIDENCE_RELEVANCE_SCORE and not _has_lexical_support(query, chunk):
             continue
         estimated = _estimate_tokens(chunk.text)
         if estimated <= remaining:
@@ -108,8 +153,12 @@ async def _build_evidence_pack(
         limit=20,
     )
     rerank_started = time.perf_counter()
-    reranked = reranker.rerank(result.candidates)
-    evidence = _bounded_evidence(reranked)
+    source_limit = MAX_EVIDENCE_CHUNKS if extract_content_scopes(query) else None
+    reranked = reranker.rerank(
+        result.candidates,
+        max_from_same_source=source_limit,
+    )
+    evidence = _bounded_evidence(reranked, query)
     rerank_ms = (time.perf_counter() - rerank_started) * 1000
 
     citation_map = {
@@ -177,7 +226,9 @@ def _build_prompt(
     system_message = (
         "You are a helpful course teaching assistant. Answer only from the supplied "
         "course material and clearly abstain when it is insufficient. Cite supported "
-        "claims with [Source N]. Never invent a source. After the visible answer, output "
+        "claims with [Source N]. Never invent a source. Format the visible answer as "
+        "GitHub-flavored Markdown, using $...$ for inline mathematics and $$...$$ for "
+        "display mathematics; never emit raw HTML. After the visible answer, output "
         "a private machine-readable trailer on a new line using exactly "
         'CITATIONS:[{"source":1,"chunk_id":"UUID"}]. Include only sources actually '
         "used in the answer and preserve each supplied chunk_id exactly."
@@ -312,11 +363,12 @@ async def _create_trace(
         timings_ms={
             **pack.timings_ms,
             "stream_state": stream_state,
-            "retrieval_policy": "dense-lexical-rescore-v1",
-            "reranker_policy": "score-diversity-v1",
+            "retrieval_policy": "typed-scope-dense-lexical-rescore-v2",
+            "reranker_policy": "scope-aware-score-diversity-v2",
             "chat_model": deps.settings.llm_chat_model,
             "embedding_model": deps.settings.llm_embedding_model,
             "minimum_relevance_score": MIN_RELEVANCE_SCORE,
+            "high_confidence_relevance_score": HIGH_CONFIDENCE_RELEVANCE_SCORE,
             "evidence_token_budget": MAX_EVIDENCE_TOKENS,
         },
     )

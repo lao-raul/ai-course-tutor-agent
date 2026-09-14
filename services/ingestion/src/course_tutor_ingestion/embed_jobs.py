@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger(__name__)
 
+CHUNK_PAGE_SIZE = 32
+
 
 @dataclass
 class EmbeddingStats:
@@ -103,49 +105,6 @@ async def _process_embed_event(
     if version is None:
         raise ValueError(f"content version {version_id} not found")
 
-    # Fetch chunks that need embedding (no version or different version)
-    result = await session.execute(
-        select(Chunk)
-        .join(SourceDocument)
-        .where(
-            SourceDocument.version_id == version_id,
-            (Chunk.embedding_model_version.is_(None))
-            | (Chunk.embedding_model_version == "pending")
-            | (Chunk.embedding_model_version != embedding_model_version),
-        )
-        .order_by(Chunk.source_id, Chunk.ordinal)
-    )
-    chunks = list(result.scalars().all())
-    if not chunks:
-        logger.info("embedding_job_no_chunks", version_id=str(version_id))
-        from course_tutor_contracts.enums import ContentVersionStatus
-
-        version.status = ContentVersionStatus.READY
-        version.embedding_model_version = embedding_model_version
-        return EmbeddingStats(versions_indexed=1)
-
-    # Build chunk dicts for the indexer
-    chunk_dicts = []
-    for chunk in chunks:
-        source = await session.get(SourceDocument, chunk.source_id)
-        if source is None:
-            raise ValueError(f"source document {chunk.source_id} not found")
-        chunk_dicts.append(
-            {
-                "id": chunk.id,
-                "source_id": chunk.source_id,
-                "ordinal": chunk.ordinal,
-                "text": chunk.text,
-                "anchor_type": chunk.anchor_type,
-                "anchor_value": chunk.anchor_value,
-                "chunk_class": chunk.chunk_class,
-                "relative_path": source.relative_path,
-                "mime_type": source.mime_type,
-                "access_label": source.access_label,
-                "token_count": chunk.token_count,
-            }
-        )
-
     # Resolve tenant_id
     course = await session.get(Course, version.course_id)
     if course is None or course.id != course_id:
@@ -157,15 +116,66 @@ async def _process_embed_event(
         "tenant_id": course.tenant_id,
     }
 
-    indexed = await indexer.index_chunks(chunk_dicts, version_dict)
+    indexed = 0
+    while True:
+        # Select scalar columns rather than ORM entities so the identity map cannot
+        # retain an entire textbook-sized version. Updated rows stop matching this
+        # query, making every page both bounded and naturally resumable.
+        result = await session.execute(
+            select(
+                Chunk.id.label("chunk_id"),
+                Chunk.source_id,
+                Chunk.ordinal,
+                Chunk.text,
+                Chunk.anchor_type,
+                Chunk.anchor_value,
+                Chunk.chunk_class,
+                Chunk.token_count,
+                SourceDocument.relative_path,
+                SourceDocument.mime_type,
+                SourceDocument.access_label,
+            )
+            .join(SourceDocument)
+            .where(
+                SourceDocument.version_id == version_id,
+                (Chunk.embedding_model_version.is_(None))
+                | (Chunk.embedding_model_version == "pending")
+                | (Chunk.embedding_model_version != embedding_model_version),
+            )
+            .order_by(Chunk.source_id, Chunk.ordinal)
+            .limit(CHUNK_PAGE_SIZE)
+        )
+        rows = result.all()
+        if not rows:
+            break
 
-    # Mark chunks as indexed
-    chunk_ids = [c.id for c in chunks]
-    await session.execute(
-        update(Chunk)
-        .where(Chunk.id.in_(chunk_ids))
-        .values(embedding_model_version=embedding_model_version)
-    )
+        chunk_dicts = [
+            {
+                "id": row.chunk_id,
+                "source_id": row.source_id,
+                "ordinal": row.ordinal,
+                "text": row.text,
+                "anchor_type": row.anchor_type,
+                "anchor_value": row.anchor_value,
+                "chunk_class": row.chunk_class,
+                "relative_path": row.relative_path,
+                "mime_type": row.mime_type,
+                "access_label": row.access_label,
+                "token_count": row.token_count,
+            }
+            for row in rows
+        ]
+        indexed += await indexer.index_chunks(chunk_dicts, version_dict)
+        await session.execute(
+            update(Chunk)
+            .where(Chunk.id.in_([row.chunk_id for row in rows]))
+            .values(embedding_model_version=embedding_model_version)
+        )
+        await session.flush()
+
+    if indexed == 0:
+        logger.info("embedding_job_no_chunks", version_id=str(version_id))
+
     from course_tutor_contracts.enums import ContentVersionStatus
 
     version.status = ContentVersionStatus.READY

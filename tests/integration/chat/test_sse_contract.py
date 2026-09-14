@@ -73,7 +73,13 @@ class _Retrieval:
 
 
 class _Reranker:
-    def rerank(self, candidates: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    def rerank(
+        self,
+        candidates: list[RetrievedChunk],
+        *,
+        max_from_same_source: int | None = None,
+    ) -> list[RetrievedChunk]:
+        del max_from_same_source
         return candidates
 
 

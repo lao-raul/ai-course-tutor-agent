@@ -25,10 +25,15 @@ from course_tutor_api.db import (
 from course_tutor_api.routes.admin import (
     CourseRegistrationRequest,
     ProgrammeRegistrationRequest,
+    get_course_registration,
+    get_ingestion_status,
+    list_programmes,
+    list_versions,
     publish_version,
     queue_ingestion,
     register_course,
     register_programme,
+    retry_ingestion,
 )
 from course_tutor_contracts.enums import AccessLabel, ContentVersionStatus, EducationLevel, UserRole
 
@@ -107,11 +112,32 @@ async def test_registration_is_separate_from_ingestion(
         db_session,
         principal,
     )
+    programmes = await list_programmes(db_session, principal, code="MSC-AI")
+    registration = await get_course_registration(course.course_id, db_session, principal)
+    assert programmes[0].programme_id == programme.programme_id
+    assert registration.course_run_id == course.course_run_id
+    assert registration.source_root_id == course.source_root_id
+    assert registration.resolved_path == str(tmp_path)
+    assert await list_versions(course.course_id, db_session, principal) == []
     assert (await db_session.execute(select(ContentVersion))).first() is None
 
     queued = await queue_ingestion(course.course_id, db_session, principal, None)
     assert queued.version_id is None
     assert await db_session.get(OutboxEvent, queued.job_id) is not None
+
+    # A manual request must join an already pending scheduled/manual scan even
+    # when the caller supplies a different idempotency key.
+    coalesced = await queue_ingestion(
+        course.course_id,
+        db_session,
+        principal,
+        "different-request-key",
+    )
+    assert coalesced.job_id == queued.job_id
+    scan_events = await db_session.execute(
+        select(OutboxEvent.id).where(OutboxEvent.topic == "ingestion.scan")
+    )
+    assert len(scan_events.all()) == 1
 
 
 async def test_add_edit_delete_rename_build_immutable_versions(
@@ -278,6 +304,112 @@ async def test_validation_failures_dead_letter(db_session: AsyncSession, tmp_pat
     assert event.attempts == 2
     assert event.dead_lettered_at is not None
     assert "does not exist" in (event.last_error or "")
+
+
+async def test_embedding_failure_is_reported_and_retryable(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    tenant_id, course_id, root_id, run_id = (
+        uuid.uuid4(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+    )
+    db_session.add(Tenant(id=tenant_id, slug="embed-failure", name="Embed Failure"))
+    await db_session.flush()
+    programme = Programme(
+        id=uuid.uuid4(), tenant_id=tenant_id, code="EMBED-P", name="Embed Programme"
+    )
+    db_session.add(programme)
+    await db_session.flush()
+    db_session.add(
+        SourceRoot(
+            id=root_id,
+            tenant_id=tenant_id,
+            absolute_path=str(tmp_path),
+            last_scanned_at=None,
+            last_snapshot_hash=None,
+            scan_interval_seconds=900,
+        )
+    )
+    await db_session.flush()
+    db_session.add(
+        Course(
+            id=course_id,
+            tenant_id=tenant_id,
+            programme_id=programme.id,
+            code="EMBED",
+            name="Embedding Failure",
+            level=EducationLevel.POSTGRADUATE,
+            source_root_id=root_id,
+            teaching_policy={},
+        )
+    )
+    await db_session.flush()
+    db_session.add(
+        CourseRun(
+            id=run_id,
+            course_id=course_id,
+            run_key="2026-s1",
+            source_root_id=root_id,
+            active_content_version_id=None,
+        )
+    )
+    await db_session.flush()
+    version = ContentVersion(
+        id=uuid.uuid4(),
+        course_id=course_id,
+        course_run_id=run_id,
+        pipeline_version="test",
+        sequence=1,
+        status=ContentVersionStatus.FAILED,
+        embedding_model_version="test-embedding",
+        embedding_dimension=8,
+        source_snapshot_hash="0" * 64,
+        published_at=None,
+    )
+    db_session.add(version)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    scan = OutboxEvent(
+        id=uuid.uuid4(),
+        topic="ingestion.scan",
+        idempotency_key=f"scan:{course_id}:failure",
+        payload={
+            "tenant_id": str(tenant_id),
+            "course_id": str(course_id),
+            "version_id": str(version.id),
+        },
+        attempts=0,
+        processed_at=now,
+    )
+    embedding = OutboxEvent(
+        id=uuid.uuid4(),
+        topic="ingestion.embed",
+        idempotency_key=f"embed:{version.id}",
+        payload={"course_id": str(course_id), "version_id": str(version.id)},
+        attempts=5,
+        last_error="embedding dimension mismatch",
+        dead_lettered_at=now,
+    )
+    db_session.add_all([scan, embedding])
+    await db_session.commit()
+    principal = Principal(
+        user_id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        role=UserRole.INSTRUCTOR,
+        access_label=AccessLabel.RESTRICTED,
+        subject="embed-instructor",
+    )
+
+    status = await get_ingestion_status(scan.id, db_session, principal)
+    assert status.status == "dead_lettered"
+    assert status.last_error == "embedding dimension mismatch"
+    await retry_ingestion(scan.id, db_session, principal)
+    await db_session.refresh(embedding)
+    await db_session.refresh(version)
+    assert embedding.dead_lettered_at is None
+    assert embedding.attempts == 0
+    assert version.status is ContentVersionStatus.BUILDING
 
 
 async def test_two_workers_cannot_process_same_event_concurrently(

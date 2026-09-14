@@ -1,6 +1,6 @@
 # TASK-14 — Course Bootstrap and End-to-End Validation
 
-**Status:** ready
+**Status:** complete (2026-09-13)
 **Priority:** P0
 **Depends on:** TASK-03, TASK-04, TASK-13
 
@@ -71,3 +71,26 @@ scripts/local-course-e2e.sh --config .local/leeds-course.yaml
 Completion requires API and browser evidence that the course is selectable and a
 grounded chat succeeds against the published version. A health-only Helm smoke test is
 not sufficient evidence for this task.
+
+## Implementation evidence
+
+- Idempotent operator command: `scripts/course-bootstrap.sh`.
+- Explicit registration and immutable-version discovery APIs support safe reruns and
+  explicit publication.
+- Synthetic mapping: `docs/examples/leeds-course.example.yaml`; private mappings stay
+  under ignored `.local/`.
+- Grounded SSE/citation and abstention gate: `scripts/local-course-e2e.sh`.
+- Registering the explicitly mapped Leeds module twice returned the same programme,
+  course, run and SourceRoot IDs.
+- Real ingestion reached READY with 19 discovered source files and 844 indexed chunks;
+  explicit publication selected the resulting immutable version. Two encrypted PDFs
+  were retained with failed extraction status while the remaining material stayed
+  usable.
+- A subsequent unchanged scan reported 19 unchanged files, zero new chunks and no new
+  content version.
+- Real-provider API E2E passed with two citations tied to the active version, and an
+  unrelated weather question emitted the explicit abstention path.
+- Browser verification selected the course, enabled chat, streamed the answer and
+  displayed two citations from the Unit 1 slides.
+- Full dated evidence is recorded in
+  `docs/verification/2026-09-13-task-13-14-implementation.md`.

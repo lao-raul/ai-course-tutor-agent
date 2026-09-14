@@ -10,7 +10,8 @@ Design-spec §9 listed the loaded LM Studio models as an open question blocking
 implementation, because the embedding width fixes the Qdrant collection shape and the
 chat model's context window fixes the prompt budget.
 
-The LM Studio host at `http://192.168.50.146:1234/v1` was probed directly.
+The configured LM Studio host was probed directly; its private endpoint is kept in
+untracked local configuration.
 
 ## Decision
 
@@ -36,17 +37,15 @@ model is therefore a new collection plus a reindex, never an in-place mutation.
 - Recording the dimension on `content_versions` means a published version carries the
   embedding contract it was built under, so a model change cannot make an existing
   version quietly unsearchable.
-- The host also has `openai/gpt-oss-20b`, `zai-org/glm-4.7-flash` and
-  `text-embedding-nomic-embed-text-v1.5` loaded. Keeping the model name in configuration
-  makes A/B comparison a config change plus a reindex.
+- Keeping model names in configuration makes A/B comparison a config change plus a
+  reindex without recording the host's full private model inventory.
 
 ## Consequences
 
 - Switching embedding models requires a new Qdrant collection and a full reindex. This is
   intended; it is what keeps versions coherent.
-- The chat model's context window is **not yet measured**, so the prompt budget in
-  design-spec §5 (rolling summary ≤ 500 tokens, recalled memory ≤ 8 facts / 350 tokens)
-  remains provisional. It must be confirmed before Phase 3 tunes memory injection.
+- Prompt budgets remain deliberately smaller than the verified context window so
+  retrieval evidence, conversation state and generation headroom stay bounded.
 - The single LM Studio host remains a single point of failure, as the function spec
   acknowledges. Real HA needs a second compatible node and health-aware routing.
 

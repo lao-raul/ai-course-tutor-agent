@@ -1,0 +1,10 @@
+# Copy to .local/ and replace the placeholder. The setup script normally generates
+# the equivalent configuration automatically.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraMounts:
+      - hostPath: /absolute/host/path/to/course/modules
+        containerPath: /mnt/course-content
+        readOnly: true

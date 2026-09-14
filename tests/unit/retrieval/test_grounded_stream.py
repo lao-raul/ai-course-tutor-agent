@@ -10,6 +10,7 @@ from course_tutor_api.routes.chat import (
     CitationTrailerParser,
     EvidencePack,
     _build_evidence_pack,
+    _build_prompt,
     _event_stream,
 )
 from course_tutor_contracts.enums import AccessLabel, AnchorType, ChunkClass
@@ -35,6 +36,15 @@ def _chunk(path: str, score: float, text: str = "grounded material") -> Retrieve
     )
 
 
+def test_prompt_contract_requests_markdown_and_tex_without_raw_html() -> None:
+    messages = _build_prompt("Explain Ax", (_chunk("linear-algebra.pdf", 0.9),))
+
+    system_prompt = messages[0].content
+    assert "GitHub-flavored Markdown" in system_prompt
+    assert "$...$ for inline mathematics" in system_prompt
+    assert "never emit raw HTML" in system_prompt
+
+
 class _Retrieval:
     def __init__(self, candidates: list[RetrievedChunk]) -> None:
         self.candidates = candidates
@@ -48,7 +58,13 @@ class _Retrieval:
 
 
 class _ReverseReranker:
-    def rerank(self, candidates: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    def rerank(
+        self,
+        candidates: list[RetrievedChunk],
+        *,
+        max_from_same_source: int | None = None,
+    ) -> list[RetrievedChunk]:
+        del max_from_same_source
         return list(reversed(candidates))
 
 
@@ -80,6 +96,42 @@ async def test_low_scores_abstain_and_evidence_has_hard_token_budget() -> None:
         "unrelated question",
     )
     assert low_pack.evidence == ()
+
+    ambiguous = _chunk("ambiguous.pdf", 0.49, "What will happen to the model parameters?")
+    ambiguous_pack = await _build_evidence_pack(
+        _Retrieval([ambiguous]),
+        _ReverseReranker(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+        AccessLabel.ENROLLED,
+        "unrelated weather question",
+    )
+    assert ambiguous_pack.evidence == ()
+
+    lexical = _chunk("bayes.pdf", 0.3, "Bayes rule updates a prior probability")
+    lexical_pack = await _build_evidence_pack(
+        _Retrieval([lexical]),
+        _ReverseReranker(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+        AccessLabel.ENROLLED,
+        "How does Bayes rule work?",
+    )
+    assert lexical_pack.evidence == (lexical,)
+
+    threshold = _chunk("threshold.pdf", chat_route.HIGH_CONFIDENCE_RELEVANCE_SCORE)
+    threshold_pack = await _build_evidence_pack(
+        _Retrieval([threshold]),
+        _ReverseReranker(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+        uuid.uuid4(),
+        AccessLabel.ENROLLED,
+        "grounded question",
+    )
+    assert threshold_pack.evidence == (threshold,)
 
     huge = _chunk("huge.pdf", 0.9, "x" * 20_000)
     pack = await _build_evidence_pack(

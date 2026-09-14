@@ -1,23 +1,23 @@
 # Requirements Traceability — Baseline v0.2
 
 **Status:** active
-**Updated:** 2026-09-10
+**Updated:** 2026-09-13
 
 `Operation IDs` reference the canonical OpenAPI documents in `packages/contracts/openapi/`. `Verification` names an existing check or the task that must create it. A planned verification is not completion evidence.
 
 | Requirement | Implementation task | Operation IDs | Verification | Current status |
 |---|---|---|---|---|
-| FR-1.1 | TASK-03 | createProgramme, createCourse | `tests/integration/ingestion/test_version_lifecycle.py` registration separation | implemented |
+| FR-1.1 | TASK-03, TASK-14 | createProgramme, listProgrammes, createCourse, getCourseRegistration | registration separation plus idempotent bootstrap unit/integration tests | implemented |
 | FR-1.2 | TASK-03 | createCourseIngestion, getIngestion | `tests/integration/ingestion/test_version_lifecycle.py` add/edit/delete/rename | implemented |
 | FR-1.3 | TASK-03, TASK-05 | createCourseIngestion | duplicate-delivery and concurrent `SKIP LOCKED` integration tests | implemented |
-| FR-1.4 | TASK-03 | getIngestion, publishContentVersion, rollbackContentVersion | READY/publish/active-alias lifecycle integration test | implemented |
-| FR-1.5 | TASK-03 | getIngestion, listCourseSources, retryIngestion | validation/dead-letter integration test; parser quarantine tests | implemented |
+| FR-1.4 | TASK-03, TASK-14 | getIngestion, listContentVersions, publishContentVersion, rollbackContentVersion | READY/publish/active-alias lifecycle integration test and explicit publish CLI | implemented |
+| FR-1.5 | TASK-03, TASK-15 | getIngestion, listCourseSources, retryIngestion | validation/dead-letter integration test; parser quarantine and Unicode normalization tests | implemented |
 | FR-1.6 | TASK-02, TASK-03 | getCourseSource | canonical artifact round-trip and ACL matrix tests | implemented |
 | FR-2.1 | TASK-02, TASK-04 | streamCourseChat | planned:TASK-04 authenticated bilingual chat test | partial |
 | FR-2.2 | TASK-02, TASK-04 | streamCourseChat | `tests/unit/test_retrieval_acl.py`; security tenant tests | implemented |
 | FR-2.3 | TASK-04, TASK-05 | streamCourseChat | `tests/retrieval_benchmark.py` retrieval and ranking metrics | implemented |
-| FR-2.4 | TASK-04, TASK-05 | streamCourseChat, getCourseSource | `tests/unit/retrieval/test_grounded_stream.py` citation permutation and UUID validation | implemented |
-| FR-2.5 | TASK-04 | streamCourseChat | `tests/unit/retrieval/test_grounded_stream.py` first-token and hidden-trailer tests; Web Vitest | implemented |
+| FR-2.4 | TASK-04, TASK-05, TASK-15 | streamCourseChat, getCourseSource | citation permutation/UUID validation and page/slide anchor tests | implemented |
+| FR-2.5 | TASK-04, TASK-15 | streamCourseChat | first-token/hidden-trailer tests and Web Markdown/TeX Vitest | implemented |
 | FR-2.6 | TASK-04, TASK-05 | streamCourseChat | `tests/retrieval_benchmark.py` abstention precision/recall gate | implemented |
 | FR-2.7 | TASK-04 | streamCourseChat | retrieval trace candidate/evidence/timing fields and cancellation terminal-state test | implemented |
 | FR-3.1 | TASK-06 | streamCourseChat | `tests/e2e/teaching/test_teaching_policy.py` level/language directive | implemented |

@@ -20,7 +20,7 @@ spec:
     seccompProfile: {type: RuntimeDefault}
   containers:
     - name: smoke
-      image: {{ include "course-tutor.image" (list .Values.fakeLlm.image) }}
+      image: {{ include "course-tutor.image" (list .Values.backend.agent.image) }}
       imagePullPolicy: {{ .Values.global.imagePullPolicy }}
       command: ["python", "-c"]
       args:
