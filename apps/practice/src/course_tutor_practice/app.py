@@ -25,11 +25,13 @@ from course_tutor_contracts import (
 from course_tutor_practice import __version__
 from course_tutor_shared import (
     CorrelationIdMiddleware,
+    PrometheusMiddleware,
     Settings,
     configure_logging,
     configure_tracing,
     get_correlation_id,
     get_settings,
+    metrics_endpoint,
 )
 
 
@@ -65,6 +67,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.dependencies = PracticeDependencies(auth=create_auth_provider(settings))
     app.add_middleware(CorrelationIdMiddleware)
+    if settings.metrics_enabled:
+        app.add_middleware(PrometheusMiddleware, service_name=settings.service_name)
+        app.add_api_route("/metrics", metrics_endpoint, methods=["GET"], include_in_schema=False)
 
     @app.get("/healthz", response_model=HealthResponse, operation_id="practiceHealth")
     async def health() -> HealthResponse:

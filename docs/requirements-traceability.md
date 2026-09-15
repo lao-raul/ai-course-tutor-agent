@@ -1,7 +1,7 @@
 # Requirements Traceability — Baseline v0.2
 
 **Status:** active
-**Updated:** 2026-09-13
+**Updated:** 2026-09-15
 
 `Operation IDs` reference the canonical OpenAPI documents in `packages/contracts/openapi/`. `Verification` names an existing check or the task that must create it. A planned verification is not completion evidence.
 
@@ -13,7 +13,7 @@
 | FR-1.4 | TASK-03, TASK-14 | getIngestion, listContentVersions, publishContentVersion, rollbackContentVersion | READY/publish/active-alias lifecycle integration test and explicit publish CLI | implemented |
 | FR-1.5 | TASK-03, TASK-15 | getIngestion, listCourseSources, retryIngestion | validation/dead-letter integration test; parser quarantine and Unicode normalization tests | implemented |
 | FR-1.6 | TASK-02, TASK-03 | getCourseSource | canonical artifact round-trip and ACL matrix tests | implemented |
-| FR-2.1 | TASK-02, TASK-04 | streamCourseChat | planned:TASK-04 authenticated bilingual chat test | partial |
+| FR-2.1 | TASK-02, TASK-04 | streamCourseChat | authenticated bilingual teaching-policy and chat tests | implemented |
 | FR-2.2 | TASK-02, TASK-04 | streamCourseChat | `tests/unit/test_retrieval_acl.py`; security tenant tests | implemented |
 | FR-2.3 | TASK-04, TASK-05 | streamCourseChat | `tests/retrieval_benchmark.py` retrieval and ranking metrics | implemented |
 | FR-2.4 | TASK-04, TASK-05, TASK-15 | streamCourseChat, getCourseSource | citation permutation/UUID validation and page/slide anchor tests | implemented |
@@ -33,20 +33,20 @@
 | FR-5.1 | TASK-02 | agentHealth, practiceHealth | production local-auth rejection, shared bearer authentication and both security-schema tests | implemented |
 | FR-5.2 | TASK-02 | listCourses, getCourse, streamCourseChat | tenant hiding, server-derived rank and crafted-body schema tests | implemented |
 | FR-5.3 | TASK-02, TASK-06 | createCourse, createCourseIngestion, updateMemory | admin role/tenant tests and audited scoped memory actions | implemented |
-| FR-5.4 | TASK-02, TASK-12 | agentReady, practiceReady | planned:TASK-12 sensitive-log/trace test | partial |
+| FR-5.4 | TASK-02, TASK-12 | agentReady, practiceReady | `tests/unit/test_observability.py`; bounded telemetry and safe propagation assertions | implemented |
 | FR-5.5 | TASK-06 | streamCourseChat | AI guidance UI label and teaching directive test | implemented |
-| FR-6.1 | TASK-07, TASK-09 | practiceHealth | planned:TASK-09 independent rollout test | planned |
+| FR-6.1 | TASK-07, TASK-09, TASK-12 | practiceHealth | two-container backend rollout plus 600-request pod-loss HA drill | implemented |
 | FR-6.2 | TASK-07 | practiceHealth, practiceReady, getPracticeCapabilities | `apps/practice/tests/test_app.py` health/readiness/capabilities tests | implemented |
 | FR-6.3 | TASK-02, TASK-07 | generatePracticeExercises | shared authentication plus course-scope and deterministic-501 tests | implemented |
-| NFR-1 | TASK-09, TASK-12 | agentReady, practiceReady | planned:TASK-12 availability/failure test | planned |
-| NFR-2 | TASK-04, TASK-12 | streamCourseChat | first-token-before-provider-completion regression; planned:TASK-12 TTFT load report | partial |
+| NFR-1 | TASK-09, TASK-12 | agentReady, practiceReady | SLO definition, dependency metrics and 600-request zero-failure pod-loss drill | implemented |
+| NFR-2 | TASK-04, TASK-12 | streamCourseChat | first-token regression plus `course_tutor_chat_time_to_first_event_seconds` and scheduled synthetic RAG smoke | implemented |
 | NFR-3 | TASK-05 | streamCourseChat | machine-readable RAG benchmark and thresholds | implemented |
 | NFR-4 | TASK-03, TASK-05 | createCourseIngestion, getIngestion | duplicate-delivery and concurrent worker integration tests | implemented |
-| NFR-5 | TASK-12 | agentReady | planned:TASK-12 restore drill | planned |
-| NFR-6 | TASK-02, TASK-12 | agentReady, practiceReady | planned:TASK-12 telemetry assertions | partial |
+| NFR-5 | TASK-12 | agentReady | 2026-09-15 PostgreSQL restore drill: 1 s versus 4 h RTO; provider backup runbook | implemented |
+| NFR-6 | TASK-02, TASK-12 | agentReady, practiceReady | bounded metrics, OTLP/correlation propagation and observability unit tests | implemented |
 | NFR-7 | TASK-08, TASK-09 | agentHealth, practiceHealth | Helm lint/template/schema/package and local Helm test | implemented |
-| NFR-8 | TASK-05, TASK-08, TASK-09, TASK-10 | agentHealth, practiceHealth, generatePracticeExercises, streamCourseChat | expanded Kind smoke and negative gates pass locally; hosted run pending | partial |
-| NFR-9 | TASK-09, TASK-11, TASK-12 | agentReady, practiceReady | planned:TASK-09 Helm rollback drill; planned:TASK-11 digest rollout verification | planned |
+| NFR-8 | TASK-05, TASK-08, TASK-09, TASK-10 | agentHealth, practiceHealth, generatePracticeExercises, streamCourseChat | local Kind smoke/negative gates and hosted main run 34798686954 | implemented |
+| NFR-9 | TASK-09, TASK-11, TASK-12 | agentReady, practiceReady | exact-digest release/deploy gate plus 2026-09-15 automatic/manual Helm rollback drill | implemented |
 
 ## Baseline verification
 

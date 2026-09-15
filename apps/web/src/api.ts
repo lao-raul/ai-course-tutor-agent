@@ -4,14 +4,22 @@ const API_BASE = '/v1';
 const LOCAL_AUTH_TOKEN = import.meta.env.VITE_LOCAL_AUTH_TOKEN ?? 'local-dev-token';
 const authHeaders = { Authorization: `Bearer ${LOCAL_AUTH_TOKEN}` };
 
+function requestHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return {
+    ...authHeaders,
+    'X-Correlation-ID': crypto.randomUUID(),
+    ...extra,
+  };
+}
+
 export async function listCourses(): Promise<Course[]> {
-  const res = await fetch(`${API_BASE}/courses`, { headers: authHeaders });
+  const res = await fetch(`${API_BASE}/courses`, { headers: requestHeaders() });
   if (!res.ok) throw new Error(`listCourses failed: ${res.status}`);
   return res.json();
 }
 
 export async function getCourse(courseId: string): Promise<Course> {
-  const res = await fetch(`${API_BASE}/courses/${courseId}`, { headers: authHeaders });
+  const res = await fetch(`${API_BASE}/courses/${courseId}`, { headers: requestHeaders() });
   if (!res.ok) throw new Error(`getCourse failed: ${res.status}`);
   return res.json();
 }
@@ -32,7 +40,7 @@ export async function streamChat(
 ): Promise<void> {
   const response = await fetch(`${API_BASE}/courses/${courseId}/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    headers: requestHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
     signal,
   });
@@ -123,7 +131,7 @@ export async function streamChat(
 
 export async function listMemories(courseId: string): Promise<MemoryFact[]> {
   const res = await fetch(`${API_BASE}/memories?course_id=${encodeURIComponent(courseId)}`, {
-    headers: authHeaders,
+    headers: requestHeaders(),
   });
   if (!res.ok) throw new Error(`listMemories failed: ${res.status}`);
   return res.json();
@@ -131,7 +139,7 @@ export async function listMemories(courseId: string): Promise<MemoryFact[]> {
 
 export async function getMemoryConsent(courseId: string): Promise<boolean> {
   const res = await fetch(`${API_BASE}/courses/${courseId}/memory-consent`, {
-    headers: authHeaders,
+    headers: requestHeaders(),
   });
   if (!res.ok) throw new Error(`getMemoryConsent failed: ${res.status}`);
   return (await res.json()).enabled as boolean;
@@ -140,7 +148,7 @@ export async function getMemoryConsent(courseId: string): Promise<boolean> {
 export async function setMemoryConsent(courseId: string, enabled: boolean): Promise<void> {
   const res = await fetch(`${API_BASE}/courses/${courseId}/memory-consent`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    headers: requestHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ enabled }),
   });
   if (!res.ok) throw new Error(`setMemoryConsent failed: ${res.status}`);
@@ -153,7 +161,7 @@ export async function updateMemory(
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/memories/${memoryId}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    headers: requestHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       action,
       ...(normalizedValue === undefined ? {} : { normalized_value: normalizedValue }),
@@ -165,7 +173,7 @@ export async function updateMemory(
 export async function exportMemories(courseId: string): Promise<Blob> {
   const res = await fetch(
     `${API_BASE}/memories/export?course_id=${encodeURIComponent(courseId)}`,
-    { headers: authHeaders },
+    { headers: requestHeaders() },
   );
   if (!res.ok) throw new Error(`exportMemories failed: ${res.status}`);
   return res.blob();
@@ -181,7 +189,7 @@ export async function ingestCourse(
 ): Promise<{ course_id: string; job_id: string; version_id: string }> {
   const res = await fetch(`${API_BASE}/admin/ingest`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    headers: requestHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       source_path: sourcePath,
       tenant_slug: tenantSlug,

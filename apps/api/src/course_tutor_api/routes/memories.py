@@ -21,6 +21,7 @@ from course_tutor_contracts.memory import (
     MemoryFactView,
     MemoryUpdate,
 )
+from course_tutor_shared import record_memory_operation
 
 router = APIRouter(prefix="/v1", tags=["memory"])
 
@@ -240,4 +241,5 @@ async def update_memory(
     await session.refresh(fact)
     response = _view(fact)
     await session.commit()
+    record_memory_operation("agent-api", body.action)
     return response

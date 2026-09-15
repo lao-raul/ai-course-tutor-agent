@@ -11,6 +11,7 @@ from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
 
 from course_tutor_retrieval.collection import COLLECTION_NAME, ensure_collection
 from course_tutor_retrieval.scope import extract_content_scopes
+from course_tutor_shared import span
 
 logger = structlog.get_logger(__name__)
 
@@ -93,7 +94,11 @@ class EmbeddingIndexer:
 
         for i in range(0, len(points), UPSERT_BATCH_SIZE):
             batch = points[i : i + UPSERT_BATCH_SIZE]
-            self._client.upsert(collection_name=COLLECTION_NAME, points=batch)
+            with span(
+                "qdrant.upsert",
+                **{"db.system": "qdrant", "db.operation.name": "upsert"},
+            ):
+                self._client.upsert(collection_name=COLLECTION_NAME, points=batch)
             logger.debug("qdrant_batch_upserted", count=len(batch))
 
         logger.info("qdrant_chunks_indexed", count=len(points))
@@ -101,15 +106,16 @@ class EmbeddingIndexer:
 
     async def delete_by_version(self, version_id: uuid.UUID) -> None:
         """Delete all vectors for a content version (used before re-index)."""
-        self._client.delete(
-            collection_name=COLLECTION_NAME,
-            points_selector=Filter(
-                must=[
-                    FieldCondition(
-                        key="content_version_id",
-                        match=MatchValue(value=str(version_id)),
-                    )
-                ]
-            ),
-        )
+        with span("qdrant.delete", **{"db.system": "qdrant", "db.operation.name": "delete"}):
+            self._client.delete(
+                collection_name=COLLECTION_NAME,
+                points_selector=Filter(
+                    must=[
+                        FieldCondition(
+                            key="content_version_id",
+                            match=MatchValue(value=str(version_id)),
+                        )
+                    ]
+                ),
+            )
         logger.info("qdrant_version_deleted", version_id=str(version_id))

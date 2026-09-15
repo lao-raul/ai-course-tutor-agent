@@ -107,6 +107,8 @@ class Settings(BaseSettings):
     # --- Tracing ----------------------------------------------------------------
     otel_enabled: bool = False
     otel_exporter_otlp_endpoint: str | None = None
+    metrics_enabled: bool = True
+    metrics_port: int = Field(default=9100, ge=1024, le=65535)
 
     @field_validator("llm_base_url")
     @classmethod

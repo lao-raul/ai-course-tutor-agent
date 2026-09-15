@@ -35,6 +35,7 @@ from course_tutor_api.memory_store import (
 )
 from course_tutor_contracts.enums import AccessLabel, ChunkClass, ContentVersionStatus
 from course_tutor_contracts.retrieval import ChatCitation, ChatRequest, RetrievedChunk
+from course_tutor_shared import observe_chat_ttft, observe_retrieval, span
 
 if TYPE_CHECKING:
     from course_tutor_api.providers.base import ChatMessage
@@ -143,15 +144,18 @@ async def _build_evidence_pack(
     version_id: uuid.UUID,
     access_label: AccessLabel,
     query: str,
+    service_name: str = "agent-api",
 ) -> EvidencePack:
-    result = await retrieval_service.search(
-        query=query,
-        tenant_id=tenant_id,
-        course_id=course_id,
-        content_version_id=version_id,
-        access_label=access_label,
-        limit=20,
-    )
+    retrieval_started = time.perf_counter()
+    with span("rag.retrieve", **{"course_tutor.retrieval.limit": 20}):
+        result = await retrieval_service.search(
+            query=query,
+            tenant_id=tenant_id,
+            course_id=course_id,
+            content_version_id=version_id,
+            access_label=access_label,
+            limit=20,
+        )
     rerank_started = time.perf_counter()
     source_limit = MAX_EVIDENCE_CHUNKS if extract_content_scopes(query) else None
     reranked = reranker.rerank(
@@ -160,6 +164,11 @@ async def _build_evidence_pack(
     )
     evidence = _bounded_evidence(reranked, query)
     rerank_ms = (time.perf_counter() - rerank_started) * 1000
+    observe_retrieval(
+        service_name,
+        "evidence" if evidence else "empty",
+        time.perf_counter() - retrieval_started,
+    )
 
     citation_map = {
         number: ChatCitation(
@@ -412,6 +421,7 @@ async def chat(
     body: ChatRequest = Body(Ellipsis),
     course_id: uuid.UUID = Path(Ellipsis),
 ) -> StreamingResponse:
+    request_started = time.perf_counter()
     course = await session.get(Course, course_id)
     if (
         course is None
@@ -448,6 +458,7 @@ async def chat(
         version_id=version_id,
         access_label=principal.access_label,
         query=body.query,
+        service_name=deps.settings.service_name,
     )
     pack = _apply_teaching_policy(pack, policy, body)
     stream_state = "started" if pack.evidence else "abstained"
@@ -457,7 +468,7 @@ async def chat(
 
     stream: AsyncGenerator[str, None]
     if not pack.evidence:
-        stream = _abstention_stream(deps, trace_id, conversation)
+        stream = _abstention_stream(deps, trace_id, conversation, request_started=request_started)
     else:
         stream = _event_stream(
             deps,
@@ -465,6 +476,7 @@ async def chat(
             body,
             pack,
             conversation=conversation,
+            request_started=request_started,
             teaching_directive=build_teaching_directive(
                 policy,
                 assessment_mode=body.assessment_mode,
@@ -482,8 +494,15 @@ async def _abstention_stream(
     deps: Dependencies,
     trace_id: uuid.UUID,
     conversation: ConversationContext | None,
+    *,
+    request_started: float | None = None,
 ) -> AsyncGenerator[str, None]:
     reason = "retrieval score below grounded-answer threshold"
+    observe_chat_ttft(
+        getattr(getattr(deps, "settings", None), "service_name", "agent-api"),
+        "abstained",
+        time.perf_counter() - (request_started or time.perf_counter()),
+    )
     yield _sse("abstained", {"reason": reason})
     if conversation is not None and getattr(deps, "engine", None) is not None:
         await persist_assistant_turn(deps.engine, conversation.session_id, f"Abstained: {reason}")
@@ -504,6 +523,7 @@ async def _event_stream(
     pack: EvidencePack,
     *,
     conversation: ConversationContext | None = None,
+    request_started: float | None = None,
     teaching_directive: str | None = None,
 ) -> AsyncGenerator[str, None]:
     parser = CitationTrailerParser()
@@ -512,6 +532,18 @@ async def _event_stream(
     terminal_state = "completed"
     error_detail: str | None = None
     cancelled = False
+    first_event_recorded = False
+
+    def record_first_event(outcome: str) -> None:
+        nonlocal first_event_recorded
+        if first_event_recorded:
+            return
+        observe_chat_ttft(
+            getattr(getattr(deps, "settings", None), "service_name", "agent-api"),
+            outcome,
+            time.perf_counter() - (request_started or started),
+        )
+        first_event_recorded = True
 
     try:
         provider_stream = deps.llm.stream_chat(
@@ -520,11 +552,14 @@ async def _event_stream(
         async for provider_token in provider_stream:
             for visible in parser.feed(provider_token):
                 answer_parts.append(visible)
+                record_first_event("token")
                 yield _sse("token", {"text": visible})
         if tail := parser.finish_visible():
             answer_parts.append(tail)
+            record_first_event("token")
             yield _sse("token", {"text": tail})
         for citation in parser.validated_citations(pack.citation_map):
+            record_first_event("citation")
             yield _sse("citation", citation.model_dump(mode="json"))
     except (asyncio.CancelledError, GeneratorExit):
         terminal_state = "cancelled"
@@ -534,6 +569,7 @@ async def _event_stream(
         terminal_state = "failed"
         error_detail = type(exc).__name__
         logger.error("chat_stream_failed", trace_id=str(trace_id), exc=str(exc))
+        record_first_event("error")
         yield _sse("error", {"detail": "stream failed"})
     finally:
         answer_tokens = _estimate_tokens("".join(answer_parts))
@@ -558,6 +594,7 @@ async def _event_stream(
             )
 
     if not cancelled:
+        record_first_event("done")
         yield _sse(
             "done",
             {

@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator, Sequence
 import httpx
 
 from course_tutor_api.providers.base import ChatMessage, ProviderError
-from course_tutor_shared import Settings, get_logger
+from course_tutor_shared import Settings, get_logger, outbound_trace_headers, span
 
 logger = get_logger(__name__)
 
@@ -42,10 +42,12 @@ class LMStudioProvider:
         if not texts:
             return []
         try:
-            response = await self._client.post(
-                "/embeddings",
-                json={"model": self._settings.llm_embedding_model, "input": list(texts)},
-            )
+            with span("llm.embed", **{"server.address": self._settings.llm_base_url}):
+                response = await self._client.post(
+                    "/embeddings",
+                    json={"model": self._settings.llm_embedding_model, "input": list(texts)},
+                    headers=outbound_trace_headers(),
+                )
             response.raise_for_status()
         except httpx.HTTPError as exc:
             raise ProviderError(f"embedding request failed: {exc}") from exc
@@ -72,7 +74,14 @@ class LMStudioProvider:
             "stream": True,
         }
         try:
-            async with self._client.stream("POST", "/chat/completions", json=payload) as response:
+            with span("llm.chat", **{"server.address": self._settings.llm_base_url}):
+                stream = self._client.stream(
+                    "POST",
+                    "/chat/completions",
+                    json=payload,
+                    headers=outbound_trace_headers(),
+                )
+            async with stream as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
                     if not line.startswith("data: "):
@@ -89,7 +98,9 @@ class LMStudioProvider:
     async def health(self) -> None:
         """Verify the host is reachable and both configured models are loaded."""
         try:
-            response = await self._client.get("/models", timeout=HEALTH_TIMEOUT)
+            response = await self._client.get(
+                "/models", timeout=HEALTH_TIMEOUT, headers=outbound_trace_headers()
+            )
             response.raise_for_status()
         except httpx.HTTPError as exc:
             raise ProviderError(f"LM Studio unreachable at {self._settings.llm_base_url}") from exc

@@ -1,0 +1,55 @@
+{
+  "title": "Course Tutor Operations",
+  "uid": "course-tutor-ops",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "HTTP request rate by service/status",
+      "targets": [{"expr": "sum by (service, status_class) (rate(course_tutor_http_requests_total[5m]))", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Agent latency p95",
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le, route) (rate(course_tutor_http_request_duration_seconds_bucket{service=\"agent-api\"}[5m])))", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "id": 3,
+      "type": "state-timeline",
+      "title": "Dependency readiness",
+      "targets": [{"expr": "course_tutor_dependency_up", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Outbox pending/dead-letter depth",
+      "targets": [{"expr": "sum by (topic, state) (course_tutor_outbox_depth)", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Retrieval outcomes",
+      "targets": [{"expr": "sum by (outcome) (rate(course_tutor_retrieval_requests_total[5m]))", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "LLM latency p95 and circuit",
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum by (le, operation) (rate(course_tutor_llm_request_duration_seconds_bucket[5m])))", "refId": "A"},
+        {"expr": "course_tutor_llm_circuit_open", "refId": "B"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+receivers:
+  otlp:
+    protocols:
+      grpc: {}
+      http: {}
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+exporters:
+  otlphttp/traces:
+    endpoint: ${env:TRACE_BACKEND_OTLP_HTTP_ENDPOINT}
+    headers:
+      Authorization: ${env:TRACE_BACKEND_AUTHORIZATION}
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/traces]

@@ -11,6 +11,8 @@ import structlog
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from course_tutor_shared import INGESTION_JOBS, correlation_id_var
+
 logger = structlog.get_logger(__name__)
 
 CHUNK_PAGE_SIZE = 32
@@ -56,6 +58,7 @@ async def run_pending_embedding_jobs(
             break
         processed += 1
         event_id = event.id
+        correlation_token = correlation_id_var.set(event.correlation_id or str(event.id))
         try:
             stats = await _process_embed_event(session, event, indexer, embedding_model_version)
             event.processed_at = datetime.now(UTC).replace(tzinfo=None)
@@ -65,6 +68,7 @@ async def run_pending_embedding_jobs(
                 job_id=str(event.id),
                 chunks_indexed=stats.chunks_indexed,
             )
+            INGESTION_JOBS.labels("ingestion-worker", "embed", "success").inc()
         except Exception as exc:
             await session.rollback()
             event = await session.get(OutboxEvent, event_id, with_for_update=True)
@@ -83,7 +87,11 @@ async def run_pending_embedding_jobs(
                     if version is not None:
                         version.status = ContentVersionStatus.FAILED
             await session.commit()
+            outcome = "dead_letter" if event.dead_lettered_at is not None else "retry"
+            INGESTION_JOBS.labels("ingestion-worker", "embed", outcome).inc()
             logger.error("embedding_job_crash", job_id=str(event_id), exc=str(exc))
+        finally:
+            correlation_id_var.reset(correlation_token)
 
     return processed
 

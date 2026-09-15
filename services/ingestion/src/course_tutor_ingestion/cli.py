@@ -13,7 +13,14 @@ import asyncio
 import signal
 import sys
 
-from course_tutor_shared import configure_logging, get_logger, get_settings
+from course_tutor_shared import (
+    OUTBOX_DEPTH,
+    configure_logging,
+    configure_tracing,
+    get_logger,
+    get_settings,
+    start_metrics_server,
+)
 
 configure_logging()
 logger = get_logger(__name__)
@@ -33,6 +40,9 @@ async def main() -> None:
     from course_tutor_ingestion.object_store import MinioObjectStore
 
     settings = get_settings()
+    configure_tracing(settings)
+    if settings.metrics_enabled:
+        start_metrics_server(settings.metrics_port)
     deps = get_dependencies(settings)
     object_store = MinioObjectStore(
         endpoint=settings.minio_endpoint,
@@ -99,6 +109,33 @@ async def main() -> None:
                     "memory_retention_cleanup_complete",
                     sessions=expired_sessions,
                     turns=expired_turns,
+                )
+
+            from sqlalchemy import func, select
+
+            from course_tutor_api.db import OutboxEvent
+
+            known_topics = ("ingestion.scan", "ingestion.embed", "memory.purge")
+            for topic in known_topics:
+                pending_result = await session.execute(
+                    select(func.count(OutboxEvent.id)).where(
+                        OutboxEvent.topic == topic,
+                        OutboxEvent.processed_at.is_(None),
+                        OutboxEvent.dead_lettered_at.is_(None),
+                    )
+                )
+                dead_result = await session.execute(
+                    select(func.count(OutboxEvent.id)).where(
+                        OutboxEvent.topic == topic,
+                        OutboxEvent.dead_lettered_at.is_not(None),
+                    )
+                )
+                metric_topic = topic.replace(".", "_")
+                OUTBOX_DEPTH.labels("ingestion-worker", metric_topic, "pending").set(
+                    int(pending_result.scalar_one())
+                )
+                OUTBOX_DEPTH.labels("ingestion-worker", metric_topic, "dead_letter").set(
+                    int(dead_result.scalar_one())
                 )
 
         if running:

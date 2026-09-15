@@ -8,6 +8,7 @@ metadata:
     app.kubernetes.io/component: worker
 spec:
   replicas: {{ .Values.worker.replicas }}
+  revisionHistoryLimit: {{ .Values.worker.revisionHistoryLimit }}
   selector:
     matchLabels:
       {{- include "course-tutor.selectorLabels" . | nindent 6 }}
@@ -17,6 +18,12 @@ spec:
       labels:
         {{- include "course-tutor.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: worker
+      annotations:
+        {{- if .Values.observability.prometheusAnnotations }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.worker.metricsPort | quote }}
+        prometheus.io/path: /metrics
+        {{- end }}
     spec:
       serviceAccountName: {{ include "course-tutor.serviceAccountName" . }}
       automountServiceAccountToken: false
@@ -51,6 +58,16 @@ spec:
             - name: COURSE_SOURCE_PATH
               value: {{ .Values.courseContent.mountPath | quote }}
             {{- end }}
+          ports:
+            - {name: metrics, containerPort: {{ .Values.worker.metricsPort }}, protocol: TCP}
+          readinessProbe:
+            tcpSocket: {port: metrics}
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: metrics}
+            initialDelaySeconds: 10
+            periodSeconds: 20
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
           securityContext:

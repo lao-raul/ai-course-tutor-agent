@@ -1,7 +1,7 @@
 # Function Specification — Course Tutor Platform
 
 **Status:** Baseline v0.2
-**Date:** 2026-09-09
+**Updated:** 2026-09-15
 **Initial programme:** University of Leeds · MSc Artificial Intelligence
 **Languages:** Chinese and English
 **Deployment posture:** local-first inference; Helm-packaged Kubernetes deployment

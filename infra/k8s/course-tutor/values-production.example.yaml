@@ -1,6 +1,9 @@
 global:
   imagePullPolicy: IfNotPresent
   buildRevision: REPLACE_WITH_GIT_SHA
+  releaseActor: github-actions
+  releaseEnvironment: production
+  verificationResult: pending
 
 backend:
   replicas: 2
@@ -8,24 +11,30 @@ backend:
     image:
       repository: ghcr.io/OWNER/course-tutor-agent
       tag: ""
-      digest: sha256:REPLACE_WITH_RELEASE_DIGEST
+      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
   practice:
     image:
       repository: ghcr.io/OWNER/course-tutor-practice
       tag: ""
-      digest: sha256:REPLACE_WITH_RELEASE_DIGEST
+      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
 
 worker:
+  replicas: 2
   image:
     repository: ghcr.io/OWNER/course-tutor-worker
     tag: ""
-    digest: sha256:REPLACE_WITH_RELEASE_DIGEST
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  # Validate against the largest source. The Leeds image-heavy scan exceeded 2 GiB.
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {cpu: "2", memory: 4Gi}
 
 web:
+  replicas: 2
   image:
     repository: ghcr.io/OWNER/course-tutor-web
     tag: ""
-    digest: sha256:REPLACE_WITH_RELEASE_DIGEST
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
 
 fakeLlm:
   enabled: false
@@ -65,6 +74,11 @@ autoscaling:
 
 networkPolicy:
   enabled: true
+
+observability:
+  prometheusAnnotations: true
+  serviceMonitor:
+    enabled: true
 
 # The built-in test uses local bearer authentication. Production smoke tests must
 # obtain an OIDC token through the deployment environment instead.

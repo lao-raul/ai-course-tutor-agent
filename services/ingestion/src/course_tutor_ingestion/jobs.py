@@ -28,7 +28,7 @@ from course_tutor_ingestion.object_store import MinioObjectStore
 from course_tutor_ingestion.parsers import ParsedDocument, parse
 from course_tutor_ingestion.scanner import FileEntry, Scanner
 from course_tutor_ingestion.source_root import validate_path, validate_read_access
-from course_tutor_shared import PIPELINE_VERSION
+from course_tutor_shared import INGESTION_JOBS, PIPELINE_VERSION, correlation_id_var
 
 if TYPE_CHECKING:
     from course_tutor_ingestion.parsers import Chunk as ParserChunk
@@ -406,8 +406,10 @@ async def run_pending_jobs(
             break
         processed += 1
         event_id = event.id
+        correlation_token = correlation_id_var.set(event.correlation_id or str(event.id))
         try:
             await IngestionJob(session, event, object_store).run()
+            INGESTION_JOBS.labels("ingestion-worker", "scan", "success").inc()
         except Exception as exc:
             await session.rollback()
             failed = await session.get(OutboxEvent, event_id, with_for_update=True)
@@ -426,7 +428,11 @@ async def run_pending_jobs(
                 if version is not None:
                     version.status = ContentVersionStatus.FAILED
             await session.commit()
+            outcome = "dead_letter" if failed.dead_lettered_at is not None else "retry"
+            INGESTION_JOBS.labels("ingestion-worker", "scan", outcome).inc()
             logger.error("ingestion_job_failed", job_id=str(event_id), exc=str(exc))
+        finally:
+            correlation_id_var.reset(correlation_token)
     return processed
 
 

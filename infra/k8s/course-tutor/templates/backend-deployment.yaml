@@ -25,6 +25,11 @@ spec:
         app.kubernetes.io/component: backend
       annotations:
         checksum/runtime-secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- if .Values.observability.prometheusAnnotations }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.backend.agent.port | quote }}
+        prometheus.io/path: /metrics
+        {{- end }}
     spec:
       serviceAccountName: {{ include "course-tutor.serviceAccountName" . }}
       automountServiceAccountToken: false
@@ -119,6 +124,16 @@ spec:
             matchLabels:
               {{- include "course-tutor.selectorLabels" . | nindent 14 }}
               app.kubernetes.io/component: backend
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "course-tutor.selectorLabels" . | nindent 20 }}
+                    app.kubernetes.io/component: backend
       volumes:
         - {name: runtime-tmp, emptyDir: {}}
       {{- if .Values.courseContent.enabled }}

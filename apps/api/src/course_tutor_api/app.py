@@ -12,11 +12,13 @@ from course_tutor_api.local_bootstrap import ensure_local_identity
 from course_tutor_api.routes import admin, chat, courses, health, memories
 from course_tutor_shared import (
     CorrelationIdMiddleware,
+    PrometheusMiddleware,
     Settings,
     configure_logging,
     configure_tracing,
     get_logger,
     get_settings,
+    metrics_endpoint,
 )
 
 logger = get_logger(__name__)
@@ -53,6 +55,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.add_middleware(CorrelationIdMiddleware)
+    if settings.metrics_enabled:
+        app.add_middleware(PrometheusMiddleware, service_name=settings.service_name)
+        app.add_api_route("/metrics", metrics_endpoint, methods=["GET"], include_in_schema=False)
     app.include_router(health.router)
     app.include_router(admin.router)
     app.include_router(chat.router)

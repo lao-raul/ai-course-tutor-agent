@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from course_tutor_api.db import ChatSession, ChatTurn, MemoryFact, OutboxEvent
 from course_tutor_contracts.enums import MemoryFactStatus, MemoryFactType
+from course_tutor_shared import INGESTION_JOBS, correlation_id_var
 
 
 async def run_pending_memory_purges(session: AsyncSession, *, max_batch: int = 10) -> int:
@@ -29,6 +30,7 @@ async def run_pending_memory_purges(session: AsyncSession, *, max_batch: int = 1
         event = result.scalar_one_or_none()
         if event is None:
             break
+        correlation_token = correlation_id_var.set(event.correlation_id or str(event.id))
         memory_id = uuid.UUID(str(event.payload["memory_id"]))
         user_id = uuid.UUID(str(event.payload["user_id"]))
         course_id = uuid.UUID(str(event.payload["course_id"]))
@@ -62,6 +64,8 @@ async def run_pending_memory_purges(session: AsyncSession, *, max_batch: int = 1
         event.last_error = None
         await session.commit()
         processed += 1
+        INGESTION_JOBS.labels("ingestion-worker", "memory_purge", "success").inc()
+        correlation_id_var.reset(correlation_token)
     return processed
 
 

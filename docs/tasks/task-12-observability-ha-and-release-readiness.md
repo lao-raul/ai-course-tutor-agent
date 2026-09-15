@@ -1,6 +1,6 @@
 # TASK-12 — Observability, High Availability and Release Readiness
 
-**Status:** ready
+**Status:** complete (2026-09-15)
 **Priority:** P1
 **Depends on:** TASK-06, TASK-09, TASK-10, TASK-11
 
@@ -42,3 +42,19 @@ Demonstrate that the platform can be operated, scaled and recovered rather than 
 - Run the load/failure suite against a non-production Kubernetes namespace.
 - Terminate one replica of each workload during traffic and verify SLO behavior.
 - Perform and document a restore and Helm rollback drill.
+
+## Completion evidence
+
+- Agent, Practice and worker export bounded-cardinality Prometheus metrics; chat TTFT,
+  retrieval, inference/circuit, dependency, queue, ingestion, memory and content-version
+  signals are represented. OTLP tracing continues inbound context and creates database,
+  Qdrant and LM Studio spans without attaching prompts or source/memory text.
+- The chart exposes scrape targets, optional ServiceMonitor resources, dependency-aware
+  readiness (including MinIO), PDB/HPA/network-policy controls, rollout history and preferred
+  replica anti-affinity. Alerts, Grafana dashboard, SLOs and incident/backup runbooks are code.
+- On 2026-09-15, deleting one two-container backend Pod during 600 Agent/Practice health
+  requests caused zero failures. PostgreSQL backup/drop/restore completed in 1 second against
+  the 4-hour RTO, and both failed-rollout automatic rollback and manual Helm rollback passed.
+- Duplicate worker delivery and memory lifecycle/idempotency remain covered by the disposable
+  integration suite. Full results and remaining provider-level production prerequisites are
+  recorded in `docs/verification/2026-09-15-task-11-12.md`.
