@@ -14,14 +14,21 @@ Ingestion worker 和 React Web 是支持工作负载，不计为额外后端产�
 ## 当前状态
 
 - Agent API 已完成本地/OIDC 身份边界、tenant/role/ACL 隔离、增量不可变内容版本、严格引用校验和真正的 SSE 增量输出。
-- 会话/长期记忆、教学策略、Practice dummy、Helm/Kind 部署和完整 CI 工作流均已实现并通过本地门禁；TASK-10 仍等待下一次 GitHub-hosted 全绿验证。
+- 会话/长期记忆、教学策略、Practice dummy、Helm/Kind 部署和完整 CI 工作流均已实现；main 的 GitHub-hosted CI 已全绿。
 - TASK-13/14 已完成：local-real Helm 部署通过真实 NAS 与 LM Studio 验收，Leeds 课程已入库、显式发布，并通过 API/浏览器引用与拒答验证。
 - TASK-15/16 已完成：Web 支持安全 Markdown/KaTeX 与复杂矩阵布局，PDF 引用保持页级边界；Unit/Week 使用独立的结构化范围检索，避免同编号内容误召回。
+- TASK-11/12 已完成：CD 发布签名、带 provenance/SBOM 且经过最终 digest 扫描的不可变镜像；受保护环境负责原子部署、运行 digest 对比、冒烟和回滚。Prometheus/OTLP、SLO、告警、仪表盘、HA/恢复演练及发布清单已纳入代码。
 - 详细状态和验收责任以 Design Spec 和 `docs/tasks/` 为准；README 不单独声明 Phase 完成。
 
 Kubernetes 交付统一使用 `infra/k8s/course-tutor` 下的 Helm v3 Chart。该 Chart
 将作为 Agent API、Practice API、worker 和 Web 的唯一打包、安装、升级与回滚入口；
 具体实现和验收由 TASK-09 负责。
+
+生产 CD 的工作流已经就绪，但不会凭 README 自动启用；仍需在 GitHub Environment
+中配置目标集群的窄权限 kubeconfig、环境 values、冒烟令牌和课程 ID。环境契约与操作
+步骤见 [release/rollback runbook](docs/runbooks/release-and-rollback.md)，发布判断见
+[release checklist](docs/release-checklist.md)，本次本地演练见
+[TASK-11/12 verification](docs/verification/2026-09-15-task-11-12.md)。
 
 ## 构建容器镜像
 

@@ -14,8 +14,8 @@ worker:
   # Text extraction from image-heavy or textbook-sized PDFs can peak above the
   # conservative chart default. Tune this to the largest expected source file.
   resources:
-    requests: {cpu: 100m, memory: 512Mi}
-    limits: {cpu: "2", memory: 2Gi}
+    requests: {cpu: 100m, memory: 1Gi}
+    limits: {cpu: "2", memory: 4Gi}
 
 web:
   image: {repository: course-tutor-web, tag: local, digest: ""}

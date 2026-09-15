@@ -24,6 +24,7 @@ from course_tutor_contracts.enums import AccessLabel, AnchorType, ChunkClass
 from course_tutor_contracts.retrieval import RetrievalResult, RetrievedChunk
 from course_tutor_retrieval.collection import COLLECTION_NAME
 from course_tutor_retrieval.scope import extract_content_scopes
+from course_tutor_shared import span
 
 logger = structlog.get_logger(__name__)
 
@@ -78,20 +79,21 @@ class DenseRetrievalService:
         t_embed = (time.monotonic() - t0) * 1000
         t_query = time.monotonic()
         query_scopes = extract_content_scopes(query)
-        results = await asyncio.to_thread(
-            self._client.query_points,
-            collection_name=COLLECTION_NAME,
-            query=query_vector[0],
-            query_filter=self._build_filter(
-                tenant_id,
-                course_id,
-                content_version_id,
-                access_label,
-                content_scopes=query_scopes,
-            ),
-            limit=limit * 3,
-            with_payload=True,
-        )
+        with span("qdrant.query", **{"db.system": "qdrant", "db.operation.name": "query"}):
+            results = await asyncio.to_thread(
+                self._client.query_points,
+                collection_name=COLLECTION_NAME,
+                query=query_vector[0],
+                query_filter=self._build_filter(
+                    tenant_id,
+                    course_id,
+                    content_version_id,
+                    access_label,
+                    content_scopes=query_scopes,
+                ),
+                limit=limit * 3,
+                with_payload=True,
+            )
         t_dense = (time.monotonic() - t_query) * 1000
 
         candidates: list[RetrievedChunk] = []
@@ -140,9 +142,10 @@ class DenseRetrievalService:
         # Sort by score descending
         candidates.sort(key=lambda c: c.score, reverse=True)
 
-        total = await asyncio.to_thread(
-            self._count_indexed, tenant_id, course_id, content_version_id, access_label
-        )
+        with span("qdrant.count", **{"db.system": "qdrant", "db.operation.name": "count"}):
+            total = await asyncio.to_thread(
+                self._count_indexed, tenant_id, course_id, content_version_id, access_label
+            )
 
         return RetrievalResult(
             candidates=candidates[:limit],

@@ -1,7 +1,7 @@
 # Design Specification — Course Tutor Platform
 
 **Status:** Baseline v0.2
-**Date:** 2026-09-10
+**Updated:** 2026-09-15
 **Companion:** [Function Specification](function-spec.md)
 **Task plan:** [Delivery Task Index](tasks/task-00-index.md)
 
@@ -30,10 +30,12 @@ See [ADR-004](adr/004-two-backend-apps-and-data-ownership.md).
 | Practice API | implemented dummy | Independent app exposes probes, capabilities and authenticated deterministic 501 | TASK-07 |
 | Reproducible production images | implemented | Five non-root versioned images and Buildx bake graph | TASK-08 |
 | Kubernetes/Helm | implemented | One chart deploys the two-container backend plus worker/Web/dependencies | TASK-09 |
-| CI | hosted verification pending | Full workflow and local equivalent pass; next pushed GitHub run must confirm hosted jobs | TASK-05, TASK-10 |
-| CD/HA/runbooks | planned | Cluster/provider not selected | TASK-11, TASK-12 |
+| CI | implemented and hosted-verified | Main run 34798686954 passed all required jobs | TASK-05, TASK-10 |
+| CD | implemented, activation configurable | Signed/attested immutable GHCR digests, protected environments, atomic deploy, smoke and rollback | TASK-11 |
+| Observability/HA/runbooks | implemented and locally verified | Metrics/OTLP, SLO/alerts/dashboard, 600-request pod-loss drill, restore and rollback evidence | TASK-12 |
 
-No Phase 1 or Phase 2 completion claim is made by v0.2 until its mapped task acceptance tests pass.
+Production activation is distinct from implementation completion: target cluster,
+identity, ingress and secret-manager choices remain external release prerequisites.
 
 ## 3. Target repository and deployables
 
@@ -199,7 +201,12 @@ Pull-request CI must run:
 4. Helm lint/template/schema/policy validation.
 5. Kind install and smoke calls for Agent, Practice, worker and Web.
 
-CD publishes immutable GHCR image digests, deploys the exact tested digests with an atomic Helm rollout, performs post-deploy smoke tests and supports rollback. Production activation remains blocked only on external cluster/identity/secret-manager configuration, not on an unresolved application architecture choice.
+CD publishes immutable GHCR image digests with BuildKit provenance/SBOM and keyless
+signatures, scans those exact digests, deploys them with an atomic Helm rollout, verifies
+running image IDs, performs Agent/Practice/Web/metrics/RAG smoke tests and supports
+automatic non-production and approved manual rollback. Production activation remains
+blocked only on external cluster/identity/secret-manager configuration, not on an
+unresolved application architecture choice.
 
 ## 10. Security and resilience defaults
 
@@ -209,12 +216,15 @@ CD publishes immutable GHCR image digests, deploys the exact tested digests with
 - Agent chat availability includes inference availability; a second compatible inference node is required to remove the single-node dependency.
 - API workloads are stateless; workers are idempotent and lock claimed jobs.
 - Logs/traces omit prompt/source/memory values by default.
+- Prometheus labels are bounded; OTLP spans and Web/API/worker correlation IDs cover
+  request, database, Qdrant and inference boundaries. Chat first-event latency is measured
+  separately from total request duration.
 
 ## 11. Delivery source of truth
 
 Implementation tasks and acceptance tests are maintained in `docs/tasks/`. Requirement-to-task/operation/test mapping is maintained in `docs/requirements-traceability.md` and validated by `scripts/validate_contract_baseline.py`.
 
-External choices still required before production CD activation:
+External choices still required before production CD activation (not open implementation tasks):
 
 - Kubernetes provider/cluster and ingress DNS.
 - OIDC provider and claim mapping.

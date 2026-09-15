@@ -13,6 +13,16 @@
 {{- if and .Values.courseContent.enabled .Values.ciFixture.enabled -}}
 {{- fail "courseContent.enabled and ciFixture.enabled cannot both be true" -}}
 {{- end -}}
+{{- if eq .Values.config.environment "production" -}}
+{{- range $name, $image := dict "agent" .Values.backend.agent.image "practice" .Values.backend.practice.image "worker" .Values.worker.image "web" .Values.web.image -}}
+{{- if not $image.digest -}}
+{{- fail (printf "production image %s must use an immutable digest" $name) -}}
+{{- end -}}
+{{- end -}}
+{{- if lt (int .Values.backend.replicas) 2 -}}
+{{- fail "production backend.replicas must be at least 2" -}}
+{{- end -}}
+{{- end -}}
 {{- end }}
 
 {{- define "course-tutor.fullname" -}}
@@ -98,6 +108,14 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   value: {{ .Values.config.chatTurnRetentionDays | quote }}
 - name: SESSION_SUMMARY_RETENTION_DAYS
   value: {{ .Values.config.sessionSummaryRetentionDays | quote }}
+- name: METRICS_ENABLED
+  value: {{ .Values.config.metricsEnabled | quote }}
+- name: METRICS_PORT
+  value: {{ .Values.config.metricsPort | quote }}
+- name: OTEL_ENABLED
+  value: {{ .Values.config.otelEnabled | quote }}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ .Values.config.otelExporterOtlpEndpoint | quote }}
 - name: BUILD_VERSION
   value: {{ .Chart.AppVersion | quote }}
 - name: BUILD_REVISION

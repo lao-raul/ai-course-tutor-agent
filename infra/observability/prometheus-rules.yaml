@@ -1,0 +1,66 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: course-tutor-alerts
+  labels:
+    app.kubernetes.io/name: course-tutor
+spec:
+  groups:
+    - name: course-tutor.slo
+      rules:
+        - alert: CourseTutorAgentAvailabilityBurn
+          expr: |
+            sum(rate(course_tutor_http_requests_total{service="agent-api",status_class=~"5xx"}[10m]))
+              /
+            clamp_min(sum(rate(course_tutor_http_requests_total{service="agent-api"}[10m])), 0.001)
+              > 0.01
+          for: 10m
+          labels: {severity: page}
+          annotations:
+            summary: Agent API is burning its 99.5% availability budget
+            runbook_url: docs/runbooks/lm-studio-outage.md
+        - alert: CourseTutorLMStudioUnavailable
+          expr: course_tutor_dependency_up{dependency="llm"} == 0 or course_tutor_llm_circuit_open == 1
+          for: 2m
+          labels: {severity: page}
+          annotations:
+            summary: The configured inference service is unavailable
+            runbook_url: docs/runbooks/lm-studio-outage.md
+        - alert: CourseTutorIngestionBacklog
+          expr: sum(course_tutor_outbox_depth{state="pending"}) > 20
+          for: 15m
+          labels: {severity: ticket}
+          annotations:
+            summary: Ingestion backlog exceeds the freshness budget
+            runbook_url: docs/runbooks/ingestion-backlog.md
+        - alert: CourseTutorIngestionDeadLetter
+          expr: sum(course_tutor_outbox_depth{state="dead_letter"}) > 0
+          for: 5m
+          labels: {severity: ticket}
+          annotations:
+            summary: One or more ingestion or memory jobs are dead-lettered
+            runbook_url: docs/runbooks/ingestion-backlog.md
+        - alert: CourseTutorRetrievalEmptyRatioHigh
+          expr: |
+            sum(rate(course_tutor_retrieval_requests_total{outcome="empty"}[30m]))
+              /
+            clamp_min(sum(rate(course_tutor_retrieval_requests_total[30m])), 0.001) > 0.25
+          for: 30m
+          labels: {severity: ticket}
+          annotations:
+            summary: Empty retrieval ratio is above the release baseline
+            runbook_url: docs/runbooks/ingestion-backlog.md
+        - alert: CourseTutorDatabaseSaturation
+          expr: pg_stat_activity_count / clamp_min(pg_settings_max_connections, 1) > 0.8
+          for: 10m
+          labels: {severity: page}
+          annotations:
+            summary: PostgreSQL connection use is above 80 percent
+            runbook_url: docs/runbooks/backup-and-restore.md
+        - alert: CourseTutorRolloutFailed
+          expr: kube_deployment_status_replicas_unavailable{deployment=~"course-tutor-(backend|worker|web)"} > 0
+          for: 10m
+          labels: {severity: page}
+          annotations:
+            summary: Course Tutor rollout has unavailable replicas
+            runbook_url: docs/runbooks/release-and-rollback.md

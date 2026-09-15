@@ -26,7 +26,7 @@ from course_tutor_api.providers import (
     ProviderError,
     ResilientLLMProvider,
 )
-from course_tutor_shared import Settings, get_logger, get_settings
+from course_tutor_shared import Settings, get_logger, get_settings, observe_dependency, span
 
 logger = get_logger(__name__)
 
@@ -104,6 +104,17 @@ class QdrantProbe:
 
 
 @dataclass(slots=True)
+class MinioProbe:
+    client: httpx.AsyncClient
+    url: str
+    name: str = "minio"
+
+    async def check(self) -> None:
+        response = await self.client.get(f"{self.url.rstrip('/')}/minio/health/ready")
+        response.raise_for_status()
+
+
+@dataclass(slots=True)
 class LLMProbe:
     provider: LLMProvider
     name: str = "llm"
@@ -131,12 +142,22 @@ class Dependencies:
                 PostgresProbe(self.engine),
                 RedisProbe(self.redis),
                 QdrantProbe(self.http, self.settings.qdrant_url),
+                MinioProbe(self.http, self.settings.minio_endpoint),
                 LLMProbe(self.llm),
             ]
         return self._probes
 
     async def readiness(self) -> list[ProbeResult]:
-        return list(await asyncio.gather(*(run_probe(p) for p in self.probes())))
+        with span("dependencies.readiness"):
+            results = list(await asyncio.gather(*(run_probe(p) for p in self.probes())))
+        for result in results:
+            observe_dependency(
+                self.settings.service_name,
+                result.name,
+                result.healthy,
+                result.latency_ms,
+            )
+        return results
 
     async def aclose(self) -> None:
         await self.redis.aclose()
@@ -172,7 +193,7 @@ def get_dependencies(settings: Settings | None = None) -> Dependencies:
         engine=create_async_engine(settings.postgres_dsn, pool_pre_ping=True),
         redis=Redis.from_url(settings.redis_url, decode_responses=True),
         http=http,
-        llm=ResilientLLMProvider(LMStudioProvider(settings)),
+        llm=ResilientLLMProvider(LMStudioProvider(settings), service_name=settings.service_name),
         qdrant_client=qdrant_client,
         auth=create_auth_provider(settings),
     )
@@ -185,8 +206,9 @@ def dependencies_from_request(request: Request) -> Dependencies:
 
 async def get_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
     dependencies = dependencies_from_request(request)
-    async with AsyncSession(dependencies.engine, expire_on_commit=False) as session:
-        yield session
+    with span("database.session", **{"db.system": "postgresql"}):
+        async with AsyncSession(dependencies.engine, expire_on_commit=False) as session:
+            yield session
 
 
 __all__ = [

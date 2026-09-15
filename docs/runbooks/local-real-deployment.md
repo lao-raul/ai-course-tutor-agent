@@ -88,6 +88,11 @@ The second preflight additionally proves that Agent API and worker can read but 
 write the volume, Practice API and Web do not mount it, and no fake LLM Deployment is
 present.
 
+The checked-in local-real example gives the extraction worker a 4 GiB memory limit.
+Large image-heavy PDFs can exceed 2 GiB while Poppler/OCR is active. On an 8 GiB
+single-node Kind cluster, keep `worker.replicas: 1`; scale workers only on nodes sized
+for the sum of their limits plus PostgreSQL, Qdrant, MinIO, Redis and API workloads.
+
 ## 5. Operate and recover
 
 ```bash

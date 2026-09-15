@@ -5,6 +5,7 @@ metadata:
   labels:
     {{- include "course-tutor.labels" . | nindent 4 }}
     app.kubernetes.io/component: agent-api
+    course-tutor.io/metrics: "true"
 spec:
   selector:
     {{- include "course-tutor.selectorLabels" . | nindent 4 }}
@@ -21,6 +22,7 @@ metadata:
   labels:
     {{- include "course-tutor.labels" . | nindent 4 }}
     app.kubernetes.io/component: practice-api
+    course-tutor.io/metrics: "true"
 spec:
   selector:
     {{- include "course-tutor.selectorLabels" . | nindent 4 }}

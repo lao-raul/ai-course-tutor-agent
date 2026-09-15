@@ -1,7 +1,6 @@
 # TASK-10 — GitHub Actions Continuous Integration
 
-**Status:** implementation complete / hosted verification pending; the expanded local
-equivalent passed on 2026-09-10, but a fully successful GitHub-hosted run requires commit/push
+**Status:** complete (2026-09-14)
 **Priority:** P0
 **Depends on:** TASK-05, TASK-08, TASK-09
 
@@ -52,5 +51,11 @@ Make every pull request prove code quality, image buildability, Kubernetes insta
 - `scripts/kind-negative-gates.sh` proves invalid values and an isolated broken-readiness
   Deployment fail, then removes the temporary negative-test resource.
 - Five images built and the chart installed successfully in `course-tutor-local`; see the
-  dated local verification record. Hosted status remains intentionally open until GitHub
-  reports every required job green.
+  dated local verification record. The later hosted run below closed the remaining gate.
+
+## Hosted completion evidence
+
+GitHub-hosted CI completed successfully for main commit
+`401ffcfdc3ad9110af8c968d958a86dbe6891858` in
+[run 34798686954](https://github.com/lao-raul/ai-course-tutor-agent/actions/runs/34798686954).
+This closes the hosted-verification item that remained after the local record.

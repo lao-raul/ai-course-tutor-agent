@@ -1,6 +1,6 @@
 # Delivery Task Index
 
-**Status:** in progress
+**Status:** complete for the defined v0.2 task set
 **Objective:** evolve the current prototype into a tested, Helm-packaged Kubernetes
 platform with two backend applications.
 
@@ -25,9 +25,9 @@ The existing `apps/api` path and `course_tutor_api` package name remain unchange
 | 7 | [TASK-07](task-07-practice-api-dummy-app.md) | complete (2026-09-10) | P1 | Second backend app with stable dummy contract | TASK-01, TASK-02 |
 | 8 | [TASK-08](task-08-container-packaging.md) | complete (2026-09-10) | P0 | Reproducible images for all workloads | TASK-02–04, TASK-07 |
 | 9 | [TASK-09](task-09-kubernetes-helm-deployment.md) | complete (2026-09-10) | P0 | Helm-based Kubernetes deployment | TASK-08 |
-| 10 | [TASK-10](task-10-github-actions-ci.md) | implementation complete / hosted verification pending | P0 | CI including ephemeral cluster deployment test | TASK-05, TASK-08, TASK-09 |
-| 11 | [TASK-11](task-11-github-actions-cd.md) | ready | P1 | GHCR publication and controlled cluster rollout | TASK-09, TASK-10 |
-| 12 | [TASK-12](task-12-observability-ha-and-release-readiness.md) | ready | P1 | SLOs, resilience, runbooks and release gate | TASK-06, TASK-09–11 |
+| 10 | [TASK-10](task-10-github-actions-ci.md) | complete (2026-09-14) | P0 | CI including ephemeral cluster deployment test | TASK-05, TASK-08, TASK-09 |
+| 11 | [TASK-11](task-11-github-actions-cd.md) | complete (2026-09-15) | P1 | GHCR publication and controlled cluster rollout | TASK-09, TASK-10 |
+| 12 | [TASK-12](task-12-observability-ha-and-release-readiness.md) | complete (2026-09-15) | P1 | SLOs, resilience, runbooks and release gate | TASK-06, TASK-09–11 |
 | 13 | [TASK-13](task-13-local-nas-and-lmstudio-integration.md) | complete (2026-09-13) | P0 | Real NAS/PVC and LM Studio integration for local Kubernetes | TASK-03, TASK-04, TASK-09 |
 | 14 | [TASK-14](task-14-course-bootstrap-and-e2e-validation.md) | complete (2026-09-13) | P0 | Idempotent Leeds course onboarding and browser-level validation | TASK-03, TASK-04, TASK-13 |
 | 15 | [TASK-15](task-15-rich-math-output-and-pdf-text-quality.md) | complete (2026-09-13) | P1 | Safe Markdown/TeX answers and page-accurate PDF citations | TASK-03, TASK-04, TASK-14 |
@@ -36,9 +36,10 @@ The existing `apps/api` path and `course_tutor_api` package name remain unchange
 Tasks may be implemented in separate branches and merged independently once their declared dependencies are present. A task is complete only when all acceptance criteria and verification steps in its file pass.
 
 **Progress:** TASK-01, TASK-02 and TASK-03 completed on 2026-09-09. TASK-04–09
-completed locally by 2026-09-10. TASK-10 implementation and its expanded
-local equivalent are complete, but hosted verification remains open until a pushed
-GitHub run passes every required job. TASK-11–12 remain open. TASK-13–14 completed
+completed locally by 2026-09-10. TASK-10 received successful hosted CI evidence on
+2026-09-14. TASK-11–12 completed their immutable-delivery contracts, telemetry,
+availability, restore and rollback validation on 2026-09-15; activating production CD
+still requires the target provider/identity/secret configuration. TASK-13–14 completed
 their dedicated Kind, real NAS, LM Studio, ingestion, publication, API and browser
 acceptance on 2026-09-13. TASK-15 completed the rich mathematical answer and PDF
 text-quality corrections discovered during that browser validation on 2026-09-13.

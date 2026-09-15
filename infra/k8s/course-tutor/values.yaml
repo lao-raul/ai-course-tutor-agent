@@ -5,6 +5,9 @@ global:
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
   buildRevision: unknown
+  releaseActor: unknown
+  releaseEnvironment: local
+  verificationResult: unverified
 
 backend:
   replicas: 1
@@ -31,6 +34,8 @@ backend:
 worker:
   enabled: true
   replicas: 1
+  revisionHistoryLimit: 3
+  metricsPort: 9100
   image:
     repository: course-tutor-worker
     tag: dev
@@ -84,6 +89,10 @@ config:
   memoryExtractionInterval: 2
   chatTurnRetentionDays: 30
   sessionSummaryRetentionDays: 90
+  metricsEnabled: true
+  metricsPort: 9100
+  otelEnabled: false
+  otelExporterOtlpEndpoint: ""
 
 secrets:
   existingSecret: ""
@@ -130,6 +139,13 @@ autoscaling:
   minReplicas: 2
   maxReplicas: 6
   targetCPUUtilizationPercentage: 70
+
+observability:
+  prometheusAnnotations: true
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}
 
 networkPolicy:
   enabled: false

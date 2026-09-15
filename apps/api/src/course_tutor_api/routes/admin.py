@@ -34,7 +34,7 @@ from course_tutor_api.dependencies import (
     get_session,
 )
 from course_tutor_contracts.enums import ContentVersionStatus, EducationLevel
-from course_tutor_shared import PIPELINE_VERSION
+from course_tutor_shared import PIPELINE_VERSION, record_content_version_operation
 
 
 async def _enforce_admin_rate_limit(
@@ -638,6 +638,7 @@ async def publish_version(
         course_run.active_content_version_id = version.id
     _audit(session, principal, "version.publish", "content_version", version.id)
     await session.commit()
+    record_content_version_operation("agent-api", "publish")
     return VersionActionResponse(
         version_id=version.id,
         active_version_id=version.id,
@@ -687,6 +688,7 @@ async def rollback_version(
         restored_version_id=str(previous.id),
     )
     await session.commit()
+    record_content_version_operation("agent-api", "rollback")
     return VersionActionResponse(
         version_id=current.id,
         active_version_id=previous.id,

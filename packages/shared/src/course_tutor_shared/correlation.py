@@ -54,7 +54,14 @@ class CorrelationIdMiddleware:
             await send(message)
 
         try:
-            await self.app(scope, receive, send_with_header)
+            from course_tutor_shared.tracing import server_span
+
+            with server_span(
+                "http.request",
+                dict(request.headers),
+                **{"http.request.method": scope.get("method", "UNKNOWN")},
+            ):
+                await self.app(scope, receive, send_with_header)
         finally:
             correlation_id_var.reset(token)
 

@@ -1,0 +1,155 @@
+name: Deploy or roll back immutable release
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Deploy a release SHA or roll back a Helm revision
+        required: true
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+      environment:
+        description: Protected GitHub Environment
+        required: true
+        type: environment
+      release_sha:
+        description: Full published Git SHA (deploy only)
+        required: false
+        type: string
+      rollback_revision:
+        description: Helm revision (rollback only)
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      action: {required: true, type: string}
+      environment: {required: true, type: string}
+      release_sha: {required: false, type: string}
+      rollback_revision: {required: false, type: string}
+    secrets:
+      KUBE_CONFIG_B64: {required: true}
+      HELM_VALUES_B64: {required: true}
+      SMOKE_BEARER_TOKEN: {required: true}
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+    env:
+      NAMESPACE: course-tutor
+      HELM_RELEASE: course-tutor
+      SMOKE_BEARER_TOKEN: ${{ secrets.SMOKE_BEARER_TOKEN }}
+      SMOKE_COURSE_ID: ${{ vars.SMOKE_COURSE_ID }}
+      SMOKE_QUERY: ${{ vars.SMOKE_QUERY }}
+      SMOKE_RAG_REQUIRED: ${{ vars.SMOKE_RAG_REQUIRED || 'true' }}
+    steps:
+      - name: Validate dispatch contract
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+          HELM_VALUES_B64: ${{ secrets.HELM_VALUES_B64 }}
+        run: |
+          if [[ "${{ inputs.action }}" == "deploy" ]]; then
+            [[ "${{ inputs.release_sha }}" =~ ^[a-f0-9]{40}$ ]]
+          else
+            [[ "${{ inputs.rollback_revision }}" =~ ^[1-9][0-9]*$ ]]
+          fi
+          test -n "${KUBE_CONFIG_B64}"
+          test -n "${HELM_VALUES_B64}"
+          test -n "${SMOKE_BEARER_TOKEN}"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.action == 'deploy' && inputs.release_sha || github.sha }}
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        if: inputs.action == 'deploy'
+      - name: Configure narrow cluster credential and environment values
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+          HELM_VALUES_B64: ${{ secrets.HELM_VALUES_B64 }}
+        run: |
+          umask 077
+          printf '%s' "${KUBE_CONFIG_B64}" | base64 --decode > "${RUNNER_TEMP}/kubeconfig"
+          printf '%s' "${HELM_VALUES_B64}" | base64 --decode > "${RUNNER_TEMP}/environment-values.yaml"
+          echo "KUBECONFIG=${RUNNER_TEMP}/kubeconfig" >> "${GITHUB_ENV}"
+          kubectl auth can-i get deployments -n "${NAMESPACE}"
+          kubectl auth can-i patch deployments -n "${NAMESPACE}"
+      - name: Authenticate to GHCR
+        if: inputs.action == 'deploy'
+        run: |
+          echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          echo "${{ github.token }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Resolve published release manifest and chart
+        if: inputs.action == 'deploy'
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          registry_prefix="${GITHUB_REPOSITORY,,}"
+          registry_prefix="ghcr.io/${registry_prefix}"
+          short_sha="${RELEASE_SHA:0:12}"
+          base_version="$(sed -n 's/^appVersion: "\([^"]*\)"/\1/p' infra/k8s/course-tutor/Chart.yaml)"
+          release_version="${base_version}-${short_sha}"
+          mkdir -p build/release/charts
+
+          resolve_digest() {
+            docker buildx imagetools inspect "$1:sha-${RELEASE_SHA}" \
+              | awk '/^Digest:/ {print $2; exit}'
+          }
+          agent_digest="$(resolve_digest "${registry_prefix}/course-tutor-agent")"
+          practice_digest="$(resolve_digest "${registry_prefix}/course-tutor-practice")"
+          worker_digest="$(resolve_digest "${registry_prefix}/course-tutor-worker")"
+          web_digest="$(resolve_digest "${registry_prefix}/course-tutor-web")"
+          for digest in "${agent_digest}" "${practice_digest}" "${worker_digest}" "${web_digest}"; do
+            [[ "${digest}" =~ ^sha256:[a-f0-9]{64}$ ]]
+          done
+
+          jq -n --arg release_sha "${RELEASE_SHA}" --arg release_version "${release_version}" \
+            --arg agent_repository "${registry_prefix}/course-tutor-agent" --arg agent_digest "${agent_digest}" \
+            --arg practice_repository "${registry_prefix}/course-tutor-practice" --arg practice_digest "${practice_digest}" \
+            --arg worker_repository "${registry_prefix}/course-tutor-worker" --arg worker_digest "${worker_digest}" \
+            --arg web_repository "${registry_prefix}/course-tutor-web" --arg web_digest "${web_digest}" \
+            '{release_sha: $release_sha, release_version: $release_version,
+              images: {agent: {repository: $agent_repository, digest: $agent_digest},
+                practice: {repository: $practice_repository, digest: $practice_digest},
+                worker: {repository: $worker_repository, digest: $worker_digest},
+                web: {repository: $web_repository, digest: $web_digest}}}' \
+            > build/release/release-manifest.json
+          helm pull "oci://${registry_prefix}/charts/course-tutor" \
+            --version "${release_version}" --destination build/release/charts
+      - name: Atomic deploy and post-deploy verification
+        if: inputs.action == 'deploy'
+        run: |
+          scripts/deploy-release.sh \
+            build/release/release-manifest.json \
+            "build/release/charts/course-tutor-$(jq -r .release_version build/release/release-manifest.json).tgz" \
+            "${RUNNER_TEMP}/environment-values.yaml" \
+            "${{ inputs.environment }}"
+      - name: Approved Helm rollback
+        if: inputs.action == 'rollback'
+        run: |
+          helm rollback "${HELM_RELEASE}" "${{ inputs.rollback_revision }}" \
+            --namespace "${NAMESPACE}" --wait --timeout 15m
+          scripts/post-deploy-smoke.sh
+      - name: Record deployment evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: deployment-${{ inputs.environment }}-${{ github.run_id }}
+          path: build/release
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "### ${{ inputs.action }} — ${{ inputs.environment }}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "Release SHA: \`${{ inputs.release_sha }}\`" >> "${GITHUB_STEP_SUMMARY}"
+          echo "Helm revision: \`${{ inputs.rollback_revision }}\`" >> "${GITHUB_STEP_SUMMARY}"
