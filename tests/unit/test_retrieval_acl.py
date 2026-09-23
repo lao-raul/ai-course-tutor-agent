@@ -69,3 +69,21 @@ async def test_acl_matrix_is_fail_closed(rank: AccessLabel, visible: set[str]) -
     assert str(version_id) in str(dumped)
     # MatchAny is present in the pre-ranking filter; exact content is verified by text.
     assert "access_label" in str(dumped)
+
+
+@pytest.mark.asyncio
+async def test_canonical_sources_scope_an_active_content_version() -> None:
+    client = _Qdrant()
+    service = DenseRetrievalService(client, _Embedder())  # type: ignore[arg-type]
+    source_ids = (uuid.uuid4(), uuid.uuid4())
+    await service.search(
+        "question",
+        tenant_id=uuid.uuid4(),
+        course_id=uuid.uuid4(),
+        content_version_id=uuid.uuid4(),
+        access_label=AccessLabel.ENROLLED,
+        source_ids=source_ids,
+    )
+    dumped = str(client.filter.model_dump(mode="json"))
+    assert all(str(source_id) in dumped for source_id in source_ids)
+    assert "source_id" in dumped

@@ -25,6 +25,26 @@ fakeLlm:
 
 internalDependencies:
   enabled: true
+  postgres:
+    persistence:
+      enabled: true
+      size: 20Gi
+  qdrant:
+    resources:
+      requests: {cpu: 250m, memory: 2Gi}
+      limits: {cpu: "4", memory: 4Gi}
+    persistence:
+      enabled: true
+      size: 30Gi
+    snapshots:
+      enabled: true
+      # For NAS backups set this to a separately provisioned NFS/SMB-backed PVC.
+      # Qdrant's active persistence volume above must remain block storage.
+      existingClaim: course-tutor-qdrant-snapshots
+      schedule: "0 3 * * *"
+  minio:
+    persistence:
+      enabled: false
 
 config:
   environment: local
@@ -32,6 +52,8 @@ config:
   llmChatModel: replace-with-loaded-chat-model
   llmEmbeddingModel: replace-with-loaded-embedding-model
   llmEmbeddingDimension: 1024
+  # ChinaTextbook is already an immutable read-only NAS source. Avoid a second PDF copy.
+  storeSourceArtifacts: false
 
 secrets:
   # Create this Secret out of band; never put its values in a Helm values file.

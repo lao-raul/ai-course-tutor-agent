@@ -25,8 +25,9 @@ class ObjectStoreError(RuntimeError):
 class MinioObjectStore:
     """Stores and retrieves ingestion artifacts from MinIO / S3-compatible storage.
 
-    Files are stored under ``artifacts/{tenant_id}/{course_id}/{source_document_id}/{filename}``.
-    The caller is responsible for computing the key.
+    Files are stored by SHA-256 under ``artifacts/sha256/{prefix}/{checksum}``.
+    The same immutable source is therefore uploaded once even when many courses or
+    ContentVersions reference it.
     """
 
     def __init__(
@@ -97,16 +98,23 @@ class MinioObjectStore:
         except botocore.exceptions.ClientError as exc:
             raise ObjectStoreError(f"bucket {self._bucket!r} is not accessible: {exc}") from exc
 
-    def artifact_key(self, tenant_id: str, course_id: str, source_id: str, filename: str) -> str:
-        """Build a canonical artifact key."""
-        return f"{ARTIFACT_PREFIX}{tenant_id}/{course_id}/{source_id}/{filename}"
+    def artifact_key(self, checksum: str) -> str:
+        """Build a content-addressed artifact key."""
+        if len(checksum) != 64 or any(char not in "0123456789abcdef" for char in checksum.lower()):
+            raise ValueError("checksum must be a 64-character SHA-256 hex digest")
+        normalized = checksum.lower()
+        return f"{ARTIFACT_PREFIX}sha256/{normalized[:2]}/{normalized}"
 
-    def upload_path(self, source_path: Path, tenant_id: str, course_id: str, source_id: str) -> str:
-        """Upload a local file and return its artifact key."""
-        key = self.artifact_key(tenant_id, course_id, source_id, source_path.name)
-        with open(source_path, "rb") as f:
-            data = f.read()
-        content_type = "application/octet-stream"
+    def upload_path(self, source_path: Path, checksum: str) -> str:
+        """Upload a local file once and return its content-addressed key."""
+        key = self.artifact_key(checksum)
+        try:
+            self._client.head_object(Bucket=self._bucket, Key=key)
+            return key
+        except botocore.exceptions.ClientError as exc:
+            code = str(exc.response.get("Error", {}).get("Code", ""))
+            if code not in {"404", "NoSuchKey", "NotFound"}:
+                raise ObjectStoreError(f"could not inspect key {key!r}: {exc}") from exc
         # Infer from extension.
         suffix = source_path.suffix.lower()
         MIME_MAP = {
@@ -117,17 +125,14 @@ class MinioObjectStore:
             ".txt": "text/plain; charset=utf-8",
         }
         content_type = MIME_MAP.get(suffix, "application/octet-stream")
-        return self._sync_put(key, data, content_type)
-
-    def _sync_put(self, key: str, data: bytes, content_type: str) -> str:
-        """Synchronous put (boto3 is sync-only; run in a thread pool)."""
         try:
-            self._client.put_object(
-                Bucket=self._bucket,
-                Key=key,
-                Body=data,
-                ContentType=content_type,
-            )
+            with open(source_path, "rb") as source:
+                self._client.put_object(
+                    Bucket=self._bucket,
+                    Key=key,
+                    Body=source,
+                    ContentType=content_type,
+                )
             return key
         except botocore.exceptions.ClientError as exc:
             raise ObjectStoreError(f"put failed for key {key!r}: {exc}") from exc

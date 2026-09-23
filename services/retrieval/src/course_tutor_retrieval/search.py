@@ -65,6 +65,7 @@ class DenseRetrievalService:
         content_version_id: uuid.UUID,
         access_label: AccessLabel,
         limit: int = 20,
+        source_ids: tuple[uuid.UUID, ...] | None = None,
     ) -> RetrievalResult:
         """Execute dense retrieval and return ranked candidates.
 
@@ -74,6 +75,10 @@ class DenseRetrievalService:
         3. Python-side keyword re-score
         """
         t0 = time.monotonic()
+        if source_ids == ():
+            return RetrievalResult(
+                candidates=[], total_indexed=0, timings_ms={"total_retrieval_ms": 0}
+            )
 
         query_vector = await self._embed.embed([query])
         t_embed = (time.monotonic() - t0) * 1000
@@ -90,6 +95,7 @@ class DenseRetrievalService:
                     content_version_id,
                     access_label,
                     content_scopes=query_scopes,
+                    source_ids=source_ids,
                 ),
                 limit=limit * 3,
                 with_payload=True,
@@ -144,7 +150,12 @@ class DenseRetrievalService:
 
         with span("qdrant.count", **{"db.system": "qdrant", "db.operation.name": "count"}):
             total = await asyncio.to_thread(
-                self._count_indexed, tenant_id, course_id, content_version_id, access_label
+                self._count_indexed,
+                tenant_id,
+                course_id,
+                content_version_id,
+                access_label,
+                source_ids,
             )
 
         return RetrievalResult(
@@ -164,6 +175,7 @@ class DenseRetrievalService:
         content_version_id: uuid.UUID,
         access_label: AccessLabel,
         content_scopes: tuple[str, ...] = (),
+        source_ids: tuple[uuid.UUID, ...] | None = None,
     ) -> Filter:
         allowed_labels = [
             label.value
@@ -173,11 +185,21 @@ class DenseRetrievalService:
         conditions: list[_FilterCondition] = [
             FieldCondition(key="tenant_id", match=MatchValue(value=str(tenant_id))),
             FieldCondition(key="course_id", match=MatchValue(value=str(course_id))),
-            FieldCondition(
-                key="content_version_id", match=MatchValue(value=str(content_version_id))
-            ),
             FieldCondition(key="access_label", match=MatchAny(any=allowed_labels)),
         ]
+        if source_ids is None:
+            # Backward-compatible filter for points created before TASK-17.
+            conditions.append(
+                FieldCondition(
+                    key="content_version_id", match=MatchValue(value=str(content_version_id))
+                )
+            )
+        else:
+            conditions.append(
+                FieldCondition(
+                    key="source_id", match=MatchAny(any=[str(item) for item in source_ids])
+                )
+            )
         if content_scopes:
             conditions.append(
                 FieldCondition(
@@ -193,13 +215,18 @@ class DenseRetrievalService:
         course_id: uuid.UUID,
         content_version_id: uuid.UUID,
         access_label: AccessLabel,
+        source_ids: tuple[uuid.UUID, ...] | None = None,
     ) -> int:
         """Approximate count of indexed points for a content version."""
         try:
             result = self._client.count(
                 collection_name=COLLECTION_NAME,
                 count_filter=self._build_filter(
-                    tenant_id, course_id, content_version_id, access_label
+                    tenant_id,
+                    course_id,
+                    content_version_id,
+                    access_label,
+                    source_ids=source_ids,
                 ),
                 exact=True,
             )

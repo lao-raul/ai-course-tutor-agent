@@ -213,6 +213,12 @@ unresolved application architecture choice.
 - Production startup rejects local/disabled auth and placeholder secrets.
 - OIDC/JWT claims are mapped to tenant/user; course membership is resolved server-side.
 - PostgreSQL RPO 24 h/RTO 4 h; Qdrant/object projections are snapshotted but remain rebuildable.
+- Built-in state stores use explicit PVCs outside disposable CI. Qdrant active segments
+  require SSD/block storage, while a separate snapshot PVC may target NAS.
+- Source artifacts use SHA-256 keys and unchanged sources are associated with multiple
+  immutable ContentVersions, so their Chunk rows and Qdrant points are stored once.
+- Large K-12 catalogs may disable automatic ingestion at registration and activate
+  selected courses through the existing manual ingestion endpoint.
 - Agent chat availability includes inference availability; a second compatible inference node is required to remove the single-node dependency.
 - API workloads are stateless; workers are idempotent and lock claimed jobs.
 - Logs/traces omit prompt/source/memory values by default.

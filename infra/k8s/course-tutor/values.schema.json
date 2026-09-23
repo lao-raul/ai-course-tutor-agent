@@ -39,6 +39,7 @@
         "llmChatModel": {"type": "string", "minLength": 1},
         "llmEmbeddingModel": {"type": "string", "minLength": 1},
         "llmEmbeddingDimension": {"type": "integer", "minimum": 1},
+        "storeSourceArtifacts": {"type": "boolean"},
         "metricsEnabled": {"type": "boolean"},
         "metricsPort": {"type": "integer", "minimum": 1024, "maximum": 65535},
         "otelEnabled": {"type": "boolean"},
@@ -84,6 +85,38 @@
         "mountPath": {"type": "string", "pattern": "^/"}
       }
     },
+    "internalDependencies": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "postgres": {"$ref": "#/definitions/persistentDependency"},
+        "redis": {"type": "object", "properties": {"image": {"type": "string"}}},
+        "qdrant": {
+          "allOf": [
+            {"$ref": "#/definitions/persistentDependency"},
+            {
+              "type": "object",
+              "properties": {
+                "resources": {"type": "object"},
+                "snapshots": {
+                  "type": "object",
+                  "required": ["enabled", "existingClaim", "size", "schedule", "image"],
+                  "properties": {
+                    "enabled": {"type": "boolean"},
+                    "existingClaim": {"type": "string"},
+                    "storageClassName": {"type": "string"},
+                    "size": {"type": "string", "minLength": 1},
+                    "schedule": {"type": "string", "minLength": 1},
+                    "image": {"type": "string", "minLength": 1}
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "minio": {"$ref": "#/definitions/persistentDependency"}
+      }
+    },
     "observability": {
       "type": "object",
       "properties": {
@@ -122,6 +155,24 @@
         {"$ref": "#/definitions/workload"},
         {"type": "object", "properties": {"enabled": {"type": "boolean"}}}
       ]
+    },
+    "persistence": {
+      "type": "object",
+      "required": ["enabled", "existingClaim", "storageClassName", "size"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "existingClaim": {"type": "string"},
+        "storageClassName": {"type": "string"},
+        "size": {"type": "string", "minLength": 1}
+      }
+    },
+    "persistentDependency": {
+      "type": "object",
+      "required": ["image", "persistence"],
+      "properties": {
+        "image": {"type": "string", "minLength": 1},
+        "persistence": {"$ref": "#/definitions/persistence"}
+      }
     }
   }
 }

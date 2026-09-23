@@ -47,6 +47,7 @@
 | NFR-7 | TASK-08, TASK-09 | agentHealth, practiceHealth | Helm lint/template/schema/package and local Helm test | implemented |
 | NFR-8 | TASK-05, TASK-08, TASK-09, TASK-10 | agentHealth, practiceHealth, generatePracticeExercises, streamCourseChat | local Kind smoke/negative gates and hosted main run 34798686954 | implemented |
 | NFR-9 | TASK-09, TASK-11, TASK-12 | agentReady, practiceReady | exact-digest release/deploy gate plus 2026-09-15 automatic/manual Helm rollback drill | implemented |
+| NFR-10 | TASK-17 | createCourse, createCourseIngestion, streamCourseChat | persistent Helm render, content-addressed object test, cross-version membership integration test and source-scoped retrieval test | implemented |
 
 ## Baseline verification
 

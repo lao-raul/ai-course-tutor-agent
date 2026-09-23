@@ -11,7 +11,7 @@ import asyncpg
 
 async def wait() -> None:
     dsn = os.environ["POSTGRES_DSN"].replace("postgresql+asyncpg://", "postgresql://")
-    expected = os.environ.get("EXPECTED_ALEMBIC_REVISION", "a41c9e7d2b60")
+    expected = os.environ.get("EXPECTED_ALEMBIC_REVISION", "f31b8d02c913")
     deadline = time.monotonic() + float(os.environ.get("MIGRATION_WAIT_SECONDS", "180"))
     last_error = "migration has not started"
     while time.monotonic() < deadline:

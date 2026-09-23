@@ -7,7 +7,7 @@ from typing import Any
 
 import structlog
 from qdrant_client import QdrantClient
-from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
+from qdrant_client.models import FieldCondition, Filter, MatchAny, PointStruct
 
 from course_tutor_retrieval.collection import COLLECTION_NAME, ensure_collection
 from course_tutor_retrieval.scope import extract_content_scopes
@@ -104,18 +104,24 @@ class EmbeddingIndexer:
         logger.info("qdrant_chunks_indexed", count=len(points))
         return len(points)
 
-    async def delete_by_version(self, version_id: uuid.UUID) -> None:
-        """Delete all vectors for a content version (used before re-index)."""
+    async def delete_sources(self, source_ids: list[uuid.UUID]) -> None:
+        """Delete vectors only after their canonical sources become unreferenced.
+
+        ContentVersions share Qdrant points through source membership, so deleting by
+        the point's origin version would also remove data used by newer versions.
+        """
+        if not source_ids:
+            return
         with span("qdrant.delete", **{"db.system": "qdrant", "db.operation.name": "delete"}):
             self._client.delete(
                 collection_name=COLLECTION_NAME,
                 points_selector=Filter(
                     must=[
                         FieldCondition(
-                            key="content_version_id",
-                            match=MatchValue(value=str(version_id)),
+                            key="source_id",
+                            match=MatchAny(any=[str(source_id) for source_id in source_ids]),
                         )
                     ]
                 ),
             )
-        logger.info("qdrant_version_deleted", version_id=str(version_id))
+        logger.info("qdrant_sources_deleted", source_ids=[str(item) for item in source_ids])

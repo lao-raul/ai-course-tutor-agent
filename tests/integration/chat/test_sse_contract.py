@@ -24,17 +24,27 @@ from course_tutor_shared.config import Environment
 
 
 class _Session:
-    def __init__(self, tenant_id: uuid.UUID, course_id: uuid.UUID, version_id: uuid.UUID) -> None:
+    def __init__(
+        self,
+        tenant_id: uuid.UUID,
+        course_id: uuid.UUID,
+        version_id: uuid.UUID,
+        source_id: uuid.UUID,
+    ) -> None:
         self.course = SimpleNamespace(
             id=course_id,
             tenant_id=tenant_id,
             active_content_version_id=version_id,
         )
         self.version = SimpleNamespace(id=version_id, status=ContentVersionStatus.PUBLISHED)
+        self.source_id = source_id
         self.traces: list[object] = []
 
     async def get(self, model: object, _identifier: object) -> object:
         return self.course if model is Course else self.version if model is ContentVersion else None
+
+    async def execute(self, _statement: object) -> object:
+        return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [self.source_id]))
 
     def add(self, value: object) -> None:
         self.traces.append(value)
@@ -96,7 +106,7 @@ async def test_chat_sse_contract_orders_visible_tokens_citations_and_done(monkey
         chunk_class=ChunkClass.CONTENT,
         score=0.91,
     )
-    session = _Session(tenant_id, course_id, version_id)
+    session = _Session(tenant_id, course_id, version_id, chunk.source_id)
     settings = Settings(environment=Environment.TEST)
     dependencies = SimpleNamespace(settings=settings, redis=_Redis(), llm=_LLM(chunk.chunk_id))
     principal = Principal(

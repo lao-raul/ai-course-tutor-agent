@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from course_tutor_api.auth import Principal, get_current_principal
-from course_tutor_api.db import ContentVersion, Course, SourceDocument
+from course_tutor_api.db import ContentVersion, ContentVersionSource, Course, SourceDocument
 from course_tutor_api.dependencies import get_session
 from course_tutor_contracts.enums import AccessLabel
 
@@ -86,7 +86,8 @@ async def get_course_source(
     """Return metadata for one source in the authorized active content version."""
     result = await session.execute(
         select(SourceDocument)
-        .join(ContentVersion, SourceDocument.version_id == ContentVersion.id)
+        .join(ContentVersionSource, ContentVersionSource.source_id == SourceDocument.id)
+        .join(ContentVersion, ContentVersionSource.version_id == ContentVersion.id)
         .join(Course, ContentVersion.course_id == Course.id)
         .where(
             SourceDocument.id == source_id,

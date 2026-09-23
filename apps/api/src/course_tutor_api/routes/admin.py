@@ -19,6 +19,7 @@ from course_tutor_api.auth import Principal, get_current_principal, require_cour
 from course_tutor_api.db import (
     AuditEvent,
     ContentVersion,
+    ContentVersionSource,
     Course,
     CourseRun,
     OutboxEvent,
@@ -61,6 +62,7 @@ class CourseRegistrationRequest(BaseModel):
     run_key: str = Field(..., min_length=1, max_length=128)
     source_path: str = Field(..., min_length=1)
     scan_interval_seconds: int = Field(default=900, ge=30)
+    automatic_ingestion_enabled: bool = True
 
     model_config = {"extra": "forbid"}
 
@@ -96,6 +98,7 @@ class CourseRegistrationDetailResponse(CourseRegistrationResponse, frozen=True):
     level: str
     run_key: str
     scan_interval_seconds: int
+    automatic_ingestion_enabled: bool
 
 
 class IngestionQueuedResponse(BaseModel, frozen=True):
@@ -280,6 +283,7 @@ async def register_course(
         last_scanned_at=None,
         last_snapshot_hash=None,
         scan_interval_seconds=body.scan_interval_seconds,
+        automatic_ingestion_enabled=body.automatic_ingestion_enabled,
     )
     course = Course(
         id=uuid.uuid4(),
@@ -357,6 +361,7 @@ async def get_course_registration(
         level=course.level.value,
         run_key=course_run.run_key,
         scan_interval_seconds=source_root.scan_interval_seconds,
+        automatic_ingestion_enabled=source_root.automatic_ingestion_enabled,
     )
 
 
@@ -565,13 +570,14 @@ async def list_sources(
         raise HTTPException(status_code=404, detail="content version not found")
     result = await session.execute(
         select(SourceDocument)
-        .where(SourceDocument.version_id == selected_version)
+        .join(ContentVersionSource, ContentVersionSource.source_id == SourceDocument.id)
+        .where(ContentVersionSource.version_id == selected_version)
         .order_by(SourceDocument.relative_path)
     )
     return [
         SourceStatusResponse(
             id=item.id,
-            version_id=item.version_id,
+            version_id=selected_version,
             relative_path=item.relative_path,
             checksum=item.checksum,
             extraction_status=item.extraction_status.value,

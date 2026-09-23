@@ -35,6 +35,7 @@ class CourseMapping:
     run_key: str
     source_path: str
     scan_interval_seconds: int
+    automatic_ingestion_enabled: bool
 
 
 class ApiClient:
@@ -116,6 +117,7 @@ def load_mapping(path: Path) -> CourseMapping:
         run_key=str(_required(course, "run_key", "course")),
         source_path=source_path,
         scan_interval_seconds=int(course.get("scan_interval_seconds", 900)),
+        automatic_ingestion_enabled=bool(course.get("automatic_ingestion_enabled", True)),
     )
 
 
@@ -175,6 +177,7 @@ def ensure_registration(client: ApiClient, mapping: CourseMapping) -> dict[str, 
                 "run_key": mapping.run_key,
                 "source_path": mapping.source_path,
                 "scan_interval_seconds": mapping.scan_interval_seconds,
+                "automatic_ingestion_enabled": mapping.automatic_ingestion_enabled,
             },
         )
         course_id = detail["course_id"]

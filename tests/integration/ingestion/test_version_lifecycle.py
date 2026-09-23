@@ -7,13 +7,15 @@ from pathlib import Path
 
 import pytest
 from course_tutor_ingestion.embed_jobs import _process_embed_event
-from course_tutor_ingestion.jobs import IngestionJob, run_pending_jobs
-from sqlalchemy import select
+from course_tutor_ingestion.jobs import IngestionJob, enqueue_due_scans, run_pending_jobs
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from course_tutor_api.auth import Principal
 from course_tutor_api.db import (
+    Chunk,
     ContentVersion,
+    ContentVersionSource,
     Course,
     CourseRun,
     OutboxEvent,
@@ -108,6 +110,7 @@ async def test_registration_is_separate_from_ingestion(
             level=EducationLevel.POSTGRADUATE,
             run_key="2026-s1",
             source_path=str(tmp_path),
+            automatic_ingestion_enabled=False,
         ),
         db_session,
         principal,
@@ -118,8 +121,10 @@ async def test_registration_is_separate_from_ingestion(
     assert registration.course_run_id == course.course_run_id
     assert registration.source_root_id == course.source_root_id
     assert registration.resolved_path == str(tmp_path)
+    assert registration.automatic_ingestion_enabled is False
     assert await list_versions(course.course_id, db_session, principal) == []
     assert (await db_session.execute(select(ContentVersion))).first() is None
+    assert await enqueue_due_scans(db_session) == 0
 
     queued = await queue_ingestion(course.course_id, db_session, principal, None)
     assert queued.version_id is None
@@ -228,9 +233,19 @@ async def test_add_edit_delete_rename_build_immutable_versions(
     assert [version.sequence for version in versions if version] == [1, 2, 3, 4, 5]
     assert (await db_session.get(Course, course_id)).active_content_version_id == first.id  # type: ignore[union-attr]
     latest_sources = await db_session.execute(
-        select(SourceDocument.relative_path).where(SourceDocument.version_id == renamed.id)  # type: ignore[union-attr]
+        select(SourceDocument.relative_path)
+        .join(ContentVersionSource, ContentVersionSource.source_id == SourceDocument.id)
+        .where(ContentVersionSource.version_id == renamed.id)  # type: ignore[union-attr]
     )
     assert set(latest_sources.scalars()) == {"renamed.md"}
+    canonical_sources = await db_session.execute(select(func.count(SourceDocument.id)))
+    version_memberships = await db_session.execute(
+        select(func.count(ContentVersionSource.source_id))
+    )
+    canonical_chunks = await db_session.execute(select(func.count(Chunk.id)))
+    assert canonical_sources.scalar_one() == 4
+    assert version_memberships.scalar_one() == 7
+    assert canonical_chunks.scalar_one() == 7
 
     # No source change creates no sixth content version.
     unchanged_event, unchanged = await _scan(

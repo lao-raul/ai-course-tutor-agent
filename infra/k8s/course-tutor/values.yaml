@@ -81,11 +81,13 @@ config:
   qdrantUrl: http://course-tutor-qdrant:6333
   minioEndpoint: http://course-tutor-minio:9000
   minioBucket: course-tutor-artifacts
+  # Set false for immutable read-only NAS sources to avoid storing a second PDF copy.
+  storeSourceArtifacts: true
   llmBaseUrl: http://course-tutor-fake-llm:8082/v1
   llmChatModel: ci-chat
   llmEmbeddingModel: ci-embedding
   llmEmbeddingDimension: 1024
-  expectedAlembicRevision: a41c9e7d2b60
+  expectedAlembicRevision: f31b8d02c913
   memoryExtractionInterval: 2
   chatTurnRetentionDays: 30
   sessionSummaryRetentionDays: 90
@@ -119,12 +121,25 @@ internalDependencies:
   enabled: false
   postgres:
     image: postgres:16-alpine
+    persistence: {enabled: false, existingClaim: "", storageClassName: "", size: 20Gi}
   redis:
     image: redis:7-alpine
   qdrant:
     image: qdrant/qdrant:v1.12.5
+    resources:
+      requests: {cpu: 100m, memory: 512Mi}
+      limits: {cpu: "2", memory: 4Gi}
+    persistence: {enabled: false, existingClaim: "", storageClassName: "", size: 20Gi}
+    snapshots:
+      enabled: false
+      existingClaim: ""
+      storageClassName: ""
+      size: 20Gi
+      schedule: "0 3 * * *"
+      image: curlimages/curl:8.10.1
   minio:
     image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    persistence: {enabled: false, existingClaim: "", storageClassName: "", size: 100Gi}
 
 serviceAccount:
   create: true

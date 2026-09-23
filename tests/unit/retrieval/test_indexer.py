@@ -24,11 +24,16 @@ class _RecordingQdrant:
     def __init__(self) -> None:
         self.upsert_sizes: list[int] = []
         self.points: list[object] = []
+        self.delete_selectors: list[object] = []
 
     def upsert(self, *, collection_name: str, points: list[object]) -> None:
         assert collection_name
         self.upsert_sizes.append(len(points))
         self.points.extend(points)
+
+    def delete(self, *, collection_name: str, points_selector: object) -> None:
+        assert collection_name
+        self.delete_selectors.append(points_selector)
 
 
 def _chunks(count: int) -> list[dict[str, object]]:
@@ -90,3 +95,19 @@ async def test_indexer_rejects_partial_embedding_response(
             _chunks(32),
             {"id": uuid.uuid4(), "course_id": uuid.uuid4(), "tenant_id": uuid.uuid4()},
         )
+
+
+@pytest.mark.asyncio
+async def test_indexer_deletes_only_explicit_orphan_sources() -> None:
+    qdrant = _RecordingQdrant()
+    indexer = EmbeddingIndexer(qdrant, _RecordingEmbedder())  # type: ignore[arg-type]
+    source_ids = [uuid.uuid4(), uuid.uuid4()]
+
+    await indexer.delete_sources([])
+    await indexer.delete_sources(source_ids)
+
+    assert len(qdrant.delete_selectors) == 1
+    selector = qdrant.delete_selectors[0]
+    condition = selector.must[0]  # type: ignore[union-attr]
+    assert condition.key == "source_id"
+    assert condition.match.any == [str(item) for item in source_ids]

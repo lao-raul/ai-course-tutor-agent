@@ -233,6 +233,11 @@ curl http://localhost:8000/readyz
 
 应用不直接连接 SMB URL。先通过操作系统或 Kubernetes SMB CSI 将目录挂载为只读 POSIX 路径，再配置 `COURSE_SOURCE_PATH`。实际课程 SourceRoot 必须通过管理 API 显式注册；机器路径只允许出现在被忽略的 `.local/` 配置中。
 
+大规模小学、初中和高中教材使用分层存储：教材原件及备份保留在 NAS，
+PostgreSQL/Qdrant 活跃数据使用持久化 SSD/块存储。不要把 SMB/NFS 直接作为
+Qdrant 的 `/qdrant/storage`。容量规划、按需导入及快照配置见
+[`docs/runbooks/k12-storage-capacity.md`](docs/runbooks/k12-storage-capacity.md)。
+
 真实 NAS、LM Studio 和课程注册流程见 [local-real deployment](docs/runbooks/local-real-deployment.md) 与 [course bootstrap](docs/runbooks/course-bootstrap.md)。
 
 不要提交 `.env`、SMB 凭据、课程原文、kubeconfig 或真实学习者数据。
