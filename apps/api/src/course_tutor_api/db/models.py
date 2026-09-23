@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Enum,
     Float,
@@ -91,6 +92,7 @@ class SourceRoot(Base, TimestampMixin):
     last_scanned_at: Mapped[datetime | None] = mapped_column()
     last_snapshot_hash: Mapped[str | None] = mapped_column(String(64))
     scan_interval_seconds: Mapped[int] = mapped_column(Integer, default=900)
+    automatic_ingestion_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class Course(Base, TimestampMixin):
@@ -177,6 +179,24 @@ class SourceDocument(Base, TimestampMixin):
     artifact_key: Mapped[str | None] = mapped_column(Text)
     # Week/topic and other instructor metadata preserved from the source tree.
     source_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+
+class ContentVersionSource(Base):
+    """Associate immutable versions with canonical, content-addressed sources.
+
+    An unchanged file is represented by one SourceDocument/Chunk graph and may be
+    referenced by many ContentVersions. This keeps version publication immutable
+    without duplicating textbook text and vectors after an unrelated file changes.
+    """
+
+    __tablename__ = "content_version_sources"
+
+    version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("content_versions.id", ondelete="CASCADE"), primary_key=True
+    )
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("source_documents.id", ondelete="CASCADE"), primary_key=True
+    )
 
 
 class Chunk(Base, TimestampMixin):

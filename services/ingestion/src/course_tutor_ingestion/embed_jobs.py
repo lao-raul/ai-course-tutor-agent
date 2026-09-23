@@ -103,7 +103,13 @@ async def _process_embed_event(
     embedding_model_version: str,
 ) -> EmbeddingStats:
     """Process a single embedding event for one content version."""
-    from course_tutor_api.db import Chunk, ContentVersion, Course, SourceDocument
+    from course_tutor_api.db import (
+        Chunk,
+        ContentVersion,
+        ContentVersionSource,
+        Course,
+        SourceDocument,
+    )
 
     payload = event.payload
     version_id = uuid.UUID(payload["version_id"])
@@ -144,8 +150,9 @@ async def _process_embed_event(
                 SourceDocument.access_label,
             )
             .join(SourceDocument)
+            .join(ContentVersionSource, ContentVersionSource.source_id == SourceDocument.id)
             .where(
-                SourceDocument.version_id == version_id,
+                ContentVersionSource.version_id == version_id,
                 (Chunk.embedding_model_version.is_(None))
                 | (Chunk.embedding_model_version == "pending")
                 | (Chunk.embedding_model_version != embedding_model_version),

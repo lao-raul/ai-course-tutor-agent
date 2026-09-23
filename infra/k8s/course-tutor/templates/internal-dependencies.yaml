@@ -44,7 +44,14 @@ spec:
             allowPrivilegeEscalation: false
             capabilities: {drop: ["ALL"]}
           volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
-      volumes: [{name: data, emptyDir: {}}]
+      volumes:
+        - name: data
+          {{- if .Values.internalDependencies.postgres.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-postgres-data" (include "course-tutor.fullname" .)) .Values.internalDependencies.postgres.persistence.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -137,8 +144,7 @@ spec:
           ports: [{name: http, containerPort: 6333}]
           readinessProbe: {httpGet: {path: /readyz, port: http}}
           resources:
-            requests: {cpu: 50m, memory: 128Mi}
-            limits: {cpu: 500m, memory: 512Mi}
+            {{- toYaml .Values.internalDependencies.qdrant.resources | nindent 12 }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: {drop: ["ALL"]}
@@ -146,8 +152,20 @@ spec:
             - {name: data, mountPath: /qdrant/storage}
             - {name: snapshots, mountPath: /qdrant/snapshots}
       volumes:
-        - {name: data, emptyDir: {}}
-        - {name: snapshots, emptyDir: {}}
+        - name: data
+          {{- if .Values.internalDependencies.qdrant.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-qdrant-data" (include "course-tutor.fullname" .)) .Values.internalDependencies.qdrant.persistence.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: snapshots
+          {{- if .Values.internalDependencies.qdrant.snapshots.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-qdrant-snapshots" (include "course-tutor.fullname" .)) .Values.internalDependencies.qdrant.snapshots.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -203,7 +221,14 @@ spec:
             allowPrivilegeEscalation: false
             capabilities: {drop: ["ALL"]}
           volumeMounts: [{name: data, mountPath: /data}]
-      volumes: [{name: data, emptyDir: {}}]
+      volumes:
+        - name: data
+          {{- if .Values.internalDependencies.minio.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-minio-data" (include "course-tutor.fullname" .)) .Values.internalDependencies.minio.persistence.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
 ---
 apiVersion: v1
 kind: Service

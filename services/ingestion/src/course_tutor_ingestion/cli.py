@@ -12,9 +12,11 @@ from __future__ import annotations
 import asyncio
 import signal
 import sys
+from typing import TYPE_CHECKING
 
 from course_tutor_shared import (
     OUTBOX_DEPTH,
+    Settings,
     configure_logging,
     configure_tracing,
     get_logger,
@@ -24,6 +26,25 @@ from course_tutor_shared import (
 
 configure_logging()
 logger = get_logger(__name__)
+
+if TYPE_CHECKING:
+    from course_tutor_ingestion.object_store import MinioObjectStore
+
+
+async def _configured_object_store(settings: Settings) -> MinioObjectStore | None:
+    """Create artifact storage only when source replication is explicitly enabled."""
+    if not settings.store_source_artifacts:
+        return None
+    from course_tutor_ingestion.object_store import MinioObjectStore
+
+    object_store = MinioObjectStore(
+        endpoint=settings.minio_endpoint,
+        access_key=settings.minio_access_key,
+        secret_key=settings.minio_secret_key.get_secret_value(),
+        bucket=settings.minio_bucket,
+    )
+    await asyncio.to_thread(object_store.ensure_bucket)
+    return object_store
 
 
 async def main() -> None:
@@ -37,25 +58,18 @@ async def main() -> None:
         run_memory_retention_cleanup,
         run_pending_memory_purges,
     )
-    from course_tutor_ingestion.object_store import MinioObjectStore
 
     settings = get_settings()
     configure_tracing(settings)
     if settings.metrics_enabled:
         start_metrics_server(settings.metrics_port)
     deps = get_dependencies(settings)
-    object_store = MinioObjectStore(
-        endpoint=settings.minio_endpoint,
-        access_key=settings.minio_access_key,
-        secret_key=settings.minio_secret_key.get_secret_value(),
-        bucket=settings.minio_bucket,
-    )
-    await asyncio.to_thread(object_store.ensure_bucket)
+    object_store = await _configured_object_store(settings)
 
     logger.info(
         "ingestion_worker_start",
         poll_interval=settings.ingestion_poll_interval_seconds,
-        bucket=settings.minio_bucket,
+        artifact_storage="content-addressed" if object_store is not None else "source-root-only",
     )
 
     running = True

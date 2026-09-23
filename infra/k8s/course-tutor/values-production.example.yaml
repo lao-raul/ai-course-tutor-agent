@@ -53,6 +53,7 @@ config:
   redisUrl: rediss://redis.example:6379/0
   qdrantUrl: https://qdrant.example
   minioEndpoint: https://objects.example
+  storeSourceArtifacts: false
   llmBaseUrl: https://llm.example/v1
 
 secrets:

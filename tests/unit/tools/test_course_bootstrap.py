@@ -45,6 +45,7 @@ def mapping() -> CourseMapping:
         run_key="2026-s1",
         source_path="/data/content/test",
         scan_interval_seconds=900,
+        automatic_ingestion_enabled=True,
     )
 
 

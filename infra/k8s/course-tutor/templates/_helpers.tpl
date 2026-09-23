@@ -94,6 +94,8 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   value: {{ .Values.config.minioEndpoint | quote }}
 - name: MINIO_BUCKET
   value: {{ .Values.config.minioBucket | quote }}
+- name: STORE_SOURCE_ARTIFACTS
+  value: {{ .Values.config.storeSourceArtifacts | quote }}
 - name: LLM_BASE_URL
   value: {{ .Values.config.llmBaseUrl | quote }}
 - name: LLM_CHAT_MODEL

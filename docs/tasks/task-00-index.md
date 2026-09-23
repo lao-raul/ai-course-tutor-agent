@@ -32,6 +32,7 @@ The existing `apps/api` path and `course_tutor_api` package name remain unchange
 | 14 | [TASK-14](task-14-course-bootstrap-and-e2e-validation.md) | complete (2026-09-13) | P0 | Idempotent Leeds course onboarding and browser-level validation | TASK-03, TASK-04, TASK-13 |
 | 15 | [TASK-15](task-15-rich-math-output-and-pdf-text-quality.md) | complete (2026-09-13) | P1 | Safe Markdown/TeX answers and page-accurate PDF citations | TASK-03, TASK-04, TASK-14 |
 | 16 | [TASK-16](task-16-typed-unit-scope-and-summary-retrieval.md) | complete (2026-09-13) | P0 | Typed Unit/Week scope filtering and reliable scoped summaries | TASK-04, TASK-14 |
+| 17 | [TASK-17](task-17-persistent-k12-storage-and-deduplication.md) | complete (2026-09-16) | P0 | Persistent state, NAS snapshots and content-addressed K-12 ingestion | TASK-03, TASK-09, TASK-12, TASK-16 |
 
 Tasks may be implemented in separate branches and merged independently once their declared dependencies are present. A task is complete only when all acceptance criteria and verification steps in its file pass.
 
@@ -44,7 +45,9 @@ their dedicated Kind, real NAS, LM Studio, ingestion, publication, API and brows
 acceptance on 2026-09-13. TASK-15 completed the rich mathematical answer and PDF
 text-quality corrections discovered during that browser validation on 2026-09-13.
 TASK-16 corrected the Unit 2 versus Week 2 retrieval collision and passed real-course
-summary and regression testing on 2026-09-13.
+summary and regression testing on 2026-09-13. TASK-17 completed persistent stateful
+Helm storage, NAS-backed Qdrant snapshots, staged ingestion and content-addressed
+cross-version source/vector reuse on 2026-09-16.
 
 ## Global rules
 

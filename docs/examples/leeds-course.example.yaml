@@ -13,6 +13,7 @@ course:
   run_key: 2026-example
   source_path: /data/content/example-module
   scan_interval_seconds: 900
+  automatic_ingestion_enabled: true
 e2e:
   in_scope_question: What concept is introduced in the first lecture?
   out_of_scope_question: What is today's weather on Mars?

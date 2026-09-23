@@ -91,6 +91,7 @@ class Settings(BaseSettings):
     minio_access_key: str = "course-tutor"
     minio_secret_key: SecretStr = SecretStr("change-me-in-production")
     minio_bucket: str = "course-tutor-artifacts"
+    store_source_artifacts: bool = True
 
     # --- Background ingestion --------------------------------------------------
     ingestion_scan_interval_seconds: int = Field(default=900, ge=30)

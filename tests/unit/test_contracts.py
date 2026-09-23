@@ -67,6 +67,7 @@ def test_all_tables_are_registered() -> None:
         "chat_sessions",
         "chat_turns",
         "chunks",
+        "content_version_sources",
         "content_versions",
         "courses",
         "course_runs",

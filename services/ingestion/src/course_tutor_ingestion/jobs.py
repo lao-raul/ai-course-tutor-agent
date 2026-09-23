@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from course_tutor_api.db import Chunk as OrmChunk
 from course_tutor_api.db import (
     ContentVersion,
+    ContentVersionSource,
     Course,
     CourseRun,
     OutboxEvent,
@@ -115,6 +116,7 @@ class IngestionStats:
     files_discovered: int = 0
     files_unchanged: int = 0
     files_processed: int = 0
+    files_reused: int = 0
     files_quarantined: int = 0
     chunks_written: int = 0
     no_change: bool = False
@@ -263,13 +265,21 @@ class IngestionJob:
         self, entry: FileEntry, version: ContentVersion, course: Course
     ) -> None:
         result = await self._session.execute(
-            select(SourceDocument).where(
-                SourceDocument.version_id == version.id,
+            select(SourceDocument)
+            .join(ContentVersion, SourceDocument.version_id == ContentVersion.id)
+            .where(
+                ContentVersion.course_id == course.id,
+                ContentVersion.pipeline_version == self._pipeline_version,
                 SourceDocument.relative_path == entry.relative_path,
+                SourceDocument.checksum == entry.checksum,
             )
+            .order_by(SourceDocument.created_at.desc())
+            .limit(1)
         )
-        if result.scalar_one_or_none() is not None:
-            self._stats.files_unchanged += 1
+        reusable = result.scalar_one_or_none()
+        if reusable is not None:
+            self._session.add(ContentVersionSource(version_id=version.id, source_id=reusable.id))
+            self._stats.files_reused += 1
             return
 
         parsed: ParsedDocument = parse(entry, entry.absolute_path)
@@ -291,15 +301,14 @@ class IngestionJob:
         )
         self._session.add(doc)
         await self._session.flush()
+        self._session.add(ContentVersionSource(version_id=version.id, source_id=doc.id))
 
         if self._object_store is not None:
             try:
                 doc.artifact_key = await asyncio.to_thread(
                     self._object_store.upload_path,
                     entry.absolute_path,
-                    str(course.tenant_id),
-                    str(course.id),
-                    str(doc.id),
+                    entry.checksum,
                 )
             except Exception as exc:
                 logger.warning(
@@ -336,6 +345,7 @@ async def enqueue_due_scans(session: AsyncSession, now: datetime | None = None) 
             CourseRun,
             (CourseRun.course_id == Course.id) & (CourseRun.source_root_id == SourceRoot.id),
         )
+        .where(SourceRoot.automatic_ingestion_enabled.is_(True))
     )
     queued = 0
     for course, source_root, course_run in result.all():

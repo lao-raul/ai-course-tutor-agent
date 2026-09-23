@@ -169,6 +169,7 @@ Agent API is the system of record for tenant, programme, course run, content, au
 | NFR-7 | Kubernetes delivery uses one versioned Helm chart as the supported packaging/deployment interface. The chart must deploy non-root workloads with resource limits, readiness/liveness probes, rolling updates, secret references and least-privilege network access; production releases must not rely on hand-maintained `kubectl apply` manifests. |
 | NFR-8 | Pull requests must pass unit/integration/e2e, RAG gates, image builds, Helm validation and an ephemeral Kind smoke deployment of both backend apps. |
 | NFR-9 | Releases use immutable image digests and a verified Helm rollout with rollback support. |
+| NFR-10 | Large textbook corpora use persistent state, content-addressed source artifacts and cross-version source/vector reuse. Qdrant active data uses SSD/block storage; NAS is used for read-only sources and backups/snapshots, not Qdrant's active filesystem. |
 
 ## 8. Release acceptance
 

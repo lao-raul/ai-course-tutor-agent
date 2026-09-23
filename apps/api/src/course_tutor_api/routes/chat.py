@@ -17,10 +17,11 @@ from course_tutor_memory import TeachingPolicy, build_teaching_directive, soluti
 from course_tutor_retrieval.scope import extract_content_scopes
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from course_tutor_api.auth import Principal, get_current_principal, principal_can_access_course
-from course_tutor_api.db import ContentVersion, Course, RetrievalTrace
+from course_tutor_api.db import ContentVersion, ContentVersionSource, Course, RetrievalTrace
 from course_tutor_api.dependencies import (
     Dependencies,
     RedisRateLimiter,
@@ -144,6 +145,7 @@ async def _build_evidence_pack(
     version_id: uuid.UUID,
     access_label: AccessLabel,
     query: str,
+    source_ids: tuple[uuid.UUID, ...] | None = None,
     service_name: str = "agent-api",
 ) -> EvidencePack:
     retrieval_started = time.perf_counter()
@@ -155,6 +157,7 @@ async def _build_evidence_pack(
             content_version_id=version_id,
             access_label=access_label,
             limit=20,
+            source_ids=source_ids,
         )
     rerank_started = time.perf_counter()
     source_limit = MAX_EVIDENCE_CHUNKS if extract_content_scopes(query) else None
@@ -439,6 +442,10 @@ async def chat(
     version = await session.get(ContentVersion, version_id)
     if version is None or version.status != ContentVersionStatus.PUBLISHED:
         raise HTTPException(status_code=400, detail="active content version is not published")
+    source_result = await session.execute(
+        select(ContentVersionSource.source_id).where(ContentVersionSource.version_id == version_id)
+    )
+    source_ids = tuple(source_result.scalars().all())
 
     policy = teaching_policy_for(course, body)
     conversation: ConversationContext | None = None
@@ -456,6 +463,7 @@ async def chat(
         tenant_id=principal.tenant_id,
         course_id=course_id,
         version_id=version_id,
+        source_ids=source_ids,
         access_label=principal.access_label,
         query=body.query,
         service_name=deps.settings.service_name,

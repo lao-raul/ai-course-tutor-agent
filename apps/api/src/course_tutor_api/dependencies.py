@@ -142,9 +142,10 @@ class Dependencies:
                 PostgresProbe(self.engine),
                 RedisProbe(self.redis),
                 QdrantProbe(self.http, self.settings.qdrant_url),
-                MinioProbe(self.http, self.settings.minio_endpoint),
                 LLMProbe(self.llm),
             ]
+            if self.settings.store_source_artifacts:
+                self._probes.insert(-1, MinioProbe(self.http, self.settings.minio_endpoint))
         return self._probes
 
     async def readiness(self) -> list[ProbeResult]:

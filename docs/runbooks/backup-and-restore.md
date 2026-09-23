@@ -35,3 +35,9 @@ CONFIRM_NON_PRODUCTION=yes scripts/restore-drill.sh
 Qdrant/object-store restore uses provider-specific APIs; their quarterly evidence must
 be attached to the release checklist. A PostgreSQL-only pass cannot certify those
 external systems.
+
+For the built-in local-real dependency, configure a block-backed Qdrant data PVC and
+a separate NAS-backed snapshot PVC. Enabling
+`internalDependencies.qdrant.snapshots.enabled` creates the scheduled collection
+snapshot CronJob. Do not use NFS/SMB for `/qdrant/storage`; see
+`docs/runbooks/k12-storage-capacity.md`.

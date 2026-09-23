@@ -1,0 +1,40 @@
+{{- if .Values.internalDependencies.enabled }}
+{{- $fullname := include "course-tutor.fullname" . }}
+{{- range $name, $dependency := dict "postgres" .Values.internalDependencies.postgres "qdrant" .Values.internalDependencies.qdrant "minio" .Values.internalDependencies.minio }}
+{{- if and $dependency.persistence.enabled (not $dependency.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-{{ $name }}-data
+  labels:
+    {{- include "course-tutor.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with $dependency.persistence.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $dependency.persistence.size }}
+---
+{{- end }}
+{{- end }}
+{{- if and .Values.internalDependencies.qdrant.snapshots.enabled (not .Values.internalDependencies.qdrant.snapshots.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-qdrant-snapshots
+  labels:
+    {{- include "course-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant-snapshots
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.internalDependencies.qdrant.snapshots.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.internalDependencies.qdrant.snapshots.size }}
+{{- end }}
+{{- end }}

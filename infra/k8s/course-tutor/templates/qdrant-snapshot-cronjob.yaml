@@ -1,0 +1,48 @@
+{{- if and .Values.internalDependencies.enabled .Values.internalDependencies.qdrant.snapshots.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-qdrant-snapshot
+  labels:
+    {{- include "course-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant-snapshot
+spec:
+  schedule: {{ .Values.internalDependencies.qdrant.snapshots.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        metadata:
+          labels:
+            {{- include "course-tutor.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: qdrant-snapshot
+        spec:
+          restartPolicy: OnFailure
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: create-snapshot
+              image: {{ .Values.internalDependencies.qdrant.snapshots.image }}
+              imagePullPolicy: IfNotPresent
+              args:
+                - --fail-with-body
+                - --silent
+                - --show-error
+                - --request
+                - POST
+                - http://{{ include "course-tutor.fullname" . }}-qdrant:6333/collections/course_chunks/snapshots?wait=true
+              resources:
+                requests: {cpu: 10m, memory: 16Mi}
+                limits: {cpu: 100m, memory: 64Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+{{- end }}
