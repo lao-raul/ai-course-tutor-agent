@@ -1,4 +1,4 @@
-"""MinIO / S3-compatible object store for ingestion artifacts.
+"""S3-compatible object store for ingestion artifacts.
 
 The object store holds the original source files and extraction artifacts. It is never the
 system of record — that is PostgreSQL — and is not the vector store.
@@ -23,7 +23,9 @@ class ObjectStoreError(RuntimeError):
 
 
 class MinioObjectStore:
-    """Stores and retrieves ingestion artifacts from MinIO / S3-compatible storage.
+    """Stores and retrieves ingestion artifacts from S3-compatible storage.
+
+    The historical class name is retained for configuration/API compatibility.
 
     Files are stored by SHA-256 under ``artifacts/sha256/{prefix}/{checksum}``.
     The same immutable source is therefore uploaded once even when many courses or

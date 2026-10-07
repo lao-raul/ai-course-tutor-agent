@@ -87,7 +87,7 @@ config:
   llmChatModel: ci-chat
   llmEmbeddingModel: ci-embedding
   llmEmbeddingDimension: 1024
-  expectedAlembicRevision: f31b8d02c913
+  expectedAlembicRevision: b6a4d2c8e901
   memoryExtractionInterval: 2
   chatTurnRetentionDays: 30
   sessionSummaryRetentionDays: 90
@@ -138,7 +138,8 @@ internalDependencies:
       schedule: "0 3 * * *"
       image: curlimages/curl:8.10.1
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # S3-compatible internal object store; production should use config.minioEndpoint.
+    image: chrislusf/seaweedfs:4.47
     persistence: {enabled: false, existingClaim: "", storageClassName: "", size: 100Gi}
 
 serviceAccount:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from pathlib import Path
@@ -11,6 +12,36 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 FULL_SHA = re.compile(r"^[^\s]+@[a-f0-9]{40}(?:\s+#.*)?$")
+
+
+def _alembic_assignment(path: Path, name: str) -> str | None:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in tree.body:
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            if node.target.id == name and node.value is not None:
+                value = ast.literal_eval(node.value)
+                if value is None or isinstance(value, str):
+                    return value
+                raise ValueError(f"{path}: {name} must be a string or None")
+    raise ValueError(f"{path}: missing {name} assignment")
+
+
+def _alembic_head() -> str:
+    versions = ROOT / "apps" / "api" / "alembic" / "versions"
+    revisions: set[str] = set()
+    parents: set[str] = set()
+    for path in sorted(versions.glob("*.py")):
+        revision = _alembic_assignment(path, "revision")
+        if revision is None:
+            raise ValueError(f"{path}: revision cannot be None")
+        revisions.add(revision)
+        parent = _alembic_assignment(path, "down_revision")
+        if parent is not None:
+            parents.add(parent)
+    heads = revisions - parents
+    if len(heads) != 1:
+        raise ValueError(f"expected exactly one Alembic head, found {sorted(heads)}")
+    return heads.pop()
 
 
 def main() -> None:
@@ -47,6 +78,21 @@ def main() -> None:
     for marker in ("environment:", "helm rollback", "scripts/deploy-release.sh"):
         if marker not in deploy:
             failures.append(f"deployment marker missing: {marker}")
+
+    chart_values = yaml.safe_load(
+        (ROOT / "infra" / "k8s" / "course-tutor" / "values.yaml").read_text(encoding="utf-8")
+    )
+    try:
+        alembic_head = _alembic_head()
+    except ValueError as exc:
+        failures.append(str(exc))
+    else:
+        configured_revision = chart_values["config"].get("expectedAlembicRevision")
+        if configured_revision != alembic_head:
+            failures.append(
+                "Helm expectedAlembicRevision must match the Alembic head: "
+                f"expected {alembic_head}, found {configured_revision}"
+            )
 
     dashboard = json.loads(
         (ROOT / "infra" / "observability" / "grafana-dashboard.json").read_text(encoding="utf-8")

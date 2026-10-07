@@ -5,18 +5,26 @@ behaviour and no I/O, so services can depend on it without depending on each oth
 """
 
 from course_tutor_contracts.domain import (
+    Book,
+    CatalogImportCandidate,
+    Category,
     ChatSession,
     ChatTurn,
     Chunk,
     ContentVersion,
     Course,
     MemoryFact,
+    Publisher,
     RetrievalTrace,
     SourceDocument,
 )
 from course_tutor_contracts.enums import (
     AccessLabel,
     AnchorType,
+    BookLifecycleStatus,
+    CatalogCandidateStatus,
+    CatalogImportStatus,
+    CategoryType,
     ChunkClass,
     ContentVersionStatus,
     EducationLevel,
@@ -49,6 +57,13 @@ from course_tutor_contracts.retrieval import (
 __all__ = [
     "AccessLabel",
     "AnchorType",
+    "Book",
+    "BookLifecycleStatus",
+    "CatalogCandidateStatus",
+    "CatalogImportCandidate",
+    "CatalogImportStatus",
+    "Category",
+    "CategoryType",
     "ChatCitation",
     "ChatRequest",
     "ChatResponse",
@@ -72,6 +87,7 @@ __all__ = [
     "MemoryUpdate",
     "PracticeCapabilities",
     "PracticeNotImplementedError",
+    "Publisher",
     "RetrievalQuery",
     "RetrievalResult",
     "RetrievalTrace",
