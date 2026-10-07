@@ -18,6 +18,10 @@ from course_tutor_contracts import MemoryFact, MemoryFactType, UserRole
 from course_tutor_contracts import domain as dto
 
 ENTITY_PAIRS = [
+    (dto.Category, orm.Category),
+    (dto.Publisher, orm.Publisher),
+    (dto.Book, orm.Book),
+    (dto.CatalogImportCandidate, orm.CatalogImportCandidate),
     (dto.Course, orm.Course),
     (dto.ContentVersion, orm.ContentVersion),
     (dto.SourceDocument, orm.SourceDocument),
@@ -64,6 +68,12 @@ def test_enum_columns_store_every_member(python_enum, table, column) -> None:  #
 def test_all_tables_are_registered() -> None:
     assert set(Base.metadata.tables) == {
         "audit_events",
+        "book_content_bindings",
+        "book_course_bindings",
+        "books",
+        "catalog_import_batches",
+        "catalog_import_candidates",
+        "categories",
         "chat_sessions",
         "chat_turns",
         "chunks",
@@ -75,6 +85,7 @@ def test_all_tables_are_registered() -> None:
         "memory_settings",
         "outbox_events",
         "programmes",
+        "publishers",
         "retrieval_traces",
         "source_documents",
         "source_roots",

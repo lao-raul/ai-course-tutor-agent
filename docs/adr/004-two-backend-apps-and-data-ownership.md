@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-09
 - **Decision owners:** Project maintainers
+- **Amended by:** [ADR-006](006-hiruzen-ownership-and-agent-integration.md)
 
 ## Context
 
@@ -48,3 +49,6 @@ Renaming the existing Python package would create broad mechanical churn without
 - TASK-08 packages independent images.
 - TASK-09 declares both applications in Helm.
 - A future ADR is required before Practice API persists exercise/attempt data.
+- ADR-006 defines persistence and the service boundary for the Hiruzen product;
+  ADR-004 remains authoritative for the current v0.2 dummy implementation until the
+  accepted decision is delivered.

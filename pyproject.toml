@@ -52,6 +52,8 @@ known-first-party = ["course_tutor_api", "course_tutor_auth", "course_tutor_cont
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S608"]
 "tests/integration/test_ingestion_idempotency.py" = ["E501"]
+"services/ingestion/src/course_tutor_ingestion/china_textbook_catalog.py" = ["RUF001"]
+"tests/unit/ingestion/test_china_textbook_catalog.py" = ["RUF001"]
 # Alembic revisions are generated; long inline SQL is expected and must not be reflowed.
 "apps/api/alembic/versions/**" = ["E501"]
 # FastAPI's Body(...)/Path(...) defaults are required markers, not mutable calls.

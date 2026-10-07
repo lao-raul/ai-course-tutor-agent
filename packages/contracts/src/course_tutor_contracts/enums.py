@@ -24,6 +24,33 @@ class EducationLevel(StrEnum):
     POSTGRADUATE = "postgraduate"
 
 
+class CategoryType(StrEnum):
+    EDUCATION_LEVEL = "education_level"
+    SUBJECT = "subject"
+    PUBLISHER = "publisher"
+    GRADE = "grade"
+
+
+class BookLifecycleStatus(StrEnum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+
+class CatalogImportStatus(StrEnum):
+    RUNNING = "running"
+    STAGED = "staged"
+    FAILED = "failed"
+
+
+class CatalogCandidateStatus(StrEnum):
+    STAGED = "staged"
+    NEEDS_REVIEW = "needs_review"
+    APPROVED = "approved"
+    IMPORTED = "imported"
+    REJECTED = "rejected"
+
+
 class ContentVersionStatus(StrEnum):
     """A version is built in the background, then previewed, then published."""
 

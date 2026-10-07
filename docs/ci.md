@@ -5,7 +5,7 @@
 1. Python lint, formatting, strict type checking, unit/contract/ACL/SSE tests, JUnit,
    and XML coverage.
 2. React unit tests and production build.
-3. Disposable PostgreSQL/Redis/Qdrant/MinIO integration tests, the generated-course
+3. Disposable PostgreSQL/Redis/Qdrant/SeaweedFS-S3 integration tests, the generated-course
    E2E flow, and the machine-readable RAG quality gate.
 4. Alembic upgrade → downgrade → upgrade plus model/schema parity.
 5. Git-history secret scanning.

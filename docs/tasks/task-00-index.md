@@ -1,13 +1,15 @@
 # Delivery Task Index
 
-**Status:** complete for the defined v0.2 task set
+**Status:** v0.2 complete; Hiruzen v0.3 delivery active
 **Objective:** evolve the current prototype into a tested, Helm-packaged Kubernetes
 platform with two backend applications.
 
 ## Target deployables
 
 1. **Agent API** — the existing `apps/api` codebase: course ingestion administration, grounded course chat, citations, sessions and learner memory.
-2. **Practice API** — a new `apps/practice` dummy application that reserves the contract and deployment boundary for future random exercise generation.
+2. **Practice API / Hiruzen** — the current `apps/practice` dummy reserves the boundary;
+   TASK-18–TASK-23 evolve it into the independently deployed catalog, practice,
+   attempts/progress and resume product defined by the accepted v0.3 specifications.
 3. **Supporting workloads** — ingestion worker and React Web UI. These are not counted as additional backend product apps.
 
 The existing `apps/api` path and `course_tutor_api` package name remain unchanged for now. Its image, Kubernetes workload and service are named `course-tutor-agent-api`. This avoids a large rename that does not improve runtime separation.
@@ -33,6 +35,12 @@ The existing `apps/api` path and `course_tutor_api` package name remain unchange
 | 15 | [TASK-15](task-15-rich-math-output-and-pdf-text-quality.md) | complete (2026-09-13) | P1 | Safe Markdown/TeX answers and page-accurate PDF citations | TASK-03, TASK-04, TASK-14 |
 | 16 | [TASK-16](task-16-typed-unit-scope-and-summary-retrieval.md) | complete (2026-09-13) | P0 | Typed Unit/Week scope filtering and reliable scoped summaries | TASK-04, TASK-14 |
 | 17 | [TASK-17](task-17-persistent-k12-storage-and-deduplication.md) | complete (2026-09-16) | P0 | Persistent state, NAS snapshots and content-addressed K-12 ingestion | TASK-03, TASK-09, TASK-12, TASK-16 |
+| 18 | [TASK-18](task-18-hiruzen-catalog-contract-and-import.md) | in progress | P0 | Agent-owned ChinaTextbook catalog, staged import and Hiruzen catalog facade | TASK-17 |
+| 19 | [TASK-19](task-19-hiruzen-persistence-and-generation-jobs.md) | planned | P0 | Practice schema, default StudyPlan and asynchronous generation jobs | TASK-18 |
+| 20 | [TASK-20](task-20-hiruzen-grounded-generation.md) | planned | P0 | Delegated evidence API and validated grounded question generation | TASK-18, TASK-19 |
+| 21 | [TASK-21](task-21-hiruzen-attempts-progress-and-resume.md) | planned | P0 | Attempts, release policy, progress and safe resume | TASK-19, TASK-20 |
+| 22 | [TASK-22](task-22-hiruzen-chat-and-web-experience.md) | planned | P1 | Book discovery, practice UI and direct Agent tutoring chat | TASK-18–TASK-21 |
+| 23 | [TASK-23](task-23-hiruzen-deployment-and-quality-gates.md) | planned | P0 | Independent workloads, CI/E2E and golden-set quality gates | TASK-18–TASK-22 |
 
 Tasks may be implemented in separate branches and merged independently once their declared dependencies are present. A task is complete only when all acceptance criteria and verification steps in its file pass.
 
@@ -49,6 +57,11 @@ summary and regression testing on 2026-09-13. TASK-17 completed persistent state
 Helm storage, NAS-backed Qdrant snapshots, staged ingestion and content-addressed
 cross-version source/vector reuse on 2026-09-16.
 
+The accepted Hiruzen v0.3 expansion starts at TASK-18. Its specialist requirements,
+operation boundary and verification mapping are maintained in
+[`apps/practice/docs/requirements-traceability.md`](../../apps/practice/docs/requirements-traceability.md)
+and checked independently from the completed v0.2 baseline.
+
 ## Global rules
 
 - No real NAS documents, SMB credentials, kubeconfig, LM Studio key or production secret may enter Git history or CI artifacts.
@@ -59,3 +72,6 @@ cross-version source/vector reuse on 2026-09-16.
 - Helm is the supported Kubernetes packaging and release interface. Source templates,
   packaged chart and deployed revision must represent the same validated chart version.
 - Documentation completion claims must be supported by an automated check or a linked, dated manual verification record.
+- Every Hiruzen task must retain sequential `AC-<task>.<n>` acceptance criteria,
+  path-addressable deliverable artifacts and explicit verification; the Hiruzen
+  baseline validator enforces this structure.

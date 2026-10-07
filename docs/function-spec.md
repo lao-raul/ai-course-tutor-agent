@@ -1,7 +1,7 @@
 # Function Specification — Course Tutor Platform
 
 **Status:** Baseline v0.2
-**Updated:** 2026-09-15
+**Updated:** 2026-10-07
 **Initial programme:** University of Leeds · MSc Artificial Intelligence
 **Languages:** Chinese and English
 **Deployment posture:** local-first inference; Helm-packaged Kubernetes deployment
@@ -16,6 +16,19 @@ The platform has two backend product applications:
 2. **Practice API** (`apps/practice`, runtime name `practice-api`) is the boundary for future exercise generation. In v0.2 it is a dummy service and does not generate questions.
 
 The ingestion worker and React Web UI are supporting workloads, not additional backend product apps.
+
+### Hiruzen evolution
+
+The next Practice product baseline is **Hiruzen**. It adds textbook category/search,
+book-associated courses, grounded question generation, inline/live tutoring and
+study-status/resume capabilities. Its accepted v0.3 requirements are maintained in
+[the Hiruzen Function Specification](../apps/practice/docs/function_spec.md), with the
+runtime boundary defined by
+[the Hiruzen Design Specification](../apps/practice/docs/design_spec.md).
+
+This extension does not alter the implemented v0.2 claim: the currently deployed
+Practice API remains a dummy returning HTTP 501 until the Hiruzen contracts and delivery
+slices are implemented and accepted.
 
 ## 2. Scope
 
@@ -149,12 +162,17 @@ flowchart LR
   NAS[Read-only course PVC] --> Worker[Ingestion worker]
   Worker --> DB
   Worker --> Q
-  Worker --> Objects[(MinIO)]
+  Worker --> Objects[(S3-compatible object store)]
   CI[GitHub Actions] --> Kind[Ephemeral Kind deployment]
   CD[GitHub Actions CD] --> K8s[Kubernetes + Helm]
 ```
 
 Agent API is the system of record for tenant, programme, course run, content, authorization, sessions and memory. Practice API may consume versioned contracts or an authorized Agent API, but must not import Agent API persistence/business modules or create duplicate ownership.
+
+For Hiruzen, this boundary is refined by
+[ADR-006](adr/006-hiruzen-ownership-and-agent-integration.md): Agent additionally owns
+book catalog metadata and retrieval evidence, while Hiruzen owns generated PracticeSets,
+attempts, progress and resume state.
 
 ## 7. Non-functional requirements
 

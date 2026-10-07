@@ -32,6 +32,10 @@ from course_tutor_api.db.base import Base, TimestampMixin, uuid_pk
 from course_tutor_contracts.enums import (
     AccessLabel,
     AnchorType,
+    BookLifecycleStatus,
+    CatalogCandidateStatus,
+    CatalogImportStatus,
+    CategoryType,
     ChunkClass,
     ContentVersionStatus,
     EducationLevel,
@@ -79,6 +83,167 @@ class Programme(Base, TimestampMixin):
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
     code: Mapped[str] = mapped_column(String(64))
     name: Mapped[str] = mapped_column(String(255))
+
+
+class Category(Base, TimestampMixin):
+    __tablename__ = "categories"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "stable_key", name="uq_categories_tenant_stable_key"),
+        Index("ix_categories_tenant_type", "tenant_id", "category_type"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
+    stable_key: Mapped[str] = mapped_column(String(255))
+    display_name: Mapped[str] = mapped_column(String(255))
+    category_type: Mapped[CategoryType] = mapped_column(_enum(CategoryType, "category_type"))
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="CASCADE")
+    )
+
+
+class Publisher(Base, TimestampMixin):
+    __tablename__ = "publishers"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "stable_key", name="uq_publishers_tenant_stable_key"),
+        UniqueConstraint(
+            "tenant_id", "normalized_name", name="uq_publishers_tenant_normalized_name"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
+    stable_key: Mapped[str] = mapped_column(String(255))
+    display_name: Mapped[str] = mapped_column(String(255))
+    normalized_name: Mapped[str] = mapped_column(String(255))
+    aliases: Mapped[list[str]] = mapped_column(JSONB, default=list)
+
+
+class Book(Base, TimestampMixin):
+    __tablename__ = "books"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "stable_key", name="uq_books_tenant_stable_key"),
+        Index(
+            "ix_books_catalog_filters",
+            "tenant_id",
+            "lifecycle_status",
+            "education_level",
+            "subject",
+            "grade",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
+    stable_key: Mapped[str] = mapped_column(String(255))
+    title: Mapped[str] = mapped_column(String(500))
+    normalized_title: Mapped[str] = mapped_column(String(500))
+    education_level: Mapped[EducationLevel] = mapped_column(
+        _enum(EducationLevel, "education_level"), index=True
+    )
+    subject: Mapped[str] = mapped_column(String(128))
+    grade: Mapped[str] = mapped_column(String(64))
+    publisher_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("publishers.id", ondelete="RESTRICT")
+    )
+    series: Mapped[str] = mapped_column(String(255))
+    edition: Mapped[str | None] = mapped_column(String(255))
+    start_grade: Mapped[str | None] = mapped_column(String(64))
+    editor: Mapped[str | None] = mapped_column(String(128))
+    term: Mapped[str] = mapped_column(String(64))
+    language: Mapped[str] = mapped_column(String(16))
+    isbn: Mapped[str | None] = mapped_column(String(32))
+    cover_uri: Mapped[str | None] = mapped_column(Text)
+    lifecycle_status: Mapped[BookLifecycleStatus] = mapped_column(
+        _enum(BookLifecycleStatus, "book_lifecycle_status"),
+        default=BookLifecycleStatus.DRAFT,
+    )
+
+
+class BookContentBinding(Base, TimestampMixin):
+    __tablename__ = "book_content_bindings"
+    __table_args__ = (
+        UniqueConstraint(
+            "book_id",
+            "content_version_id",
+            "source_id",
+            name="uq_book_content_version_source",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    book_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"))
+    course_run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("course_runs.id", ondelete="CASCADE")
+    )
+    source_root_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("source_roots.id", ondelete="RESTRICT")
+    )
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("source_documents.id", ondelete="RESTRICT")
+    )
+    content_version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("content_versions.id", ondelete="RESTRICT")
+    )
+
+
+class BookCourseBinding(Base):
+    __tablename__ = "book_course_bindings"
+
+    book_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("books.id", ondelete="CASCADE"), primary_key=True
+    )
+    course_run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("course_runs.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class CatalogImportBatch(Base, TimestampMixin):
+    __tablename__ = "catalog_import_batches"
+    __table_args__ = (
+        UniqueConstraint("source_root_id", "snapshot_hash", name="uq_catalog_batch_root_snapshot"),
+        Index("ix_catalog_import_batches_tenant_created", "tenant_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
+    source_root_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("source_roots.id", ondelete="RESTRICT")
+    )
+    selection: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    snapshot_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[CatalogImportStatus] = mapped_column(
+        _enum(CatalogImportStatus, "catalog_import_status")
+    )
+    candidate_count: Mapped[int] = mapped_column(Integer, default=0)
+    needs_review_count: Mapped[int] = mapped_column(Integer, default=0)
+    failure_reason: Mapped[str | None] = mapped_column(Text)
+    completed_at: Mapped[datetime | None] = mapped_column()
+
+
+class CatalogImportCandidate(Base, TimestampMixin):
+    __tablename__ = "catalog_import_candidates"
+    __table_args__ = (
+        UniqueConstraint("batch_id", "relative_path", name="uq_catalog_candidate_batch_path"),
+        Index("ix_catalog_candidates_batch_status", "batch_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    batch_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("catalog_import_batches.id", ondelete="CASCADE")
+    )
+    stable_key: Mapped[str] = mapped_column(String(255))
+    relative_path: Mapped[str] = mapped_column(Text)
+    checksum: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB)
+    status: Mapped[CatalogCandidateStatus] = mapped_column(
+        _enum(CatalogCandidateStatus, "catalog_candidate_status")
+    )
+    issues: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    imported_book_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("books.id", ondelete="SET NULL")
+    )
 
 
 class SourceRoot(Base, TimestampMixin):

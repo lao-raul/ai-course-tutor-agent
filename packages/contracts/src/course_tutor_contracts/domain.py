@@ -14,6 +14,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from course_tutor_contracts.enums import (
     AccessLabel,
     AnchorType,
+    BookLifecycleStatus,
+    CatalogCandidateStatus,
+    CategoryType,
     ChunkClass,
     ContentVersionStatus,
     EducationLevel,
@@ -38,6 +41,58 @@ class Course(DomainModel):
     level: EducationLevel
     active_content_version: UUID | None = None
     source_root_id: UUID | None = None
+
+
+class Category(DomainModel):
+    id: UUID
+    tenant_id: UUID
+    stable_key: str
+    display_name: str
+    category_type: CategoryType
+    parent_id: UUID | None = None
+
+
+class Publisher(DomainModel):
+    id: UUID
+    tenant_id: UUID
+    stable_key: str
+    display_name: str
+    normalized_name: str
+    aliases: tuple[str, ...] = ()
+
+
+class Book(DomainModel):
+    id: UUID
+    tenant_id: UUID
+    stable_key: str
+    title: str
+    normalized_title: str
+    education_level: EducationLevel
+    subject: str
+    grade: str
+    publisher_id: UUID
+    series: str
+    edition: str | None = None
+    start_grade: str | None = None
+    editor: str | None = None
+    term: str
+    language: str
+    isbn: str | None = None
+    cover_uri: str | None = None
+    lifecycle_status: BookLifecycleStatus = BookLifecycleStatus.DRAFT
+
+
+class CatalogImportCandidate(DomainModel):
+    id: UUID
+    batch_id: UUID
+    stable_key: str
+    relative_path: str
+    checksum: str
+    size_bytes: int = Field(ge=0)
+    metadata: dict[str, object]
+    status: CatalogCandidateStatus
+    issues: tuple[str, ...] = ()
+    imported_book_id: UUID | None = None
 
 
 class ContentVersion(DomainModel):

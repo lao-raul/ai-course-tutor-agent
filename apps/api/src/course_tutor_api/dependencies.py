@@ -104,14 +104,23 @@ class QdrantProbe:
 
 
 @dataclass(slots=True)
-class MinioProbe:
+class ObjectStoreProbe:
+    """Check that the configured S3-compatible endpoint is reachable.
+
+    A root request may legitimately return 4xx when anonymous access is disabled;
+    only transport errors and server-side 5xx responses make the dependency
+    unavailable. Bucket and credential validation remains the ingestion worker's
+    responsibility.
+    """
+
     client: httpx.AsyncClient
     url: str
-    name: str = "minio"
+    name: str = "object_store"
 
     async def check(self) -> None:
-        response = await self.client.get(f"{self.url.rstrip('/')}/minio/health/ready")
-        response.raise_for_status()
+        response = await self.client.get(f"{self.url.rstrip('/')}/")
+        if response.is_server_error:
+            response.raise_for_status()
 
 
 @dataclass(slots=True)
@@ -145,7 +154,7 @@ class Dependencies:
                 LLMProbe(self.llm),
             ]
             if self.settings.store_source_artifacts:
-                self._probes.insert(-1, MinioProbe(self.http, self.settings.minio_endpoint))
+                self._probes.insert(-1, ObjectStoreProbe(self.http, self.settings.minio_endpoint))
         return self._probes
 
     async def readiness(self) -> list[ProbeResult]:

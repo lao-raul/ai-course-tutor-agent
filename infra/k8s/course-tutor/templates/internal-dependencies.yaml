@@ -206,14 +206,14 @@ spec:
         - name: minio
           image: {{ .Values.internalDependencies.minio.image }}
           imagePullPolicy: IfNotPresent
-          args: ["server", "/data"]
+          args: ["server", "-dir=/data", "-s3", "-s3.port=9000", "-ip.bind=0.0.0.0", "-volume.max=0"]
           env:
-            - name: MINIO_ROOT_USER
+            - name: AWS_ACCESS_KEY_ID
               valueFrom: {secretKeyRef: {name: {{ include "course-tutor.secretName" . }}, key: minio-access-key}}
-            - name: MINIO_ROOT_PASSWORD
+            - name: AWS_SECRET_ACCESS_KEY
               valueFrom: {secretKeyRef: {name: {{ include "course-tutor.secretName" . }}, key: minio-secret-key}}
           ports: [{name: http, containerPort: 9000}]
-          readinessProbe: {httpGet: {path: /minio/health/ready, port: http}}
+          readinessProbe: {tcpSocket: {port: http}}
           resources:
             requests: {cpu: 50m, memory: 128Mi}
             limits: {cpu: 500m, memory: 512Mi}

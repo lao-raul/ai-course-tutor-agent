@@ -1,7 +1,7 @@
 # Design Specification — Course Tutor Platform
 
 **Status:** Baseline v0.2
-**Updated:** 2026-09-15
+**Updated:** 2026-10-07
 **Companion:** [Function Specification](function-spec.md)
 **Task plan:** [Delivery Task Index](tasks/task-00-index.md)
 
@@ -28,6 +28,7 @@ See [ADR-004](adr/004-two-backend-apps-and-data-ownership.md).
 | Session/long-term memory | implemented | Scoped persisted turns, bounded summaries/recall, opt-in facts and lifecycle APIs | TASK-06 |
 | Teaching/assessment policy | implemented | Course policy, bilingual directives and pre-generation solution filtering | TASK-03, TASK-06 |
 | Practice API | implemented dummy | Independent app exposes probes, capabilities and authenticated deterministic 501 | TASK-07 |
+| Hiruzen Practice product | accepted specification | Category/book search, grounded generation, attempts, Agent chat integration and resume are specified but not implemented | [Hiruzen specs](../apps/practice/docs/function_spec.md) |
 | Reproducible production images | implemented | Five non-root versioned images and Buildx bake graph | TASK-08 |
 | Kubernetes/Helm | implemented | One chart deploys the two-container backend plus worker/Web/dependencies | TASK-09 |
 | CI | implemented and hosted-verified | Main run 34798686954 passed all required jobs | TASK-05, TASK-10 |
@@ -112,9 +113,16 @@ The legacy `POST /v1/admin/ingest` prototype has been removed. Registration does
 
 ## 5. Data ownership and contracts
 
-The Agent PostgreSQL schema is the canonical store for tenant, programme, course, course run, content version, source/chunk metadata, sessions, memories, feedback and outbox state. Qdrant and any memory vector index are rebuildable projections. MinIO holds source/extraction artifacts. Redis holds cache, locks and bounded ephemeral state only.
+The Agent PostgreSQL schema is the canonical store for tenant, programme, course, course run, content version, source/chunk metadata, sessions, memories, feedback and outbox state. Qdrant and any memory vector index are rebuildable projections. An S3-compatible object store holds source/extraction artifacts; local and CI deployments use SeaweedFS, while production supplies an external S3 endpoint. Redis holds cache, locks and bounded ephemeral state only.
 
 Practice API receives authenticated identity and a course ID. During the dummy phase it may call an Agent authorization endpoint or shared authorization adapter, but it performs no generation and persists nothing. Future practice entities require a separate ADR before schema ownership is assigned.
+
+That future ownership decision is accepted in
+[ADR-006](adr/006-hiruzen-ownership-and-agent-integration.md). The target Hiruzen service
+uses versioned Agent catalog/evidence APIs, owns a separate Practice schema and worker,
+and reuses Agent's SSE tutoring chat. Detailed component, data and deployment design is
+in [the Hiruzen Design Specification](../apps/practice/docs/design_spec.md). Until its
+delivery slices are implemented, the dummy topology and API contract remain current.
 
 Cross-module Python imports follow dependency direction:
 
@@ -228,7 +236,12 @@ unresolved application architecture choice.
 
 ## 11. Delivery source of truth
 
-Implementation tasks and acceptance tests are maintained in `docs/tasks/`. Requirement-to-task/operation/test mapping is maintained in `docs/requirements-traceability.md` and validated by `scripts/validate_contract_baseline.py`.
+Implementation tasks and acceptance tests are maintained in `docs/tasks/`. The v0.2
+requirement mapping remains in `docs/requirements-traceability.md` and is validated by
+`scripts/validate_contract_baseline.py`. Hiruzen v0.3 uses
+`apps/practice/docs/requirements-traceability.md` and
+`scripts/validate_hiruzen_baseline.py` so planned Hiruzen delivery cannot alter the
+completed v0.2 evidence.
 
 External choices still required before production CD activation (not open implementation tasks):
 
