@@ -51,6 +51,17 @@ class CatalogCandidateStatus(StrEnum):
     REJECTED = "rejected"
 
 
+class CourseAccessPolicy(StrEnum):
+    """Server-owned CourseRun authorization policy.
+
+    Browser input can never select this value. Catalog approval is the only flow that
+    creates ``tenant_authenticated`` runs; ordinary courses remain membership scoped.
+    """
+
+    EXPLICIT_MEMBERSHIP = "explicit_membership"
+    TENANT_AUTHENTICATED = "tenant_authenticated"
+
+
 class ContentVersionStatus(StrEnum):
     """A version is built in the background, then previewed, then published."""
 

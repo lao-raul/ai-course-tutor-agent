@@ -11,6 +11,7 @@ import json
 
 import httpx
 import pytest
+from pydantic import SecretStr
 
 from course_tutor_api.providers import (
     ChatMessage,
@@ -67,6 +68,26 @@ async def test_fake_object_store_round_trips(fake_object_store: FakeObjectStore)
 
 
 # --- LM Studio adapter ----------------------------------------------------------
+
+
+async def test_provider_omits_authorization_header_for_empty_api_key(
+    settings: Settings,
+) -> None:
+    provider = LMStudioProvider(settings.model_copy(update={"llm_api_key": SecretStr("")}))
+    try:
+        assert "authorization" not in provider._client.headers
+    finally:
+        await provider.aclose()
+
+
+async def test_provider_sends_authorization_header_when_api_key_is_configured(
+    settings: Settings,
+) -> None:
+    provider = LMStudioProvider(settings.model_copy(update={"llm_api_key": SecretStr("secret")}))
+    try:
+        assert provider._client.headers["authorization"] == "Bearer secret"
+    finally:
+        await provider.aclose()
 
 
 async def test_embed_rejects_dimension_mismatch(settings: Settings) -> None:

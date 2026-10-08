@@ -20,7 +20,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from course_tutor_api.auth import Principal, get_current_principal, principal_can_access_course
+from course_tutor_api.auth import Principal, get_current_principal
+from course_tutor_api.course_access import principal_can_access_course_record
 from course_tutor_api.db import ContentVersion, ContentVersionSource, Course, RetrievalTrace
 from course_tutor_api.dependencies import (
     Dependencies,
@@ -426,11 +427,7 @@ async def chat(
 ) -> StreamingResponse:
     request_started = time.perf_counter()
     course = await session.get(Course, course_id)
-    if (
-        course is None
-        or course.tenant_id != principal.tenant_id
-        or not principal_can_access_course(principal, course_id)
-    ):
+    if course is None or not await principal_can_access_course_record(session, principal, course):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course not found")
 
     await RedisRateLimiter(deps.redis).enforce(

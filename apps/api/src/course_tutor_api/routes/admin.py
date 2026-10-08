@@ -18,6 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from course_tutor_api.auth import Principal, get_current_principal, require_course_admin
 from course_tutor_api.db import (
     AuditEvent,
+    Book,
+    BookContentBinding,
+    BookCourseBinding,
     ContentVersion,
     ContentVersionSource,
     Course,
@@ -34,7 +37,11 @@ from course_tutor_api.dependencies import (
     dependencies_from_request,
     get_session,
 )
-from course_tutor_contracts.enums import ContentVersionStatus, EducationLevel
+from course_tutor_contracts.enums import (
+    BookLifecycleStatus,
+    ContentVersionStatus,
+    EducationLevel,
+)
 from course_tutor_shared import PIPELINE_VERSION, record_content_version_operation
 
 
@@ -642,6 +649,49 @@ async def publish_version(
     )
     if course_run := run_result.scalar_one_or_none():
         course_run.active_content_version_id = version.id
+        books = (
+            (
+                await session.execute(
+                    select(Book)
+                    .join(BookCourseBinding, BookCourseBinding.book_id == Book.id)
+                    .where(BookCourseBinding.course_run_id == course_run.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        source_ids = (
+            (
+                await session.execute(
+                    select(ContentVersionSource.source_id).where(
+                        ContentVersionSource.version_id == version.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for book in books:
+            book.lifecycle_status = BookLifecycleStatus.PUBLISHED
+            for source_id in source_ids:
+                existing = await session.scalar(
+                    select(BookContentBinding.id).where(
+                        BookContentBinding.book_id == book.id,
+                        BookContentBinding.content_version_id == version.id,
+                        BookContentBinding.source_id == source_id,
+                    )
+                )
+                if existing is None:
+                    session.add(
+                        BookContentBinding(
+                            id=uuid.uuid4(),
+                            book_id=book.id,
+                            course_run_id=course_run.id,
+                            source_root_id=course_run.source_root_id,
+                            source_id=source_id,
+                            content_version_id=version.id,
+                        )
+                    )
     _audit(session, principal, "version.publish", "content_version", version.id)
     await session.commit()
     record_content_version_operation("agent-api", "publish")

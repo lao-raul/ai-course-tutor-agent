@@ -244,7 +244,7 @@ async def stage_catalog_import(
     if existing is not None:
         return existing
 
-    now = datetime.now(UTC)
+    now = datetime.now(UTC).replace(tzinfo=None)
     needs_review = sum(
         candidate.status is CatalogCandidateStatus.NEEDS_REVIEW for candidate in result.candidates
     )
@@ -278,7 +278,6 @@ async def stage_catalog_import(
             for candidate in result.candidates
         ]
     )
-    await session.commit()
     return batch
 
 

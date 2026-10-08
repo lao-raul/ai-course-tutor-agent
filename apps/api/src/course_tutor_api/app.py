@@ -9,7 +9,7 @@ from fastapi import FastAPI
 
 from course_tutor_api.dependencies import get_dependencies
 from course_tutor_api.local_bootstrap import ensure_local_identity
-from course_tutor_api.routes import admin, chat, courses, health, memories
+from course_tutor_api.routes import admin, catalog, catalog_admin, chat, courses, health, memories
 from course_tutor_shared import (
     CorrelationIdMiddleware,
     PrometheusMiddleware,
@@ -60,6 +60,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.add_api_route("/metrics", metrics_endpoint, methods=["GET"], include_in_schema=False)
     app.include_router(health.router)
     app.include_router(admin.router)
+    app.include_router(catalog_admin.router)
+    app.include_router(catalog.router)
     app.include_router(chat.router)
     app.include_router(courses.router)
     app.include_router(memories.router)

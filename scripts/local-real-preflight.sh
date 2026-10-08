@@ -57,7 +57,8 @@ else:
     raise RuntimeError("course volume is writable; refusing unsafe deployment")
 
 base = os.environ["LLM_BASE_URL"].rstrip("/")
-headers = {"Authorization": "Bearer " + os.environ.get("LLM_API_KEY", "")}
+api_key = os.environ.get("LLM_API_KEY", "")
+headers = {"Authorization": "Bearer " + api_key} if api_key else {}
 def request(path, body=None, timeout=60):
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(
@@ -69,7 +70,10 @@ def request(path, body=None, timeout=60):
 models = {item["id"] for item in request("/models").get("data", [])}
 required = {os.environ["LLM_CHAT_MODEL"], os.environ["LLM_EMBEDDING_MODEL"]}
 if missing := required - models:
-    raise RuntimeError(f"LM Studio models are not loaded: {sorted(missing)}")
+    raise RuntimeError(
+        f"LM Studio models are not loaded: {sorted(missing)}; "
+        f"available model IDs: {sorted(models)}"
+    )
 embedding = request("/embeddings", {
     "model": os.environ["LLM_EMBEDDING_MODEL"], "input": ["course tutor preflight"]
 })["data"][0]["embedding"]

@@ -628,6 +628,7 @@ dependencies = [
     { name = "course-tutor-contracts" },
     { name = "course-tutor-shared" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -637,6 +638,7 @@ requires-dist = [
     { name = "course-tutor-contracts", editable = "packages/contracts" },
     { name = "course-tutor-shared", editable = "packages/shared" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]
 

@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from course_tutor_api.auth import Principal, get_current_principal
+from course_tutor_api.course_access import principal_can_access_course_record
 from course_tutor_api.db import ContentVersion, ContentVersionSource, Course, SourceDocument
 from course_tutor_api.dependencies import get_session
 from course_tutor_contracts.enums import AccessLabel
@@ -60,7 +61,11 @@ async def list_courses(
     """
     result = await session.execute(select(Course).where(Course.tenant_id == principal.tenant_id))
     courses = result.scalars().all()
-    return [CourseSummary.model_validate(c) for c in courses]
+    return [
+        CourseSummary.model_validate(course)
+        for course in courses
+        if await principal_can_access_course_record(session, principal, course)
+    ]
 
 
 @router.get("/{course_id}", response_model=CourseSummary)
@@ -71,7 +76,7 @@ async def get_course(
 ) -> CourseSummary:
     """Get a single course by ID."""
     course = await session.get(Course, course_id)
-    if course is None or course.tenant_id != principal.tenant_id:
+    if course is None or not await principal_can_access_course_record(session, principal, course):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course not found")
     return CourseSummary.model_validate(course)
 
@@ -84,6 +89,9 @@ async def get_course_source(
     principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> CourseSourceDetail:
     """Return metadata for one source in the authorized active content version."""
+    course = await session.get(Course, course_id)
+    if course is None or not await principal_can_access_course_record(session, principal, course):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="source not found")
     result = await session.execute(
         select(SourceDocument)
         .join(ContentVersionSource, ContentVersionSource.source_id == SourceDocument.id)
@@ -92,7 +100,6 @@ async def get_course_source(
         .where(
             SourceDocument.id == source_id,
             Course.id == course_id,
-            Course.tenant_id == principal.tenant_id,
             Course.active_content_version_id == ContentVersion.id,
         )
     )

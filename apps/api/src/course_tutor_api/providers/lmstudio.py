@@ -28,10 +28,12 @@ class LMStudioProvider:
     def __init__(self, settings: Settings, client: httpx.AsyncClient | None = None) -> None:
         self._settings = settings
         self._owns_client = client is None
+        api_key = settings.llm_api_key.get_secret_value()
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._client = client or httpx.AsyncClient(
             base_url=settings.llm_base_url,
             timeout=DEFAULT_TIMEOUT,
-            headers={"Authorization": f"Bearer {settings.llm_api_key.get_secret_value()}"},
+            headers=headers,
         )
 
     @property
