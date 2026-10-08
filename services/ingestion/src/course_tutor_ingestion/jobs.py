@@ -176,7 +176,11 @@ class IngestionJob:
 
         resolved = validate_path(payload.get("resolved_path", source_root.absolute_path))
         validate_read_access(resolved)
-        entries = Scanner(resolved).scan()
+        raw_includes = payload.get("include_relative_paths")
+        include_relative_paths = (
+            tuple(str(item) for item in raw_includes) if raw_includes is not None else None
+        )
+        entries = Scanner(resolved, include_relative_paths=include_relative_paths).scan()
         self._stats.files_discovered = len(entries)
         current_snapshot = snapshot_hash(entries)
 

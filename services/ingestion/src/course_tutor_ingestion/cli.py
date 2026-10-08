@@ -52,6 +52,7 @@ async def main() -> None:
     # cli.py → course_tutor_api.dependencies → course_tutor_api.providers.lmstudio
     # has a transitive path that touches the ingestion package internals.
     from course_tutor_api.dependencies import get_dependencies
+    from course_tutor_ingestion.catalog_jobs import run_pending_catalog_jobs
     from course_tutor_ingestion.embed_jobs import run_pending_embedding_jobs
     from course_tutor_ingestion.jobs import enqueue_due_scans, run_pending_jobs
     from course_tutor_ingestion.memory_jobs import (
@@ -86,6 +87,12 @@ async def main() -> None:
         from sqlalchemy.ext.asyncio import AsyncSession
 
         async with AsyncSession(deps.engine, expire_on_commit=False) as session:
+            processed_catalog = await run_pending_catalog_jobs(
+                session,
+                max_attempts=settings.ingestion_max_attempts,
+            )
+            if processed_catalog:
+                logger.info("catalog_scan_batch_complete", count=processed_catalog)
             await enqueue_due_scans(session)
             # Process scan jobs
             processed_scans = await run_pending_jobs(
@@ -129,7 +136,7 @@ async def main() -> None:
 
             from course_tutor_api.db import OutboxEvent
 
-            known_topics = ("ingestion.scan", "ingestion.embed", "memory.purge")
+            known_topics = ("catalog.scan", "ingestion.scan", "ingestion.embed", "memory.purge")
             for topic in known_topics:
                 pending_result = await session.execute(
                     select(func.count(OutboxEvent.id)).where(

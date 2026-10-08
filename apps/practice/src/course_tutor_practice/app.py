@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Annotated, Literal
 from uuid import UUID
@@ -23,6 +25,11 @@ from course_tutor_contracts import (
     PracticeNotImplementedError,
 )
 from course_tutor_practice import __version__
+from course_tutor_practice.adapters.agent_client import (
+    AgentCatalogClient,
+    HttpAgentCatalogClient,
+)
+from course_tutor_practice.routes import catalog
 from course_tutor_shared import (
     CorrelationIdMiddleware,
     PrometheusMiddleware,
@@ -38,6 +45,7 @@ from course_tutor_shared import (
 @dataclass(frozen=True, slots=True)
 class PracticeDependencies:
     auth: AuthProvider
+    catalog: AgentCatalogClient | None = None
 
 
 class HealthResponse(BaseModel, frozen=True):
@@ -56,6 +64,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_logging(settings)
     configure_tracing(settings)
 
+    dependencies = PracticeDependencies(
+        auth=create_auth_provider(settings),
+        catalog=HttpAgentCatalogClient(settings.agent_base_url),
+    )
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            close = getattr(dependencies.catalog, "aclose", None)
+            if close is not None:
+                await close()
+
     app = FastAPI(
         title="Course Tutor Practice API",
         version=__version__,
@@ -63,9 +85,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "Reserved API boundary for future exercise generation. Generation is "
             "intentionally unavailable in v0.2."
         ),
+        lifespan=lifespan,
     )
     app.state.settings = settings
-    app.state.dependencies = PracticeDependencies(auth=create_auth_provider(settings))
+    app.state.dependencies = dependencies
     app.add_middleware(CorrelationIdMiddleware)
     if settings.metrics_enabled:
         app.add_middleware(PrometheusMiddleware, service_name=settings.service_name)
@@ -119,4 +142,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content=error.model_dump(mode="json"),
         )
 
+    app.include_router(catalog.router)
     return app

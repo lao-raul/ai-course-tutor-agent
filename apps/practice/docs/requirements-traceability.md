@@ -9,13 +9,13 @@ they become canonical OpenAPI operations in the task that implements them.
 
 | Requirement | Implementation task | Operation IDs | Verification | Current status |
 |---|---|---|---|---|
-| HFR-CAT-1 | TASK-18 | listPracticeCategories, listCatalogCategories | catalog hierarchy/facet contract tests | in_progress |
-| HFR-CAT-2 | TASK-18 | searchPracticeBooks, searchCatalogBooks | filter, Unicode search and pagination tests | in_progress |
-| HFR-CAT-3 | TASK-18 | searchPracticeBooks, searchCatalogBooks | unpublished/unauthorized and stable-sort tests | planned |
-| HFR-CAT-4 | TASK-18 | getPracticeBook, getCatalogBook | book detail contract tests | planned |
-| HFR-CAT-5 | TASK-18 | createCatalogImport, listCatalogImportCandidates, updateCatalogImportCandidate, approveCatalogImportCandidate, rejectCatalogImportCandidate | scanner quarantine, correction and approval tests | in_progress |
-| HFR-CAT-6 | TASK-18 | searchPracticeBooks, getPracticeBook | path/credential response leakage tests | in_progress |
-| HFR-COURSE-1 | TASK-18 | listBookCourses, listCatalogBookCourses | delegated authorization tests | planned |
+| HFR-CAT-1 | TASK-18 | listPracticeCategories, listCatalogCategories | catalog hierarchy/facet contract tests | implemented |
+| HFR-CAT-2 | TASK-18 | searchPracticeBooks, searchCatalogBooks | filter, Unicode search and pagination tests | implemented |
+| HFR-CAT-3 | TASK-18 | searchPracticeBooks, searchCatalogBooks | unpublished/unauthorized and stable-sort tests | implemented |
+| HFR-CAT-4 | TASK-18 | getPracticeBook, getCatalogBook | book detail contract tests | implemented |
+| HFR-CAT-5 | TASK-18 | createCatalogImport, listCatalogImportCandidates, updateCatalogImportCandidate, approveCatalogImportCandidate, rejectCatalogImportCandidate | scanner quarantine, correction and approval tests | implemented |
+| HFR-CAT-6 | TASK-18 | searchPracticeBooks, getPracticeBook | path/credential response leakage tests | implemented |
+| HFR-COURSE-1 | TASK-18 | listBookCourses, listCatalogBookCourses | delegated authorization tests | implemented |
 | HFR-COURSE-2 | TASK-19 | getBookStudyPlan | deterministic default StudyPlan ordering/policy tests | planned |
 | HFR-COURSE-3 | TASK-19, TASK-20 | createPracticeGeneration, retrievePracticeEvidence | immutable Agent ID/version reference tests | planned |
 | HFR-COURSE-4 | TASK-19 | getBookStudyPlan, createPracticeGeneration | outline-derived and book-level fallback plan tests | planned |

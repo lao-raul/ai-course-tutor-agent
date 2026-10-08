@@ -4,7 +4,7 @@ from pathlib import Path
 
 from course_tutor_ingestion.jobs import _coalesce_chunks, snapshot_hash
 from course_tutor_ingestion.parsers import Chunk
-from course_tutor_ingestion.scanner import FileEntry
+from course_tutor_ingestion.scanner import FileEntry, Scanner
 
 
 def _entry(path: str, checksum: str) -> FileEntry:
@@ -65,3 +65,20 @@ def test_coalescing_keeps_pdf_pages_as_independent_citation_units() -> None:
         ("1", "Page one title Page one body"),
         ("2", "Page two body"),
     ]
+
+
+def test_scanner_can_limit_catalog_ingestion_to_one_safe_relative_path(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "series" / "first.pdf"
+    second = tmp_path / "series" / "second.pdf"
+    first.parent.mkdir()
+    first.write_bytes(b"%PDF-first")
+    second.write_bytes(b"%PDF-second")
+
+    entries = Scanner(
+        tmp_path,
+        include_relative_paths=("series/second.pdf",),
+    ).scan()
+
+    assert [entry.relative_path for entry in entries] == ["series/second.pdf"]

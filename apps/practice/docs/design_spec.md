@@ -1,6 +1,6 @@
 # Hiruzen Design Specification
 
-**Status:** accepted v0.3 architecture  
+**Status:** accepted v0.3 architecture; H1 catalog implemented
 **Updated:** 2026-10-07  
 **Function specification:** [function_spec.md](function_spec.md)  
 **Platform decision:** [ADR-006](../../../docs/adr/006-hiruzen-ownership-and-agent-integration.md)
@@ -162,7 +162,8 @@ data is never used to grant access.
 
 ### 5.2 Required Agent operations
 
-Names are design-level proposals; implementation updates Agent OpenAPI before use.
+The catalog operation names below are implemented and versioned by TASK-18. The
+practice-evidence operation remains planned for TASK-20.
 
 | Operation | Method/path | Purpose |
 |---|---|---|
@@ -425,3 +426,5 @@ requirement and verification coverage is maintained in
 [requirements-traceability.md](requirements-traceability.md). The current
 `501 practice_generation_not_implemented` contract remains in force until H1–H3 are
 delivered and versioned OpenAPI compatibility is approved.
+
+H1/TASK-18 was completed on 2026-10-07. H2/TASK-19 is the next unblocked delivery slice.

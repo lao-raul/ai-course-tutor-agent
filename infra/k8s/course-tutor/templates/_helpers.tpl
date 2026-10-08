@@ -86,6 +86,8 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   value: {{ .Values.config.oidcAlgorithms | quote }}
 - name: POSTGRES_DSN
   value: {{ .Values.config.postgresDsn | quote }}
+- name: AGENT_BASE_URL
+  value: {{ .Values.config.agentBaseUrl | quote }}
 - name: REDIS_URL
   value: {{ .Values.config.redisUrl | quote }}
 - name: QDRANT_URL

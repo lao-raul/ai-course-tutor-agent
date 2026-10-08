@@ -93,6 +93,11 @@ class Settings(BaseSettings):
     minio_bucket: str = "course-tutor-artifacts"
     store_source_artifacts: bool = True
 
+    # --- Internal application endpoints ---------------------------------------
+    # Hiruzen forwards the authenticated learner bearer token to Agent catalog
+    # routes. The URL is deployment configuration, never accepted from a request.
+    agent_base_url: str = "http://127.0.0.1:8000"
+
     # --- Background ingestion --------------------------------------------------
     ingestion_scan_interval_seconds: int = Field(default=900, ge=30)
     ingestion_poll_interval_seconds: int = Field(default=5, ge=1)

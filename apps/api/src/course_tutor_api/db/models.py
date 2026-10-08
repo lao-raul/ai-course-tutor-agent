@@ -38,6 +38,7 @@ from course_tutor_contracts.enums import (
     CategoryType,
     ChunkClass,
     ContentVersionStatus,
+    CourseAccessPolicy,
     EducationLevel,
     ExtractionStatus,
     MemoryFactStatus,
@@ -290,6 +291,10 @@ class CourseRun(Base, TimestampMixin):
     source_root_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source_roots.id"))
     active_content_version_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("content_versions.id", use_alter=True)
+    )
+    access_policy: Mapped[CourseAccessPolicy] = mapped_column(
+        _enum(CourseAccessPolicy, "course_access_policy"),
+        default=CourseAccessPolicy.EXPLICIT_MEMBERSHIP,
     )
 
 

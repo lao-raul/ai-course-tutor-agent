@@ -35,7 +35,7 @@ The existing `apps/api` path and `course_tutor_api` package name remain unchange
 | 15 | [TASK-15](task-15-rich-math-output-and-pdf-text-quality.md) | complete (2026-09-13) | P1 | Safe Markdown/TeX answers and page-accurate PDF citations | TASK-03, TASK-04, TASK-14 |
 | 16 | [TASK-16](task-16-typed-unit-scope-and-summary-retrieval.md) | complete (2026-09-13) | P0 | Typed Unit/Week scope filtering and reliable scoped summaries | TASK-04, TASK-14 |
 | 17 | [TASK-17](task-17-persistent-k12-storage-and-deduplication.md) | complete (2026-09-16) | P0 | Persistent state, NAS snapshots and content-addressed K-12 ingestion | TASK-03, TASK-09, TASK-12, TASK-16 |
-| 18 | [TASK-18](task-18-hiruzen-catalog-contract-and-import.md) | in progress | P0 | Agent-owned ChinaTextbook catalog, staged import and Hiruzen catalog facade | TASK-17 |
+| 18 | [TASK-18](task-18-hiruzen-catalog-contract-and-import.md) | complete (2026-10-07) | P0 | Agent-owned ChinaTextbook catalog, staged import and Hiruzen catalog facade | TASK-17 |
 | 19 | [TASK-19](task-19-hiruzen-persistence-and-generation-jobs.md) | planned | P0 | Practice schema, default StudyPlan and asynchronous generation jobs | TASK-18 |
 | 20 | [TASK-20](task-20-hiruzen-grounded-generation.md) | planned | P0 | Delegated evidence API and validated grounded question generation | TASK-18, TASK-19 |
 | 21 | [TASK-21](task-21-hiruzen-attempts-progress-and-resume.md) | planned | P0 | Attempts, release policy, progress and safe resume | TASK-19, TASK-20 |
@@ -56,6 +56,10 @@ TASK-16 corrected the Unit 2 versus Week 2 retrieval collision and passed real-c
 summary and regression testing on 2026-09-13. TASK-17 completed persistent stateful
 Helm storage, NAS-backed Qdrant snapshots, staged ingestion and content-addressed
 cross-version source/vector reuse on 2026-09-16.
+
+TASK-18 completed the Agent-owned ChinaTextbook catalog, worker-only staged scanning,
+review/approval activation, published-book queries, tenant-authenticated system CourseRuns
+and the HTTP-only Hiruzen catalog facade on 2026-10-07. TASK-19 is now unblocked.
 
 The accepted Hiruzen v0.3 expansion starts at TASK-18. Its specialist requirements,
 operation boundary and verification mapping are maintained in

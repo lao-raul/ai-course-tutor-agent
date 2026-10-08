@@ -28,11 +28,12 @@
     "fakeLlm": {"$ref": "#/definitions/optionalWorkload"},
     "config": {
       "type": "object",
-      "required": ["environment", "authMode", "postgresDsn", "redisUrl", "qdrantUrl", "llmBaseUrl"],
+      "required": ["environment", "authMode", "postgresDsn", "agentBaseUrl", "redisUrl", "qdrantUrl", "llmBaseUrl"],
       "properties": {
         "environment": {"enum": ["local", "test", "production"]},
         "authMode": {"enum": ["local", "oidc"]},
         "postgresDsn": {"type": "string", "minLength": 1},
+        "agentBaseUrl": {"type": "string", "minLength": 1},
         "redisUrl": {"type": "string", "minLength": 1},
         "qdrantUrl": {"type": "string", "minLength": 1},
         "llmBaseUrl": {"type": "string", "minLength": 1, "pattern": "/v1/?$"},

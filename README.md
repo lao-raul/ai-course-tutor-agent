@@ -65,6 +65,26 @@ TAG="$IMAGE_TAG" scripts/build-docker.sh web
 直接保存或连接 SMB 凭据。路径、令牌和私有地址只写入被 Git 忽略的 `.local/`
 配置或 Kubernetes Secret。
 
+### Hiruzen/ChinaTextbook 一键构建部署
+
+ChinaTextbook 使用独立的 `course-tutor-hiruzen` Kind 集群，避免与已有 Leeds
+`course-tutor-real` 集群的不可变主机挂载冲突。准备好 LM Studio 模型后执行：
+
+```bash
+export COURSE_TUTOR_AUTH_TOKEN='replace-with-local-token'
+export COURSE_TUTOR_MINIO_SECRET='replace-with-random-secret'
+
+scripts/deploy-hiruzen-local.sh
+```
+
+该脚本默认把 `/Volumes/home/ChinaTextbook` 只读挂载为容器内 `/data/content`，完成
+镜像构建与 Kind 加载、Secret 更新、LM Studio/NAS 预检、Helm 安装以及 Agent/Practice
+就绪验证。当前默认使用已验证的 `qwen/qwen3.6-35b-a3b`、
+`text-embedding-qwen3-embedding-0.6b` 和 1024 维 embedding；脚本会在构建前调用 LM
+Studio `/v1/models` 和 `/v1/embeddings` 验证这些值。需要覆盖时设置相应 `LLM_*`
+环境变量。可用 `scripts/deploy-hiruzen-local.sh --help` 查看路径、集群、values、tag 和
+跳过重复构建的选项。以下分步流程仍用于 Leeds 部署及手工排障。
+
 ### 1. 创建专用 Kind 集群和只读课程卷
 
 ```bash

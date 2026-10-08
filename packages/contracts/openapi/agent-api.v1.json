@@ -205,6 +205,83 @@
         "responses": {"200": {"description": "Memory corrected or pinned"}, "202": {"description": "Deletion tombstoned and purge queued"}}
       }
     },
+    "/v1/catalog/categories": {
+      "get": {
+        "operationId": "listCatalogCategories",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Tenant-authorized published category facets"}}
+      }
+    },
+    "/v1/catalog/books": {
+      "get": {
+        "operationId": "searchCatalogBooks",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Cursor-paginated published books"}}
+      }
+    },
+    "/v1/catalog/books/{book_id}": {
+      "get": {
+        "operationId": "getCatalogBook",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Published book detail"}, "404": {"$ref": "#/components/responses/NotFound"}}
+      }
+    },
+    "/v1/catalog/books/{book_id}/courses": {
+      "get": {
+        "operationId": "listCatalogBookCourses",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Published tenant-authenticated CourseRuns"}, "404": {"$ref": "#/components/responses/NotFound"}}
+      }
+    },
+    "/v1/admin/catalog/imports": {
+      "post": {
+        "operationId": "createCatalogImport",
+        "x-implementation-status": "implemented",
+        "responses": {"202": {"description": "Catalog scan queued on the ingestion worker"}}
+      }
+    },
+    "/v1/admin/catalog/imports/{import_id}": {
+      "get": {
+        "operationId": "getCatalogImport",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Catalog scan and staging status"}}
+      }
+    },
+    "/v1/admin/catalog/imports/{import_id}/candidates": {
+      "get": {
+        "operationId": "listCatalogImportCandidates",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Review candidates without filesystem paths"}}
+      }
+    },
+    "/v1/admin/catalog/imports/{import_id}/candidates/{candidate_id}": {
+      "patch": {
+        "operationId": "updateCatalogImportCandidate",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Corrected staged metadata"}}
+      }
+    },
+    "/v1/admin/catalog/imports/{import_id}/candidates/{candidate_id}/approve": {
+      "post": {
+        "operationId": "approveCatalogImportCandidate",
+        "x-implementation-status": "implemented",
+        "responses": {"202": {"description": "Book, system CourseRun and ingestion created idempotently"}}
+      }
+    },
+    "/v1/admin/catalog/imports/{import_id}/candidates/{candidate_id}/reject": {
+      "post": {
+        "operationId": "rejectCatalogImportCandidate",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Candidate rejected without deleting scan evidence"}}
+      }
+    },
+    "/v1/admin/catalog/imports/{import_id}/approve": {
+      "post": {
+        "operationId": "approveCatalogImportCandidates",
+        "x-implementation-status": "implemented",
+        "responses": {"202": {"description": "All unambiguous staged candidates approved"}}
+      }
+    },
     "/v1/feedback": {
       "post": {
         "operationId": "createFeedback",

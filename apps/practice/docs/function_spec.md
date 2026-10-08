@@ -1,6 +1,6 @@
 # Hiruzen Function Specification
 
-**Status:** accepted v0.3 baseline; implementation in progress (TASK-18)  
+**Status:** accepted v0.3 baseline; H1 catalog implemented, TASK-19 next
 **Updated:** 2026-10-07  
 **Application:** `apps/practice` / `practice-api`  
 **Parent specifications:**

@@ -58,10 +58,21 @@ class Scanner:
         self,
         root: Path,
         *,
+        include_relative_paths: tuple[str, ...] | None = None,
         skip_hidden: bool = True,
         skip_patterns: tuple[str, ...] = ("__MACOSX", ".DS_Store", "Thumbs.db"),
     ) -> None:
         self._root = root
+        self._include_relative_paths = (
+            frozenset(Path(item).as_posix() for item in include_relative_paths)
+            if include_relative_paths is not None
+            else None
+        )
+        if self._include_relative_paths is not None and any(
+            Path(item).is_absolute() or ".." in Path(item).parts
+            for item in self._include_relative_paths
+        ):
+            raise ValueError("included source paths must be safe relative paths")
         self._skip_hidden = skip_hidden
         self._skip_patterns = skip_patterns
 
@@ -83,6 +94,12 @@ class Scanner:
                     continue
 
                 file_path = dirpath_path / filename
+                relative_path = file_path.relative_to(self._root).as_posix()
+                if (
+                    self._include_relative_paths is not None
+                    and relative_path not in self._include_relative_paths
+                ):
+                    continue
 
                 try:
                     mime = self._sniff_mime(file_path)
@@ -100,11 +117,9 @@ class Scanner:
                     continue
 
                 checksum = self._sha256(file_path)
-                rel = file_path.relative_to(self._root).as_posix()
-
                 entries.append(
                     FileEntry(
-                        relative_path=rel,
+                        relative_path=relative_path,
                         absolute_path=file_path,
                         checksum=checksum,
                         size_bytes=stat_result.st_size,

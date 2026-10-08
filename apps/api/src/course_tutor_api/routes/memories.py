@@ -10,7 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from course_tutor_api.auth import Principal, get_current_principal, principal_can_access_course
+from course_tutor_api.auth import Principal, get_current_principal
+from course_tutor_api.course_access import principal_can_access_course_record
 from course_tutor_api.db import AuditEvent, Course, MemoryFact, MemorySetting, OutboxEvent
 from course_tutor_api.dependencies import get_session
 from course_tutor_contracts.enums import MemoryFactStatus
@@ -28,11 +29,7 @@ router = APIRouter(prefix="/v1", tags=["memory"])
 
 async def _course(session: AsyncSession, principal: Principal, course_id: uuid.UUID) -> Course:
     course = await session.get(Course, course_id)
-    if (
-        course is None
-        or course.tenant_id != principal.tenant_id
-        or not principal_can_access_course(principal, course_id)
-    ):
+    if course is None or not await principal_can_access_course_record(session, principal, course):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="course not found")
     return course
 

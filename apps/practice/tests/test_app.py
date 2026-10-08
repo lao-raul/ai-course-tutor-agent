@@ -8,6 +8,16 @@ from uuid import UUID, uuid4
 from fastapi.testclient import TestClient
 
 from course_tutor_auth import Principal
+from course_tutor_contracts import (
+    BookLifecycleStatus,
+    CatalogBookDetail,
+    CatalogBookPage,
+    CatalogBookSummary,
+    CatalogCategoryView,
+    CatalogCourseView,
+    CategoryType,
+    EducationLevel,
+)
 from course_tutor_contracts.enums import AccessLabel, UserRole
 from course_tutor_practice.app import PracticeDependencies, create_app
 from course_tutor_shared import Settings
@@ -106,6 +116,10 @@ def test_openapi_has_no_settings_or_secret_schema() -> None:
         "practiceReady",
         "getPracticeCapabilities",
         "generatePracticeExercises",
+        "getPracticeBook",
+        "listBookCourses",
+        "listPracticeCategories",
+        "searchPracticeBooks",
     }
 
     canonical_path = (
@@ -124,3 +138,99 @@ def test_openapi_has_no_settings_or_secret_schema() -> None:
         for method, operation in path.items()
         if method in {"get", "post"}
     }
+
+
+class _CatalogStub:
+    def __init__(self) -> None:
+        self.book_id = uuid4()
+        self.course_id = uuid4()
+        self.run_id = uuid4()
+        self.version_id = uuid4()
+        self.last_bearer: str | None = None
+        self.last_params: dict[str, object] = {}
+
+    def _book(self) -> CatalogBookSummary:
+        return CatalogBookSummary(
+            id=self.book_id,
+            title="义务教育教科书·英语三年级上册",
+            education_level=EducationLevel.PRIMARY,
+            subject="英语",
+            grade="3",
+            publisher="外研社",
+            series="外研社版（三年级起点）（主编：陈琳）",  # noqa: RUF001
+            edition="外研社版",
+            start_grade="3",
+            editor="陈琳",
+            term="上册",
+            language="en",
+            lifecycle_status=BookLifecycleStatus.PUBLISHED,
+        )
+
+    async def list_categories(
+        self, bearer: str, _correlation_id: str | None
+    ) -> list[CatalogCategoryView]:
+        self.last_bearer = bearer
+        return [
+            CatalogCategoryView(
+                id=uuid4(),
+                stable_key="education:primary",
+                display_name="小学",
+                category_type=CategoryType.EDUCATION_LEVEL,
+                book_count=1,
+            )
+        ]
+
+    async def search_books(
+        self,
+        bearer: str,
+        _correlation_id: str | None,
+        params: dict[str, object],
+    ) -> CatalogBookPage:
+        self.last_bearer = bearer
+        self.last_params = params
+        return CatalogBookPage(items=(self._book(),))
+
+    async def get_book(
+        self, _book_id: UUID, bearer: str, _correlation_id: str | None
+    ) -> CatalogBookDetail:
+        self.last_bearer = bearer
+        return CatalogBookDetail(
+            **self._book().model_dump(),
+            courses=tuple(await self.list_book_courses(self.book_id, bearer, None)),
+        )
+
+    async def list_book_courses(
+        self, _book_id: UUID, bearer: str, _correlation_id: str | None
+    ) -> list[CatalogCourseView]:
+        self.last_bearer = bearer
+        return [
+            CatalogCourseView(
+                course_id=self.course_id,
+                course_run_id=self.run_id,
+                code="TXT-TEST",
+                name="英语三年级上册",
+                content_version_id=self.version_id,
+            )
+        ]
+
+
+def test_catalog_facade_forwards_identity_and_filters_without_nas_paths() -> None:
+    settings = Settings(environment=Environment.TEST, service_name="practice-api-test")
+    app = create_app(settings)
+    current = cast(Any, app).state.dependencies
+    catalog = _CatalogStub()
+    cast(Any, app).state.dependencies = PracticeDependencies(
+        auth=current.auth,
+        catalog=catalog,
+    )
+    client = TestClient(app)
+    response = client.get(
+        "/v1/practice/catalog/books",
+        headers={"Authorization": "Bearer local-dev-token"},
+        params={"education_level": "primary", "publisher": "外研社"},
+    )
+    assert response.status_code == 200
+    assert response.json()["items"][0]["publisher"] == "外研社"
+    assert catalog.last_bearer == "Bearer local-dev-token"
+    assert catalog.last_params["education_level"] == "primary"
+    assert "/Volumes/" not in response.text
