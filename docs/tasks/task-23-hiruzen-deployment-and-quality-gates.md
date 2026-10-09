@@ -2,7 +2,7 @@
 
 **Status:** planned  
 **Priority:** P0  
-**Depends on:** TASK-18–TASK-22
+**Depends on:** TASK-18–TASK-22, TASK-24
 
 ## Goal
 
@@ -49,7 +49,8 @@ measurable through CI, Kind and a human-approved FLTRP golden set.
 ## Independent delivery boundary
 
 Helm/CI skeleton work may start once TASK-19 fixes process entrypoints and dependencies;
-TASK-23 does not change product APIs. Final quality/release acceptance waits for H1–H5.
+TASK-23 does not change product APIs. Final quality/release acceptance waits for H1–H5,
+including TASK-24's real outline contract used by the Chapter/Topic experience.
 
 ## Verification
 

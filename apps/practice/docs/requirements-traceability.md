@@ -1,7 +1,7 @@
 # Hiruzen Requirements Traceability — v0.3
 
 **Status:** active  
-**Updated:** 2026-10-07
+**Updated:** 2026-10-08
 
 This matrix is the delivery source of truth for Hiruzen requirements. Operation IDs
 refer to the approved operation boundary in the Hiruzen function/design specifications;
@@ -16,16 +16,16 @@ they become canonical OpenAPI operations in the task that implements them.
 | HFR-CAT-5 | TASK-18 | createCatalogImport, listCatalogImportCandidates, updateCatalogImportCandidate, approveCatalogImportCandidate, rejectCatalogImportCandidate | scanner quarantine, correction and approval tests | implemented |
 | HFR-CAT-6 | TASK-18 | searchPracticeBooks, getPracticeBook | path/credential response leakage tests | implemented |
 | HFR-COURSE-1 | TASK-18 | listBookCourses, listCatalogBookCourses | delegated authorization tests | implemented |
-| HFR-COURSE-2 | TASK-19 | getBookStudyPlan | deterministic default StudyPlan ordering/policy tests | planned |
+| HFR-COURSE-2 | TASK-19 | getBookStudyPlan | deterministic default StudyPlan ordering/policy tests | implemented |
 | HFR-COURSE-3 | TASK-19, TASK-20 | createPracticeGeneration, retrievePracticeEvidence | immutable Agent ID/version reference tests | planned |
-| HFR-COURSE-4 | TASK-19 | getBookStudyPlan, createPracticeGeneration | outline-derived and book-level fallback plan tests | planned |
+| HFR-COURSE-4 | TASK-19, TASK-24 | getCatalogBookOutline, getBookStudyPlan, createPracticeGeneration | deterministic outline extraction/API plus outline-derived and book-level fallback plan tests | implemented |
 | HFR-GEN-1 | TASK-19, TASK-20 | createPracticeGeneration | request boundary/type/count tests | planned |
-| HFR-GEN-2 | TASK-19 | createPracticeGeneration, getPracticeGeneration, cancelPracticeGeneration | asynchronous state-machine/cancellation tests | planned |
+| HFR-GEN-2 | TASK-19 | createPracticeGeneration, getPracticeGeneration, cancelPracticeGeneration | asynchronous state-machine/cancellation tests | implemented |
 | HFR-GEN-3 | TASK-20 | retrievePracticeEvidence | delegated authorization/content-version tests | planned |
 | HFR-GEN-4 | TASK-20 | getPracticeSet, retrievePracticeEvidence | citation and answer-support gates | planned |
 | HFR-GEN-5 | TASK-20 | getPracticeGeneration | schema/count/type/duplicate/leakage tests | planned |
 | HFR-GEN-6 | TASK-19, TASK-20 | getPracticeSet | reproducibility metadata persistence tests | planned |
-| HFR-GEN-7 | TASK-19 | createPracticeGeneration | replay/concurrent idempotency tests | planned |
+| HFR-GEN-7 | TASK-19 | createPracticeGeneration | replay/concurrent idempotency tests | implemented |
 | HFR-GEN-8 | TASK-20 | getPracticeGeneration | insufficient-evidence failure tests | planned |
 | HFR-GEN-9 | TASK-20, TASK-21 | getPracticeSet, submitPracticeAnswer | protected-answer leakage matrix | planned |
 | HFR-GEN-10 | TASK-20, TASK-22 | previewPracticeSet | instructor preview labeling/audit tests | planned |
@@ -54,10 +54,10 @@ they become canonical OpenAPI operations in the task that implements them.
 | HNFR-4 | TASK-20, TASK-23 | getPracticeSet | approved FLTRP golden-set report | planned |
 | HNFR-5 | TASK-19, TASK-21, TASK-23 | getPracticeGeneration, getStudyStatus | dependency outage and availability drills | planned |
 | HNFR-6 | TASK-19, TASK-23 | createPracticeGeneration, submitPracticeAnswer | horizontal-scale/replay tests | planned |
-| HNFR-7 | TASK-20, TASK-21, TASK-23 | createPracticeGeneration, submitPracticeAnswer | telemetry redaction tests | planned |
+| HNFR-7 | TASK-20, TASK-21, TASK-23, TASK-24 | getCatalogBookOutline, createPracticeGeneration, submitPracticeAnswer | outline and practice telemetry redaction tests | planned |
 | HNFR-8 | TASK-19, TASK-23 | createPracticeGeneration | schema ownership/migration tests | planned |
 | HNFR-9 | TASK-18, TASK-19, TASK-20, TASK-23 | createPracticeGeneration, retrievePracticeEvidence | cross-service correlation trace tests | planned |
-| HNFR-10 | TASK-18, TASK-20, TASK-23 | searchPracticeBooks, createPracticeGeneration | hosted-CI network isolation tests | planned |
+| HNFR-10 | TASK-18, TASK-20, TASK-23, TASK-24 | searchPracticeBooks, getCatalogBookOutline, createPracticeGeneration | hosted-CI network isolation tests | planned |
 | HNFR-11 | TASK-23 | practiceHealth, practiceReady | Helm/Kind security and policy tests | planned |
 
 ## Machine validation

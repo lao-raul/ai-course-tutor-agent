@@ -1,6 +1,6 @@
 # TASK-19 — Hiruzen Persistence and Generation Jobs
 
-**Status:** planned  
+**Status:** complete (2026-10-08)
 **Priority:** P0  
 **Depends on:** TASK-18
 
@@ -14,6 +14,8 @@ schema, default Book study plans and an idempotent asynchronous generation state
 - Add StudyPlan/module, GenerationJob, PracticeSet and protected Exercise persistence.
 - Derive a read-only default Book → StudyPlan → Chapter/Topic plan from Agent-provided
   PDF outline metadata; fall back to one book-level module with no invented objectives.
+- Depend on a versioned `OutlineProvider` port so fake, unavailable and Agent HTTP
+  implementations share one contract.
 - Add transactional outbox/worker leases, deadlines, retries and cancellation.
 - Keep answer/rationale storage out of learner read models.
 - Add create/status/set operations to the versioned Practice OpenAPI contract.
@@ -27,7 +29,8 @@ schema, default Book study plans and an idempotent asynchronous generation state
 | StudyPlan and protected Exercise domain models | `apps/practice/src/course_tutor_practice/domain/` |
 | Canonical four-type Exercise DTO/JSON Schema | `packages/contracts/src/course_tutor_contracts/practice.py` |
 | Generation command/state machine | `apps/practice/src/course_tutor_practice/application/generation.py` |
-| Generation and PracticeSet routes | `apps/practice/src/course_tutor_practice/routes/{generations,practice_sets}.py` |
+| Versioned outline provider port and Agent adapter | `apps/practice/src/course_tutor_practice/ports/outline.py`, `apps/practice/src/course_tutor_practice/adapters/agent_outline.py` |
+| Generation and PracticeSet routes | `apps/practice/src/course_tutor_practice/routes/generations.py` |
 | Worker entrypoint and outbox consumer | `services/practice_worker/` |
 | Updated Practice OpenAPI | `packages/contracts/openapi/practice-api.v1.json` |
 | Unit/integration tests | `apps/practice/tests/`, `tests/integration/practice/` |
@@ -45,12 +48,18 @@ schema, default Book study plans and an idempotent asynchronous generation state
 - **AC-19.6:** Migration upgrade/downgrade, state-machine and OpenAPI contract tests pass.
 - **AC-19.7:** Book-based generation defaults to five questions, accepts 1–20 and the
   deprecated v0.2 course endpoint resolves to the same idempotent command.
+- **AC-19.8:** Default-plan creation consumes only the versioned `OutlineProvider` port;
+  fake `AVAILABLE` and `UNAVAILABLE` responses are covered, the unavailable case yields
+  the one-book-module fallback, and no Agent Python module is imported.
 
 ## Independent delivery boundary
 
 TASK-19 owns the Practice schema, canonical Exercise contract, default StudyPlan and
-job lifecycle. It uses fake Agent/evidence providers and does not implement retrieval or
-LLM generation; TASK-20 fills those ports without changing persisted job semantics.
+job lifecycle. It may proceed in parallel with TASK-24 using a fake `OutlineProvider`
+and the book-level fallback. TASK-24 supplies the real Agent HTTP implementation before
+TASK-22 accepts real Chapter/Topic UX. TASK-19 uses a fake evidence provider and does
+not implement retrieval or LLM generation; TASK-20 fills that port without changing
+persisted job semantics.
 
 ## Verification
 

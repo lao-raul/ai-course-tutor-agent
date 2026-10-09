@@ -16,7 +16,7 @@ REQUIREMENT_PATTERN = re.compile(r"^\| ((?:HFR-[A-Z]+-\d+)|(?:HNFR-\d+)) \|")
 TASK_PATTERN = re.compile(r"TASK-\d{2}")
 OPERATION_PATTERN = re.compile(r"^\| `([a-z][A-Za-z0-9]+)` \|")
 STATUSES = {"planned", "in_progress", "implemented"}
-HIRUZEN_TASK_NUMBERS = range(18, 24)
+HIRUZEN_TASK_NUMBERS = range(18, 25)
 
 
 class HiruzenBaselineError(AssertionError):

@@ -10,6 +10,7 @@ dependencies = [
     "course-tutor-ingestion",
     "course-tutor-memory",
     "course-tutor-practice",
+    "course-tutor-practice-worker",
     "course-tutor-shared",
     "pyyaml>=6.0",
 ]
@@ -27,7 +28,7 @@ dev = [
 
 [tool.uv.workspace]
 # services/* join the workspace as each is implemented (Phase 1 onward).
-members = ["apps/api", "apps/practice", "packages/*", "services/ingestion", "services/memory", "services/retrieval"]
+members = ["apps/api", "apps/practice", "packages/*", "services/ingestion", "services/memory", "services/practice_worker", "services/retrieval"]
 
 [tool.uv.sources]
 course-tutor-api = { workspace = true }
@@ -36,6 +37,7 @@ course-tutor-contracts = { workspace = true }
 course-tutor-ingestion = { workspace = true }
 course-tutor-memory = { workspace = true }
 course-tutor-practice = { workspace = true }
+course-tutor-practice-worker = { workspace = true }
 course-tutor-shared = { workspace = true }
 
 [tool.ruff]
@@ -53,9 +55,12 @@ known-first-party = ["course_tutor_api", "course_tutor_auth", "course_tutor_cont
 "tests/**" = ["S105", "S106", "S608"]
 "tests/integration/test_ingestion_idempotency.py" = ["E501"]
 "services/ingestion/src/course_tutor_ingestion/china_textbook_catalog.py" = ["RUF001"]
+"services/ingestion/src/course_tutor_ingestion/outline.py" = ["RUF001", "S112"]
+"services/ingestion/tests/test_outline.py" = ["RUF001"]
 "tests/unit/ingestion/test_china_textbook_catalog.py" = ["RUF001"]
 # Alembic revisions are generated; long inline SQL is expected and must not be reflowed.
 "apps/api/alembic/versions/**" = ["E501"]
+"apps/practice/alembic/versions/**" = ["E501"]
 # FastAPI's Body(...)/Path(...) defaults are required markers, not mutable calls.
 "apps/api/src/course_tutor_api/routes/chat.py" = ["B008", "UP037"]
 
@@ -68,8 +73,9 @@ addopts = "-q"
 python_version = "3.12"
 strict = true
 ignore_missing_imports = true
-# Generated revisions are not hand-maintained code.
-exclude = "apps/api/alembic/versions/"
+# Alembic loads both applications' ``env.py`` as the top-level module ``env``;
+# migrations are validated through upgrade/downgrade/check instead of Mypy.
+exclude = "apps/(api|practice)/alembic/"
 
 [build-system]
 requires = ["hatchling"]

@@ -2,7 +2,7 @@
 
 **Status:** planned  
 **Priority:** P1  
-**Depends on:** TASK-18–TASK-21
+**Depends on:** TASK-18–TASK-21, TASK-24
 
 ## Goal
 
@@ -46,7 +46,8 @@ live tutoring, progress and resume.
 ## Independent delivery boundary
 
 TASK-22 owns Web code only. It may start against generated OpenAPI mocks after TASK-19
-contracts freeze; final acceptance waits for TASK-18–TASK-21 implementations.
+contracts freeze; final acceptance waits for TASK-18–TASK-21 and TASK-24 so real
+Chapter/Topic navigation is backed by the published textbook outline.
 
 ## Verification
 

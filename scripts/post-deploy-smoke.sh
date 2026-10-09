@@ -48,7 +48,7 @@ curl --fail --silent --show-error "http://127.0.0.1:${practice_port}/readyz" | j
 curl --fail --silent --show-error \
   --header "Authorization: Bearer ${token}" \
   "http://127.0.0.1:${practice_port}/v1/practice/capabilities" \
-  | jq -e '.exercise_generation == "not_implemented"' >/dev/null
+  | jq -e '.exercise_generation == "asynchronous_jobs" and (.implemented_features | index("generation_jobs") != null)' >/dev/null
 curl --fail --silent --show-error "http://127.0.0.1:${agent_port}/metrics" \
   | grep -q '^course_tutor_http_requests_total'
 curl --fail --silent --show-error "http://127.0.0.1:${practice_port}/metrics" \
