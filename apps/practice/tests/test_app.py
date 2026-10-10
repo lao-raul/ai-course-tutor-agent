@@ -19,9 +19,12 @@ from course_tutor_contracts import (
     EducationLevel,
 )
 from course_tutor_contracts.enums import AccessLabel, UserRole
+from course_tutor_practice.adapters.memory_repository import InMemoryPracticeRepository
 from course_tutor_practice.app import PracticeDependencies, create_app
 from course_tutor_shared import Settings
 from course_tutor_shared.config import Environment
+
+AUTHORIZATION = f"Bearer {Settings().local_auth_token.get_secret_value()}"
 
 
 def _client() -> TestClient:
@@ -40,37 +43,38 @@ def test_health_and_readiness_are_public_and_stable() -> None:
     assert client.get("/readyz").json() == {"status": "ready"}
 
 
-def test_capabilities_require_auth_and_report_generation_unavailable() -> None:
+def test_capabilities_require_auth_and_report_async_generation() -> None:
     client = _client()
     assert client.get("/v1/practice/capabilities").status_code == 401
     response = client.get(
         "/v1/practice/capabilities",
-        headers={"Authorization": "Bearer local-dev-token"},
+        headers={"Authorization": AUTHORIZATION},
     )
     assert response.status_code == 200
     assert response.json() == {
-        "exercise_generation": "not_implemented",
-        "implemented_features": [],
+        "exercise_generation": "asynchronous_jobs",
+        "implemented_features": [
+            "default_study_plan",
+            "generation_jobs",
+            "practice_sets",
+        ],
     }
 
 
-def test_generation_returns_deterministic_501_with_correlation_id() -> None:
+def test_deprecated_generation_requires_initialized_book_plan() -> None:
     client = _client()
     course_id = uuid4()
     response = client.post(
         f"/v1/practice/courses/{course_id}/exercises:generate",
         headers={
-            "Authorization": "Bearer local-dev-token",
+            "Authorization": AUTHORIZATION,
             "X-Correlation-ID": "practice-test-correlation",
+            "Idempotency-Key": "legacy-without-plan",
         },
         json={"count": 3, "topic": "Bayes", "difficulty": "introductory"},
     )
-    assert response.status_code == 501
-    assert response.json() == {
-        "code": "practice_generation_not_implemented",
-        "message": "Practice exercise generation is not implemented in v0.2.",
-        "correlation_id": "practice-test-correlation",
-    }
+    assert response.status_code == 409
+    assert "initialize the book StudyPlan" in response.json()["detail"]
 
 
 class _StudentProvider:
@@ -91,11 +95,12 @@ class _StudentProvider:
 def test_generation_fails_closed_for_course_outside_verified_scope() -> None:
     client = _client()
     cast(Any, client.app).state.dependencies = PracticeDependencies(
-        auth=_StudentProvider(frozenset())
+        auth=_StudentProvider(frozenset()),
+        repository=InMemoryPracticeRepository(),
     )
     response = client.post(
         f"/v1/practice/courses/{uuid4()}/exercises:generate",
-        headers={"Authorization": "Bearer token"},
+        headers={"Authorization": "Bearer token", "Idempotency-Key": "denied"},
         json={},
     )
     assert response.status_code == 403
@@ -115,6 +120,11 @@ def test_openapi_has_no_settings_or_secret_schema() -> None:
         "practiceHealth",
         "practiceReady",
         "getPracticeCapabilities",
+        "getBookStudyPlan",
+        "createPracticeGeneration",
+        "getPracticeGeneration",
+        "cancelPracticeGeneration",
+        "getPracticeSet",
         "generatePracticeExercises",
         "getPracticeBook",
         "listBookCourses",
@@ -226,11 +236,11 @@ def test_catalog_facade_forwards_identity_and_filters_without_nas_paths() -> Non
     client = TestClient(app)
     response = client.get(
         "/v1/practice/catalog/books",
-        headers={"Authorization": "Bearer local-dev-token"},
+        headers={"Authorization": AUTHORIZATION},
         params={"education_level": "primary", "publisher": "外研社"},
     )
     assert response.status_code == 200
     assert response.json()["items"][0]["publisher"] == "外研社"
-    assert catalog.last_bearer == "Bearer local-dev-token"
+    assert catalog.last_bearer == AUTHORIZATION
     assert catalog.last_params["education_level"] == "primary"
     assert "/Volumes/" not in response.text

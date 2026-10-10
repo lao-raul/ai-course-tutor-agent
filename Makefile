@@ -64,5 +64,7 @@ typecheck:  ## Run mypy
 
 contracts:  ## Validate OpenAPI and requirements traceability
 	uv run python scripts/validate_contract_baseline.py
+	uv run python scripts/validate_hiruzen_baseline.py
+	uv run python scripts/validate_openapi.py
 
 check: lint typecheck contracts test  ## Everything CI runs

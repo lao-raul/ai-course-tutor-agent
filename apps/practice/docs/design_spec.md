@@ -1,7 +1,7 @@
 # Hiruzen Design Specification
 
-**Status:** accepted v0.3 architecture; H1 catalog implemented
-**Updated:** 2026-10-07  
+**Status:** accepted v0.3 architecture; H1/H1a catalog-outline and H2 jobs implemented
+**Updated:** 2026-10-08
 **Function specification:** [function_spec.md](function_spec.md)  
 **Platform decision:** [ADR-006](../../../docs/adr/006-hiruzen-ownership-and-agent-integration.md)
 
@@ -17,7 +17,7 @@ flowchart LR
   Web --> Practice[Hiruzen Practice API]
   Web -->|grounded SSE chat| Agent[Agent API]
 
-  Practice -->|catalog + delegated evidence API| Agent
+  Practice -->|catalog + outline + delegated evidence API| Agent
   Practice --> PracticeDB[(Practice PostgreSQL schema)]
   Practice --> Queue[(Generation outbox)]
   Queue --> PWorker[Practice generation worker]
@@ -162,8 +162,9 @@ data is never used to grant access.
 
 ### 5.2 Required Agent operations
 
-The catalog operation names below are implemented and versioned by TASK-18. The
-practice-evidence operation remains planned for TASK-20.
+The catalog operation names below are implemented and versioned by TASK-18. The outline
+operation is implemented by TASK-24; the practice-evidence operation remains planned
+for TASK-20.
 
 | Operation | Method/path | Purpose |
 |---|---|---|
@@ -171,6 +172,7 @@ practice-evidence operation remains planned for TASK-20.
 | `searchCatalogBooks` | `GET /v1/catalog/books` | Authorized cursor-paginated Book search |
 | `getCatalogBook` | `GET /v1/catalog/books/{book_id}` | Book detail and current publication state |
 | `listCatalogBookCourses` | `GET /v1/catalog/books/{book_id}/courses` | Authorized CourseRuns for a Book |
+| `getCatalogBookOutline` | `GET /v1/catalog/books/{book_id}/outline` | Authorized outline for the exact published Book/ContentVersion |
 | `retrievePracticeEvidence` | `POST /v1/internal/practice/evidence:retrieve` | Bounded evidence for generation, including immutable chunk citations |
 | `streamCourseChat` | `POST /v1/courses/{course_id}/chat` | Existing grounded SSE tutoring endpoint used directly by the browser |
 | `createCatalogImport` | `POST /v1/admin/catalog/imports` | Queue a configured SourceRoot/prefix catalog scan |
@@ -246,6 +248,19 @@ maps those nodes to ordered Chapter/Topic modules. It does not use an LLM to inf
 outline or learning objectives. If Agent returns no reliable outline, the plan contains
 one book-level module with an empty objective list. First-release StudyPlans are
 read-only defaults; authoring/revision endpoints are post-MVP.
+
+TASK-24 implements this boundary with the following deterministic precedence:
+
+1. embedded PDF bookmarks;
+2. reliable table-of-contents text and heading rules;
+3. OCR only when the document has no reliable text layer.
+
+The canonical extractor never relies on unconstrained LLM output. Each response carries
+`book_id`, `content_version_id`, `AVAILABLE`/`UNAVAILABLE` status, extractor version,
+confidence/provenance and ordered nodes with stable ID, parent, depth, title, ordinal
+and page range. Low-confidence or invalid structure is explicitly `UNAVAILABLE`; no
+chapter or objective is inferred. Hiruzen accesses the operation through an
+`OutlineProvider` port and applies the one-book-module fallback for unavailable output.
 
 ## 7. Persistence model
 
@@ -415,16 +430,21 @@ question/evidence labels and reviewer decisions; textbook pages are never commit
 | Slice | Outcome | Dependency |
 |---|---|---|
 | H1 — Catalog contract | Agent book metadata/import staging and Hiruzen search facade | Current Agent ingestion |
-| H2 — Persistence and jobs | Practice schema, generation job state machine and worker | H1 |
+| H1a — Textbook outline | Deterministic Agent outline extraction, persistence and authorized API | H1 |
+| H2 — Persistence and jobs | Practice schema, `OutlineProvider`, generation job state machine and worker | H1; parallel with H1a |
 | H3 — Grounded generation | Agent evidence API, structured generation and validators | H1, H2 |
 | H4 — Attempts/progress | Submission, evaluation, status and resume | H2, H3 |
-| H5 — Chat/UI | Book discovery, practice screens and direct Agent SSE help | H1–H4 |
+| H5 — Chat/UI | Book discovery, real Chapter/Topic practice screens and direct Agent SSE help | H1–H4, H1a |
 | H6 — Deployment/quality | Independent Helm workloads, CI/E2E and golden-set gates | H1–H5 |
 
-Implementation tasks TASK-18 through TASK-23 map one-to-one to these slices; their
+Implementation tasks TASK-18 through TASK-24 implement these slices; TASK-19 and
+TASK-24 are deliberately parallel behind the `OutlineProvider` contract. Their
 requirement and verification coverage is maintained in
-[requirements-traceability.md](requirements-traceability.md). The current
-`501 practice_generation_not_implemented` contract remains in force until H1–H3 are
-delivered and versioned OpenAPI compatibility is approved.
+[requirements-traceability.md](requirements-traceability.md). H2 accepts and persists
+generation jobs through the versioned API. Until H3/TASK-20 supplies grounded evidence
+and generation, the worker transparently retries/fails with a dependency reason and
+never fabricates a PracticeSet.
 
-H1/TASK-18 was completed on 2026-10-07. H2/TASK-19 is the next unblocked delivery slice.
+H1/TASK-18 was completed on 2026-10-07; H2/TASK-19 completed on 2026-10-08 and
+H1a/TASK-24 completed on 2026-10-09. H3/TASK-20 is now unblocked. H5/TASK-22 still
+waits for TASK-20 and TASK-21 before final browser acceptance.

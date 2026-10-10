@@ -1,0 +1,13 @@
+title = "Course Tutor Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+# This is the checked-in local-development sentinel, not a deployable credential:
+# production settings reject it and production Helm values require an external Secret.
+[allowlist]
+description = "Allow the documented local-only authentication sentinel"
+regexTarget = "match"
+regexes = [
+  '''local-dev-token''',
+]

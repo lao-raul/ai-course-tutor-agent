@@ -1,4 +1,4 @@
-"""Application factory for the reserved Practice API boundary."""
+"""Application factory for the Hiruzen Practice API."""
 
 from __future__ import annotations
 
@@ -6,46 +6,44 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Annotated, Literal
-from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, Response, status
-from fastapi.responses import JSONResponse
+from fastapi import Depends, FastAPI, Response, status
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
-from course_tutor_auth import (
-    AuthProvider,
-    Principal,
-    create_auth_provider,
-    get_current_principal,
-    principal_can_access_course,
-)
-from course_tutor_contracts import (
-    GeneratePracticeRequest,
-    PracticeCapabilities,
-    PracticeNotImplementedError,
-)
+from course_tutor_auth import AuthProvider, Principal, create_auth_provider, get_current_principal
+from course_tutor_contracts import PracticeCapabilities
 from course_tutor_practice import __version__
-from course_tutor_practice.adapters.agent_client import (
-    AgentCatalogClient,
-    HttpAgentCatalogClient,
-)
-from course_tutor_practice.routes import catalog
+from course_tutor_practice.adapters.agent_client import AgentCatalogClient, HttpAgentCatalogClient
+from course_tutor_practice.adapters.agent_outline import HttpAgentOutlineProvider
+from course_tutor_practice.adapters.memory_repository import InMemoryPracticeRepository
+from course_tutor_practice.ports import OutlineProvider, PracticeRepository
+from course_tutor_practice.routes import catalog, generations
 from course_tutor_shared import (
     CorrelationIdMiddleware,
     PrometheusMiddleware,
     Settings,
     configure_logging,
     configure_tracing,
-    get_correlation_id,
     get_settings,
     metrics_endpoint,
 )
+from course_tutor_shared.config import Environment
 
 
 @dataclass(frozen=True, slots=True)
 class PracticeDependencies:
     auth: AuthProvider
     catalog: AgentCatalogClient | None = None
+    outline: OutlineProvider | None = None
+    repository: PracticeRepository | None = None
+    session_factory: async_sessionmaker[AsyncSession] | None = None
+    engine: AsyncEngine | None = None
 
 
 class HealthResponse(BaseModel, frozen=True):
@@ -64,9 +62,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_logging(settings)
     configure_tracing(settings)
 
+    engine: AsyncEngine | None = None
+    session_factory: async_sessionmaker[AsyncSession] | None = None
+    repository: PracticeRepository | None = None
+    if settings.environment is Environment.TEST:
+        repository = InMemoryPracticeRepository()
+    else:
+        engine = create_async_engine(
+            settings.practice_postgres_dsn or settings.postgres_dsn,
+            pool_pre_ping=True,
+        )
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
     dependencies = PracticeDependencies(
         auth=create_auth_provider(settings),
         catalog=HttpAgentCatalogClient(settings.agent_base_url),
+        outline=(
+            None
+            if settings.environment is Environment.TEST
+            else HttpAgentOutlineProvider(settings.agent_base_url)
+        ),
+        repository=repository,
+        session_factory=session_factory,
+        engine=engine,
     )
 
     @asynccontextmanager
@@ -74,17 +92,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
-            close = getattr(dependencies.catalog, "aclose", None)
-            if close is not None:
-                await close()
+            for dependency in (dependencies.catalog, dependencies.outline):
+                close = getattr(dependency, "aclose", None)
+                if close is not None:
+                    await close()
+            if dependencies.engine is not None:
+                await dependencies.engine.dispose()
 
     app = FastAPI(
         title="Course Tutor Practice API",
         version=__version__,
-        description=(
-            "Reserved API boundary for future exercise generation. Generation is "
-            "intentionally unavailable in v0.2."
-        ),
+        description="Hiruzen default study plans and asynchronous practice generation jobs.",
         lifespan=lifespan,
     )
     app.state.settings = settings
@@ -96,15 +114,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/healthz", response_model=HealthResponse, operation_id="practiceHealth")
     async def health() -> HealthResponse:
-        return HealthResponse(
-            version=settings.build_version,
-            revision=settings.build_revision,
-        )
+        return HealthResponse(version=settings.build_version, revision=settings.build_revision)
 
     @app.get("/readyz", response_model=ReadinessResponse, operation_id="practiceReady")
     async def ready(response: Response) -> ReadinessResponse:
-        # The dummy service has no network or storage dependency. Successful startup
-        # means configuration and the auth adapter were constructed successfully.
         response.status_code = status.HTTP_200_OK
         return ReadinessResponse()
 
@@ -118,29 +131,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> PracticeCapabilities:
         return PracticeCapabilities()
 
-    @app.post(
-        "/v1/practice/courses/{course_id}/exercises:generate",
-        operation_id="generatePracticeExercises",
-        responses={status.HTTP_501_NOT_IMPLEMENTED: {"model": PracticeNotImplementedError}},
-    )
-    async def generate(
-        course_id: UUID,
-        _body: GeneratePracticeRequest,
-        principal: Annotated[Principal, Depends(get_current_principal)],
-    ) -> JSONResponse:
-        if not principal_can_access_course(principal, course_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="course is outside the authenticated scope",
-            )
-        error = PracticeNotImplementedError(
-            message="Practice exercise generation is not implemented in v0.2.",
-            correlation_id=get_correlation_id() or "unavailable",
-        )
-        return JSONResponse(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            content=error.model_dump(mode="json"),
-        )
-
     app.include_router(catalog.router)
+    app.include_router(generations.router)
     return app

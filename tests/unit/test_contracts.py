@@ -70,6 +70,7 @@ def test_all_tables_are_registered() -> None:
         "audit_events",
         "book_content_bindings",
         "book_course_bindings",
+        "book_outlines",
         "books",
         "catalog_import_batches",
         "catalog_import_candidates",

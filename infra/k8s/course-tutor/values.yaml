@@ -88,7 +88,7 @@ config:
   llmChatModel: ci-chat
   llmEmbeddingModel: ci-embedding
   llmEmbeddingDimension: 1024
-  expectedAlembicRevision: c7e13a09d4f2
+  expectedAlembicRevision: d24e8a19f002
   memoryExtractionInterval: 2
   chatTurnRetentionDays: 30
   sessionSummaryRetentionDays: 90

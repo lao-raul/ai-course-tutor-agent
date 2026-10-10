@@ -1,7 +1,7 @@
 # Hiruzen Function Specification
 
-**Status:** accepted v0.3 baseline; H1 catalog implemented, TASK-19 next
-**Updated:** 2026-10-07  
+**Status:** accepted v0.3 baseline; H1/H1a catalog-outline and H2 persistence/jobs implemented
+**Updated:** 2026-10-08
 **Application:** `apps/practice` / `practice-api`  
 **Parent specifications:**
 [platform function spec](../../../docs/function-spec.md),
@@ -94,6 +94,11 @@ from the Agent-owned academic Course.
 | HFR-COURSE-3 | A StudyPlan references Agent `book_id`, `course_id` and, at generation time, the exact published `content_version_id`; it does not copy textbook content. |
 | HFR-COURSE-4 | Agent-provided PDF outline metadata supplies Chapter/Topic entries. If no reliable outline exists, Hiruzen provides a book-level plan without inventing chapters or learning objectives. |
 
+The outline contract is bound to an exact published `book_id` and
+`content_version_id`. It returns `AVAILABLE` or `UNAVAILABLE`, ordered hierarchy nodes,
+page anchors, confidence and extraction provenance. `UNAVAILABLE` is a valid result and
+must activate the deterministic book-level fallback rather than guessed structure.
+
 ### 4.3 Practice generation
 
 | ID | Requirement |
@@ -168,6 +173,7 @@ boundary is:
 | `searchPracticeBooks` | `GET /v1/practice/catalog/books` | Hiruzen facade over Agent catalog |
 | `getPracticeBook` | `GET /v1/practice/catalog/books/{book_id}` | Hiruzen facade over Agent catalog |
 | `listBookCourses` | `GET /v1/practice/catalog/books/{book_id}/courses` | Hiruzen facade over Agent catalog |
+| `getCatalogBookOutline` | `GET /v1/catalog/books/{book_id}/outline` | Agent |
 | `getBookStudyPlan` | `GET /v1/practice/catalog/books/{book_id}/study-plan` | Hiruzen |
 | `createPracticeGeneration` | `POST /v1/practice/catalog/books/{book_id}/generations` | Hiruzen |
 | `getPracticeGeneration` | `GET /v1/practice/generations/{generation_id}` | Hiruzen |
@@ -181,9 +187,9 @@ boundary is:
 | `resetResumeCursor` | `DELETE /v1/practice/resume` | Hiruzen |
 | `reportPracticeExercise` | `POST /v1/practice/exercises/{exercise_id}/reports` | Hiruzen |
 
-Agent additions required by this specification are versioned catalog operations and a
-service-authorized evidence retrieval operation. Hiruzen must not call Agent internal
-Python modules.
+Agent additions required by this specification are versioned catalog operations, the
+content-versioned outline operation and a service-authorized evidence retrieval
+operation. Hiruzen must not call Agent internal Python modules.
 
 The v0.2 `POST /v1/practice/courses/{course_id}/exercises:generate` operation remains a
 deprecated compatibility alias for one contract version after H1–H3; it resolves the

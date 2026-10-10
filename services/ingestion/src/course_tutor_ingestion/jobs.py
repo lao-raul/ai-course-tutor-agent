@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import re
 import uuid
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -14,8 +15,10 @@ import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from course_tutor_api.db import Chunk as OrmChunk
 from course_tutor_api.db import (
+    Book,
+    BookCourseBinding,
+    BookOutline,
     ContentVersion,
     ContentVersionSource,
     Course,
@@ -24,8 +27,10 @@ from course_tutor_api.db import (
     SourceDocument,
     SourceRoot,
 )
+from course_tutor_api.db import Chunk as OrmChunk
 from course_tutor_contracts.enums import AccessLabel, ContentVersionStatus, ExtractionStatus
 from course_tutor_ingestion.object_store import MinioObjectStore
+from course_tutor_ingestion.outline import EXTRACTOR_VERSION, extract_pdf_outline
 from course_tutor_ingestion.parsers import ParsedDocument, parse
 from course_tutor_ingestion.scanner import FileEntry, Scanner
 from course_tutor_ingestion.source_root import validate_path, validate_read_access
@@ -241,7 +246,7 @@ class IngestionJob:
 
         assert version is not None
         for entry in entries:
-            await self._process_file(entry, version, course)
+            await self._process_file(entry, version, course, course_run)
 
         self._session.add(
             OutboxEvent(
@@ -266,7 +271,7 @@ class IngestionJob:
         return self._stats
 
     async def _process_file(
-        self, entry: FileEntry, version: ContentVersion, course: Course
+        self, entry: FileEntry, version: ContentVersion, course: Course, course_run: CourseRun
     ) -> None:
         result = await self._session.execute(
             select(SourceDocument)
@@ -283,6 +288,28 @@ class IngestionJob:
         reusable = result.scalar_one_or_none()
         if reusable is not None:
             self._session.add(ContentVersionSource(version_id=version.id, source_id=reusable.id))
+            reusable_ocr_lines: tuple[tuple[str, int], ...] = ()
+            if reusable.source_metadata.get("ocr") is True:
+                chunk_rows = (
+                    await self._session.execute(
+                        select(OrmChunk.text, OrmChunk.anchor_value).where(
+                            OrmChunk.source_id == reusable.id,
+                            OrmChunk.anchor_type == "page",
+                        )
+                    )
+                ).all()
+                reusable_ocr_lines = tuple(
+                    (text, int(anchor))
+                    for text, anchor in chunk_rows
+                    if anchor is not None and anchor.isdigit()
+                )
+            await self._create_book_outlines(
+                entry,
+                reusable,
+                version,
+                course_run,
+                ocr_lines=reusable_ocr_lines,
+            )
             self._stats.files_reused += 1
             return
 
@@ -337,6 +364,66 @@ class IngestionJob:
             )
             self._stats.chunks_written += 1
         self._stats.files_processed += 1
+        ocr_lines = (
+            (chunk.text, int(chunk.anchor_value))
+            for chunk in parsed.chunks
+            if parsed.metadata.get("ocr") is True
+            and chunk.anchor_type == "page"
+            and chunk.anchor_value.isdigit()
+        )
+        await self._create_book_outlines(entry, doc, version, course_run, ocr_lines=ocr_lines)
+
+    async def _create_book_outlines(
+        self,
+        entry: FileEntry,
+        source: SourceDocument,
+        version: ContentVersion,
+        course_run: CourseRun,
+        *,
+        ocr_lines: Iterable[tuple[str, int]] = (),
+    ) -> None:
+        """Persist one result per bound book, including explicit unavailability."""
+        books = (
+            (
+                await self._session.execute(
+                    select(Book)
+                    .join(BookCourseBinding)
+                    .where(BookCourseBinding.course_run_id == course_run.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not books:
+            return
+        ocr_lines = tuple(ocr_lines)
+        extracted = (
+            extract_pdf_outline(entry.absolute_path, entry.checksum, ocr_lines=ocr_lines)
+            if entry.mime_type == "application/pdf"
+            else None
+        )
+        for book in books:
+            existing = await self._session.scalar(
+                select(BookOutline.id).where(
+                    BookOutline.book_id == book.id,
+                    BookOutline.content_version_id == version.id,
+                )
+            )
+            if existing is None:
+                self._session.add(
+                    BookOutline(
+                        id=uuid.uuid4(),
+                        book_id=book.id,
+                        content_version_id=version.id,
+                        source_id=source.id,
+                        extractor_version=EXTRACTOR_VERSION,
+                        availability=extracted.availability if extracted else "unavailable",
+                        provenance=extracted.provenance if extracted else "none",
+                        confidence=extracted.confidence if extracted else 0.0,
+                        reason=extracted.reason if extracted else "unsupported_source_format",
+                        nodes=[node.as_dict() for node in extracted.nodes] if extracted else [],
+                    )
+                )
 
 
 async def enqueue_due_scans(session: AsyncSession, now: datetime | None = None) -> int:

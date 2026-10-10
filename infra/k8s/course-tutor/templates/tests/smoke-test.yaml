@@ -58,20 +58,25 @@ spec:
           with urllib.request.urlopen("http://{{ include "course-tutor.fullname" . }}-web/", timeout=10) as response:
               assert response.status == 200 and b"<div id=\"root\"></div>" in response.read()
           status, body = get(f"{practice}/v1/practice/capabilities", True)
-          assert status == 200 and body["exercise_generation"] == "not_implemented"
-          course_id = uuid.uuid4()
+          assert status == 200 and body["exercise_generation"] == "asynchronous_jobs", body
+          assert "generation_jobs" in body["implemented_features"], body
+          uninitialized_course_id = uuid.uuid4()
           request = urllib.request.Request(
-              f"{practice}/v1/practice/courses/{course_id}/exercises:generate",
+              f"{practice}/v1/practice/courses/{uninitialized_course_id}/exercises:generate",
               data=b'{"count": 1}',
-              headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Content-Type": "application/json",
+                  "Idempotency-Key": f"helm-smoke-{uninitialized_course_id}",
+              },
               method="POST",
           )
           try:
               urllib.request.urlopen(request, timeout=10)
-              raise AssertionError("practice generation unexpectedly succeeded")
+              raise AssertionError("practice generation unexpectedly succeeded without a StudyPlan")
           except urllib.error.HTTPError as error:
-              assert error.code == 501
-              assert json.load(error)["code"] == "practice_generation_not_implemented"
+              assert error.code == 409, error.code
+              assert "initialize the book StudyPlan" in json.load(error)["detail"]
 
           suffix = uuid.uuid4().hex[:8]
           programme = request_json(

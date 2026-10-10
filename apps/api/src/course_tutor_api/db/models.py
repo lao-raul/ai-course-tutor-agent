@@ -188,6 +188,42 @@ class BookContentBinding(Base, TimestampMixin):
     )
 
 
+class BookOutline(Base, TimestampMixin):
+    """Immutable extraction result for one textbook and content version."""
+
+    __tablename__ = "book_outlines"
+    __table_args__ = (
+        UniqueConstraint("book_id", "content_version_id", name="uq_book_outline_version"),
+        Index("ix_book_outlines_book_version", "book_id", "content_version_id"),
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 1", name="book_outline_confidence_range"
+        ),
+        CheckConstraint(
+            "availability IN ('available', 'unavailable')",
+            name="book_outline_availability_known",
+        ),
+        CheckConstraint(
+            "provenance IN ('pdf_bookmarks', 'text_toc', 'heading_rules', 'ocr', 'none')",
+            name="book_outline_provenance_known",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    book_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"))
+    content_version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("content_versions.id", ondelete="CASCADE")
+    )
+    source_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("source_documents.id", ondelete="SET NULL")
+    )
+    extractor_version: Mapped[str] = mapped_column(String(64))
+    availability: Mapped[str] = mapped_column(String(16))
+    provenance: Mapped[str] = mapped_column(String(32))
+    confidence: Mapped[float] = mapped_column(Float)
+    reason: Mapped[str | None] = mapped_column(String(300))
+    nodes: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+
+
 class BookCourseBinding(Base):
     __tablename__ = "book_course_bindings"
 

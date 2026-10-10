@@ -19,7 +19,8 @@ also couple its scaling and failures to chat traffic.
 ## Decision
 
 1. Agent remains authoritative for tenant/course authorization, book catalog metadata,
-   NAS ingestion, content versions, retrieval evidence and grounded live chat.
+   NAS ingestion, content versions, deterministic textbook outlines, retrieval evidence
+   and grounded live chat.
 2. Hiruzen owns StudyPlans, generation jobs, immutable PracticeSets, protected answers,
    attempts, reports, progress and resume cursors.
 3. Hiruzen consumes versioned Agent HTTP contracts using workload identity plus the
@@ -47,7 +48,7 @@ also couple its scaling and failures to chat traffic.
 
 ### Costs
 
-- Agent needs versioned catalog and delegated evidence endpoints.
+- Agent needs versioned catalog, textbook-outline and delegated evidence endpoints.
 - Cross-service authentication, timeout, retry and contract testing are required.
 - A second schema, migration chain and worker add operational components.
 - Catalog availability depends on Agent unless a safe short-lived cache is enabled.
@@ -67,6 +68,6 @@ also couple its scaling and failures to chat traffic.
 
 - The specialist Function and Design Specifications under `apps/practice/docs/` are
   accepted as the v0.3 baseline.
-- Delivery tasks TASK-18 through TASK-23 implement H1–H6 with explicit artifacts,
-  acceptance criteria and independent delivery boundaries.
+- Delivery tasks TASK-18 through TASK-24 implement H1–H6 plus the H1a outline slice
+  with explicit artifacts, acceptance criteria and independent delivery boundaries.
 - Update Agent and Practice OpenAPI contracts before implementing service calls.

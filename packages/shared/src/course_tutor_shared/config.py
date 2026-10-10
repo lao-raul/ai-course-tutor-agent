@@ -85,6 +85,9 @@ class Settings(BaseSettings):
 
     # --- State stores -----------------------------------------------------------
     postgres_dsn: str = "postgresql+asyncpg://course_tutor:course_tutor@localhost:5432/course_tutor"
+    # Hiruzen uses a separately owned schema/role. Local development may share the
+    # server DSN; production supplies a restricted practice-specific credential.
+    practice_postgres_dsn: str | None = None
     qdrant_url: str = "http://localhost:6333"
     redis_url: str = "redis://localhost:6379/0"
     minio_endpoint: str = "http://localhost:9000"
