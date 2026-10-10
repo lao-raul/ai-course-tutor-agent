@@ -70,4 +70,6 @@ also couple its scaling and failures to chat traffic.
   accepted as the v0.3 baseline.
 - Delivery tasks TASK-18 through TASK-24 implement H1–H6 plus the H1a outline slice
   with explicit artifacts, acceptance criteria and independent delivery boundaries.
+- TASK-25 separately tracks the privileged H7 instructor preview; it does not expand
+  the learner-release deployment boundary of TASK-23.
 - Update Agent and Practice OpenAPI contracts before implementing service calls.

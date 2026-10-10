@@ -10,6 +10,7 @@ platform with two backend applications.
 2. **Practice API / Hiruzen** — the current `apps/practice` dummy reserves the boundary;
    TASK-18–TASK-24 evolve it into the independently deployed catalog, practice,
    attempts/progress and resume product defined by the accepted v0.3 specifications.
+   TASK-25 separately tracks the remaining instructor-preview requirement.
 3. **Supporting workloads** — ingestion worker and React Web UI. These are not counted as additional backend product apps.
 
 The existing `apps/api` path and `course_tutor_api` package name remain unchanged for now. Its image, Kubernetes workload and service are named `course-tutor-agent-api`. This avoids a large rename that does not improve runtime separation.
@@ -42,6 +43,7 @@ The existing `apps/api` path and `course_tutor_api` package name remain unchange
 | 22 | [TASK-21](task-21-hiruzen-attempts-progress-and-resume.md) | complete (2026-10-10) | P0 | Attempts, release policy, progress and safe resume | TASK-19, TASK-20 |
 | 23 | [TASK-22](task-22-hiruzen-chat-and-web-experience.md) | complete (2026-10-10) | P1 | Book discovery, practice UI and direct Agent tutoring chat | TASK-18–TASK-21, TASK-24 |
 | 24 | [TASK-23](task-23-hiruzen-deployment-and-quality-gates.md) | planned | P0 | Independent workloads, CI/E2E and golden-set quality gates | TASK-18–TASK-22, TASK-24 |
+| 25 | [TASK-25](task-25-hiruzen-instructor-preview.md) | planned | P1 | Privileged AI-generated PracticeSet preview and redacted audit | TASK-18–TASK-22; parallel with TASK-23 |
 
 Tasks may be implemented in separate branches and merged independently once their declared dependencies are present. A task is complete only when all acceptance criteria and verification steps in its file pass.
 
@@ -71,8 +73,8 @@ idempotent submissions, staged answer release, grading provenance, rebuildable p
 authorization-safe resume and consent-gated compact memory signals on 2026-10-10.
 TASK-22 completed the Hiruzen Web flow, direct Agent SSE tutoring, language selection,
 safe feedback/resume UI and generated-fixture browser/accessibility checks on
-2026-10-10. TASK-23 is now the remaining Hiruzen task; its independent workload and
-real-model release gates are not covered by the TASK-22 fixture tests.
+2026-10-10. TASK-23 remains the learner-release deployment and real-model quality gate;
+TASK-25 separately tracks HFR-GEN-10 instructor preview and can proceed in parallel.
 
 The accepted Hiruzen v0.3 expansion starts at TASK-18. Its specialist requirements,
 operation boundary and verification mapping are maintained in

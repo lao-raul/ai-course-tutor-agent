@@ -115,6 +115,9 @@ must activate the deterministic book-level fallback rather than guessed structur
 | HFR-GEN-10 | Instructor preview is clearly labeled AI-generated and is not automatically published as official assessment material. |
 | HFR-GEN-11 | The learner can select Chinese, English or bilingual generation; omitted language defaults to Chinese. |
 
+HFR-GEN-10 is tracked by TASK-25 as a separate instructor capability. It is not an
+implicit part of the TASK-22 learner UI or TASK-23 deployment gates.
+
 MVP question types are:
 
 - multiple choice with one unambiguous correct option;

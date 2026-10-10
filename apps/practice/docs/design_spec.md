@@ -446,9 +446,11 @@ question/evidence labels and reviewer decisions; textbook pages are never commit
 | H4 — Attempts/progress | Submission, evaluation, status and resume | H2, H3 |
 | H5 — Chat/UI | Book discovery, real Chapter/Topic practice screens and direct Agent SSE help | H1–H4, H1a |
 | H6 — Deployment/quality | Independent Helm workloads, CI/E2E and golden-set gates | H1–H5 |
+| H7 — Instructor preview | Privileged, read-only PracticeSet answer view, audit and labeled Web preview | H1–H5; independent of H6 |
 
-Implementation tasks TASK-18 through TASK-24 implement these slices; TASK-19 and
-TASK-24 are deliberately parallel behind the `OutlineProvider` contract. Their
+Implementation tasks TASK-18 through TASK-24 implement H1–H6 and H1a; TASK-25
+tracks H7 separately. TASK-19 and TASK-24 are deliberately parallel behind the
+`OutlineProvider` contract. Their
 requirement and verification coverage is maintained in
 [requirements-traceability.md](requirements-traceability.md). H2 accepts and persists
 generation jobs through the versioned API. H3 provides Agent-scoped evidence retrieval,
@@ -458,5 +460,5 @@ gates; implementing H3 alone does not make the new worker available in the curre
 
 H1/TASK-18 was completed on 2026-10-07; H2/TASK-19 completed on 2026-10-08 and
 H1a/TASK-24 completed on 2026-10-09. H3/TASK-20 completed its scoped fake-provider,
-cross-service and redacted real-pilot acceptance on 2026-10-10. H5/TASK-22 still waits
-for TASK-21 before final browser acceptance.
+cross-service and redacted real-pilot acceptance on 2026-10-10. H4/TASK-21 and
+H5/TASK-22 completed on 2026-10-10. H6/TASK-23 and H7/TASK-25 remain planned.

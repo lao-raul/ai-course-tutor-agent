@@ -28,7 +28,7 @@ they become canonical OpenAPI operations in the task that implements them.
 | HFR-GEN-7 | TASK-19 | createPracticeGeneration | replay/concurrent idempotency tests | implemented |
 | HFR-GEN-8 | TASK-20 | getPracticeGeneration | insufficient-evidence failure tests | implemented |
 | HFR-GEN-9 | TASK-20, TASK-21 | getPracticeSet, submitPracticeAnswer | protected-answer leakage matrix | implemented |
-| HFR-GEN-10 | TASK-20, TASK-22 | previewPracticeSet | instructor preview labeling/audit tests; outside TASK-22 learner AC and still needs a separately scoped follow-up | planned |
+| HFR-GEN-10 | TASK-25 | previewPracticeSet | privileged role/tenant tests, answer-leakage matrix, redacted audit and instructor browser preview | planned |
 | HFR-GEN-11 | TASK-20, TASK-22 | createPracticeGeneration | API Chinese-default and three-language tests plus learner browser persistence | implemented |
 | HFR-ANS-1 | TASK-21 | submitPracticeAnswer | submission replay/policy tests | implemented |
 | HFR-ANS-2 | TASK-21 | submitPracticeAnswer | deterministic and provisional grading tests | implemented |
