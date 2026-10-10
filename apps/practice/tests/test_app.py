@@ -57,6 +57,9 @@ def test_capabilities_require_auth_and_report_async_generation() -> None:
             "default_study_plan",
             "generation_jobs",
             "practice_sets",
+            "attempts",
+            "study_progress",
+            "resume",
         ],
     }
 
@@ -115,7 +118,7 @@ def test_openapi_has_no_settings_or_secret_schema() -> None:
         operation["operationId"]
         for path in schema["paths"].values()
         for method, operation in path.items()
-        if method in {"get", "post"}
+        if method in {"get", "post", "put", "delete"}
     } == {
         "practiceHealth",
         "practiceReady",
@@ -130,6 +133,14 @@ def test_openapi_has_no_settings_or_secret_schema() -> None:
         "listBookCourses",
         "listPracticeCategories",
         "searchPracticeBooks",
+        "submitPracticeAnswer",
+        "giveUpPracticeExercise",
+        "getStudyStatus",
+        "resumeStudy",
+        "getStudyMemorySignals",
+        "reportPracticeExercise",
+        "resetResumeCursor",
+        "setStudyMemoryConsent",
     }
 
     canonical_path = (
@@ -140,13 +151,13 @@ def test_openapi_has_no_settings_or_secret_schema() -> None:
         operation["operationId"]
         for path in canonical["paths"].values()
         for method, operation in path.items()
-        if method in {"get", "post"}
+        if method in {"get", "post", "put", "delete"}
     }
     assert canonical_operations == {
         operation["operationId"]
         for path in schema["paths"].values()
         for method, operation in path.items()
-        if method in {"get", "post"}
+        if method in {"get", "post", "put", "delete"}
     }
 
 

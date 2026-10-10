@@ -27,27 +27,27 @@ they become canonical OpenAPI operations in the task that implements them.
 | HFR-GEN-6 | TASK-19, TASK-20 | getPracticeSet | reproducibility metadata persistence tests | implemented |
 | HFR-GEN-7 | TASK-19 | createPracticeGeneration | replay/concurrent idempotency tests | implemented |
 | HFR-GEN-8 | TASK-20 | getPracticeGeneration | insufficient-evidence failure tests | implemented |
-| HFR-GEN-9 | TASK-20, TASK-21 | getPracticeSet, submitPracticeAnswer | protected-answer leakage matrix | planned |
+| HFR-GEN-9 | TASK-20, TASK-21 | getPracticeSet, submitPracticeAnswer | protected-answer leakage matrix | implemented |
 | HFR-GEN-10 | TASK-20, TASK-22 | previewPracticeSet | instructor preview labeling/audit tests | planned |
 | HFR-GEN-11 | TASK-20, TASK-22 | createPracticeGeneration | API Chinese-default and three-language tests; learner UI remains TASK-22 | in_progress |
-| HFR-ANS-1 | TASK-21 | submitPracticeAnswer | submission replay/policy tests | planned |
-| HFR-ANS-2 | TASK-21 | submitPracticeAnswer | deterministic and provisional grading tests | planned |
-| HFR-ANS-3 | TASK-21 | submitPracticeAnswer | staged feedback/release tests | planned |
-| HFR-ANS-4 | TASK-21 | submitPracticeAnswer | immutable attempt provenance tests | planned |
-| HFR-ANS-5 | TASK-21 | reportPracticeExercise | learner report/moderation tests | planned |
-| HFR-ANS-6 | TASK-21 | submitPracticeAnswer, giveUpPracticeExercise | attempts 1/2 hints and attempt 3/give-up release matrix | planned |
+| HFR-ANS-1 | TASK-21 | submitPracticeAnswer | submission replay/policy tests | implemented |
+| HFR-ANS-2 | TASK-21 | submitPracticeAnswer | deterministic and provisional grading tests | implemented |
+| HFR-ANS-3 | TASK-21 | submitPracticeAnswer | staged feedback/release tests | implemented |
+| HFR-ANS-4 | TASK-21 | submitPracticeAnswer | immutable attempt provenance tests | implemented |
+| HFR-ANS-5 | TASK-21 | reportPracticeExercise | learner report idempotency and safe response tests; instructor moderation UI is post-MVP | implemented |
+| HFR-ANS-6 | TASK-21 | submitPracticeAnswer, giveUpPracticeExercise | attempts 1/2 hints and attempt 3/give-up release matrix | implemented |
 | HFR-CHAT-1 | TASK-22 | streamCourseChat | inline question browser E2E | planned |
 | HFR-CHAT-2 | TASK-22 | streamCourseChat | assessment context/SSE contract tests | planned |
 | HFR-CHAT-3 | TASK-22 | streamCourseChat | architecture dependency and network-call tests | planned |
 | HFR-CHAT-4 | TASK-20, TASK-22 | streamCourseChat | solution withholding/release tests | planned |
 | HFR-CHAT-5 | TASK-20, TASK-22 | streamCourseChat | published-version citation tests | planned |
 | HFR-CHAT-6 | TASK-22 | streamCourseChat | session/correlation propagation tests | planned |
-| HFR-PROG-1 | TASK-21 | getStudyStatus | status transition tests | planned |
-| HFR-PROG-2 | TASK-21 | getStudyStatus | counters/mastery projection tests | planned |
-| HFR-PROG-3 | TASK-21 | resumeStudy | safe authorization-aware resume tests | planned |
-| HFR-PROG-4 | TASK-21 | submitPracticeAnswer, getStudyStatus | replay and projection rebuild tests | planned |
-| HFR-PROG-5 | TASK-21 | resumeStudy, resetResumeCursor | cursor reset/history retention tests | planned |
-| HFR-PROG-6 | TASK-21 | getStudyStatus | consent and compact-memory contract tests | planned |
+| HFR-PROG-1 | TASK-21 | getStudyStatus | status transition tests | implemented |
+| HFR-PROG-2 | TASK-21 | getStudyStatus | counters/mastery projection tests | implemented |
+| HFR-PROG-3 | TASK-21 | resumeStudy | safe authorization-aware resume tests | implemented |
+| HFR-PROG-4 | TASK-21 | submitPracticeAnswer, getStudyStatus | replay and projection rebuild tests | implemented |
+| HFR-PROG-5 | TASK-21 | resumeStudy, resetResumeCursor | cursor reset/history retention tests | implemented |
+| HFR-PROG-6 | TASK-21 | setStudyMemoryConsent, getStudyMemorySignals | consent and compact-memory contract tests | implemented |
 | HNFR-1 | TASK-18, TASK-21, TASK-23 | searchPracticeBooks, resumeStudy | LAN performance benchmark | planned |
 | HNFR-2 | TASK-19, TASK-23 | createPracticeGeneration | submission latency/deadline tests | planned |
 | HNFR-3 | TASK-20, TASK-23 | getPracticeSet | fake schema/evidence coverage gate implemented; release-wide gate remains TASK-23 | in_progress |

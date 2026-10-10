@@ -1,6 +1,6 @@
 # Hiruzen Function Specification
 
-**Status:** accepted v0.3 baseline; H1/H1a catalog-outline, H2 persistence/jobs and H3 grounded generation implemented
+**Status:** accepted v0.3 baseline; H1/H1a catalog-outline, H2 persistence/jobs, H3 grounded generation and H4 attempts/progress implemented
 **Updated:** 2026-10-10
 **Application:** `apps/practice` / `practice-api`  
 **Parent specifications:**
@@ -186,6 +186,8 @@ boundary is:
 | `resumeStudy` | `GET /v1/practice/resume` | Hiruzen |
 | `resetResumeCursor` | `DELETE /v1/practice/resume` | Hiruzen |
 | `reportPracticeExercise` | `POST /v1/practice/exercises/{exercise_id}/reports` | Hiruzen |
+| `setStudyMemoryConsent` | `PUT /v1/practice/study-status/memory-consent` | Hiruzen |
+| `getStudyMemorySignals` | `GET /v1/practice/study-status/memory-signals` | Hiruzen |
 
 Agent additions required by this specification are versioned catalog operations, the
 content-versioned outline operation and a service-authorized evidence retrieval

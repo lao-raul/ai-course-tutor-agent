@@ -22,8 +22,10 @@ from course_tutor_practice import __version__
 from course_tutor_practice.adapters.agent_client import AgentCatalogClient, HttpAgentCatalogClient
 from course_tutor_practice.adapters.agent_outline import HttpAgentOutlineProvider
 from course_tutor_practice.adapters.memory_repository import InMemoryPracticeRepository
+from course_tutor_practice.adapters.rubric import OpenAICompatibleRubricEvaluator
+from course_tutor_practice.application.evaluation import RubricEvaluator
 from course_tutor_practice.ports import OutlineProvider, PracticeRepository
-from course_tutor_practice.routes import catalog, generations
+from course_tutor_practice.routes import attempts, catalog, generations, progress, reports
 from course_tutor_shared import (
     CorrelationIdMiddleware,
     PrometheusMiddleware,
@@ -44,6 +46,7 @@ class PracticeDependencies:
     repository: PracticeRepository | None = None
     session_factory: async_sessionmaker[AsyncSession] | None = None
     engine: AsyncEngine | None = None
+    rubric_evaluator: RubricEvaluator | None = None
 
 
 class HealthResponse(BaseModel, frozen=True):
@@ -85,6 +88,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         repository=repository,
         session_factory=session_factory,
         engine=engine,
+        rubric_evaluator=(
+            None
+            if settings.environment is Environment.TEST
+            else OpenAICompatibleRubricEvaluator(
+                settings.llm_base_url,
+                settings.llm_chat_model,
+                settings.llm_api_key.get_secret_value(),
+            )
+        ),
     )
 
     @asynccontextmanager
@@ -92,7 +104,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
-            for dependency in (dependencies.catalog, dependencies.outline):
+            for dependency in (
+                dependencies.catalog,
+                dependencies.outline,
+                dependencies.rubric_evaluator,
+            ):
                 close = getattr(dependency, "aclose", None)
                 if close is not None:
                     await close()
@@ -102,7 +118,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="Course Tutor Practice API",
         version=__version__,
-        description="Hiruzen default study plans and asynchronous practice generation jobs.",
+        description="Hiruzen practice generation, attempts, progress and safe resume.",
         lifespan=lifespan,
     )
     app.state.settings = settings
@@ -133,4 +149,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(catalog.router)
     app.include_router(generations.router)
+    app.include_router(attempts.router)
+    app.include_router(progress.router)
+    app.include_router(reports.router)
     return app

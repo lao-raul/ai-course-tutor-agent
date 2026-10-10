@@ -7,14 +7,17 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -174,3 +177,119 @@ class PracticeOutboxEvent(Base, TimestampMixin):
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     dead_lettered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class Attempt(Base):
+    __tablename__ = "attempts"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "user_id",
+            "exercise_id",
+            "idempotency_key",
+            name="uq_attempt_idempotency",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "user_id",
+            "exercise_id",
+            "attempt_number",
+            name="uq_attempt_ordinal",
+        ),
+        CheckConstraint("attempt_number BETWEEN 1 AND 4", name="attempt_number_range"),
+        CheckConstraint("action IN ('submit','give_up')", name="attempt_action_known"),
+        Index("ix_attempts_owner_set", "tenant_id", "user_id", "practice_set_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    user_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    practice_set_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("practice.practice_sets.id"))
+    exercise_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("practice.exercises.id"))
+    attempt_number: Mapped[int] = mapped_column(Integer)
+    action: Mapped[str] = mapped_column(String(16))
+    idempotency_key: Mapped[str] = mapped_column(String(255))
+    request_digest: Mapped[str] = mapped_column(String(64))
+    submitted_value: Mapped[Any | None] = mapped_column(JSONB)
+    correct: Mapped[bool | None] = mapped_column(Boolean)
+    score: Mapped[float | None] = mapped_column(Float)
+    provisional: Mapped[bool] = mapped_column(Boolean)
+    evaluator: Mapped[str] = mapped_column(String(64))
+    evaluator_version: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class StudyActivity(Base):
+    __tablename__ = "study_activity"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", "source_key"),
+        Index("ix_study_activity_owner_set", "tenant_id", "user_id", "practice_set_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    user_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    practice_set_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("practice.practice_sets.id")
+    )
+    exercise_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("practice.exercises.id"))
+    event_type: Mapped[str] = mapped_column(String(32))
+    source_key: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class StudyProgress(Base, TimestampMixin):
+    __tablename__ = "study_progress"
+    __table_args__ = (UniqueConstraint("tenant_id", "user_id", "practice_set_id"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    user_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    practice_set_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("practice.practice_sets.id"))
+    status: Mapped[str] = mapped_column(String(16))
+    total_questions: Mapped[int] = mapped_column(Integer)
+    attempted_questions: Mapped[int] = mapped_column(Integer)
+    completed_questions: Mapped[int] = mapped_column(Integer)
+    correct_questions: Mapped[int] = mapped_column(Integer)
+    next_exercise_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    latest_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    topic_mastery: Mapped[dict[str, float]] = mapped_column(JSONB, default=dict)
+
+
+class ResumeCursor(Base, TimestampMixin):
+    __tablename__ = "resume_cursors"
+    __table_args__ = (UniqueConstraint("tenant_id", "user_id"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    user_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    practice_set_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("practice.practice_sets.id")
+    )
+    exercise_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    cleared: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ExerciseReport(Base):
+    __tablename__ = "exercise_reports"
+    __table_args__ = (UniqueConstraint("tenant_id", "user_id", "exercise_id", "idempotency_key"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    user_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    exercise_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("practice.exercises.id"))
+    idempotency_key: Mapped[str] = mapped_column(String(255))
+    reason: Mapped[str] = mapped_column(String(32))
+    detail: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="open")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class StudyMemoryConsent(Base, TimestampMixin):
+    __tablename__ = "study_memory_consent"
+    __table_args__ = (UniqueConstraint("tenant_id", "user_id"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    user_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)

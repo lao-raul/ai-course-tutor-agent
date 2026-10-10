@@ -4,7 +4,8 @@ Hiruzen is the independently owned practice boundary. TASK-19 provides determini
 default StudyPlans, a protected four-type Exercise contract, idempotent asynchronous
 generation jobs, learner-safe PracticeSet reads and a lease-safe worker port. TASK-20
 connects that worker to Agent's version-pinned evidence API and structured LLM
-generation with validation. TASK-21 and TASK-22 will add attempts/progress and the UI;
+generation with validation. TASK-21 adds immutable, idempotent attempts, staged
+answer release, progress/resume and learner reports. TASK-22 will add the UI;
 TASK-23 will deploy the independent Practice worker through Helm.
 
 The architecture and product contracts are maintained in:
@@ -61,6 +62,30 @@ uv run python -m course_tutor_practice_worker
 The current Helm chart does not yet include the independent Practice migration and
 worker workloads; deployment of those processes is part of TASK-23. The current
 browser UI also does not yet expose the Hiruzen generation flow.
+
+Once a job is `READY`, read its learner-safe set and submit an answer. Each new
+attempt needs a new idempotency key; retrying the same key is safe:
+
+```bash
+curl -H "Authorization: Bearer ${COURSE_TUTOR_AUTH_TOKEN}" \
+  "http://127.0.0.1:8001/v1/practice/sets/<SET_ID>"
+curl -X POST \
+  -H "Authorization: Bearer ${COURSE_TUTOR_AUTH_TOKEN}" \
+  -H 'Idempotency-Key: answer-1' -H 'Content-Type: application/json' \
+  -d '{"answer":"b"}' \
+  "http://127.0.0.1:8001/v1/practice/sets/<SET_ID>/exercises/<EXERCISE_ID>/attempts"
+curl -H "Authorization: Bearer ${COURSE_TUTOR_AUTH_TOKEN}" \
+  "http://127.0.0.1:8001/v1/practice/study-status"
+curl -H "Authorization: Bearer ${COURSE_TUTOR_AUTH_TOKEN}" \
+  "http://127.0.0.1:8001/v1/practice/resume"
+```
+
+Incorrect attempts one and two return hints without the answer. The third incorrect
+attempt, or `POST .../give-up`, releases the answer/rationale. Short-answer grades are
+marked provisional. Study-memory signals are disabled until the learner explicitly
+opts in via `PUT /v1/practice/study-status/memory-consent`; the versioned signal
+contains only bounded progress/mastery, never answer text. Apply the Practice schema
+migration before running these endpoints.
 
 ## Verification
 

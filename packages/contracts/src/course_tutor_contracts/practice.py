@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 
 
 class PracticeModel(BaseModel):
@@ -49,6 +49,9 @@ class PracticeCapabilities(PracticeModel):
         "default_study_plan",
         "generation_jobs",
         "practice_sets",
+        "attempts",
+        "study_progress",
+        "resume",
     )
 
 
@@ -197,6 +200,112 @@ class PracticeSetView(PracticeModel):
     content_version_id: UUID
     exercises: tuple[ExerciseView, ...]
     created_at: datetime
+
+
+class SubmitPracticeAnswerRequest(PracticeModel):
+    answer: StrictBool | str
+
+    @field_validator("answer")
+    @classmethod
+    def bounded_text(cls, value: bool | str) -> bool | str:
+        if isinstance(value, str) and (not value.strip() or len(value) > 4000):
+            raise ValueError("answer must contain 1-4000 non-blank characters")
+        return value
+
+
+class AnswerReleaseView(PracticeModel):
+    answer: str | bool | tuple[str, ...]
+    rationale: str
+    evidence_citation_ids: tuple[str, ...]
+
+
+class AttemptFeedbackView(PracticeModel):
+    id: UUID
+    exercise_id: UUID
+    attempt_number: int = Field(ge=1)
+    outcome: Literal["correct", "incorrect", "provisional", "gave_up"]
+    correct: bool | None
+    score: float | None = Field(default=None, ge=0, le=1)
+    provisional: bool
+    hint: str | None = None
+    released_answer: AnswerReleaseView | None = None
+    evaluator: str
+    evaluator_version: str
+    created_at: datetime
+
+
+class StudySetProgressView(PracticeModel):
+    practice_set_id: UUID
+    study_plan_id: UUID
+    book_id: UUID
+    course_id: UUID
+    content_version_id: UUID
+    status: Literal["NOT_STARTED", "IN_PROGRESS", "COMPLETED"]
+    total_questions: int = Field(ge=0)
+    attempted_questions: int = Field(ge=0)
+    completed_questions: int = Field(ge=0)
+    correct_questions: int = Field(ge=0)
+    next_exercise_id: UUID | None = None
+    latest_activity_at: datetime | None = None
+    topic_mastery: dict[str, float] = Field(default_factory=dict)
+
+
+class StudyPlanProgressView(PracticeModel):
+    study_plan_id: UUID
+    book_id: UUID
+    status: Literal["NOT_STARTED", "IN_PROGRESS", "COMPLETED"]
+    practice_set_count: int = Field(ge=0)
+    total_questions: int = Field(ge=0)
+    attempted_questions: int = Field(ge=0)
+    completed_questions: int = Field(ge=0)
+    correct_questions: int = Field(ge=0)
+    latest_activity_at: datetime | None = None
+    topic_mastery: dict[str, float] = Field(default_factory=dict)
+
+
+class StudyStatusView(PracticeModel):
+    sets: tuple[StudySetProgressView, ...]
+    plans: tuple[StudyPlanProgressView, ...]
+
+
+class ResumeView(PracticeModel):
+    practice_set_id: UUID
+    study_plan_id: UUID
+    book_id: UUID
+    course_id: UUID
+    content_version_id: UUID
+    exercise_id: UUID
+    attempt_number: int = Field(ge=0)
+    released: bool
+
+
+class ExerciseReportRequest(PracticeModel):
+    reason: Literal["incorrect", "ambiguous", "unsafe"]
+    detail: str = Field(default="", max_length=1000)
+
+
+class ExerciseReportView(PracticeModel):
+    id: UUID
+    exercise_id: UUID
+    status: Literal["open"] = "open"
+    created_at: datetime
+
+
+class StudyMemoryConsentRequest(PracticeModel):
+    enabled: bool
+
+
+class StudyMemoryConsentView(PracticeModel):
+    enabled: bool
+
+
+class StudyMemorySignalView(PracticeModel):
+    schema_version: Literal["hiruzen.study.v1"] = "hiruzen.study.v1"
+    book_id: UUID
+    study_plan_id: UUID
+    completed_questions: int
+    total_questions: int
+    mastery_band: Literal["starting", "developing", "confident"]
 
 
 class PracticeError(PracticeModel):

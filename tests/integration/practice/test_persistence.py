@@ -59,6 +59,23 @@ def test_practice_migration_upgrade_downgrade_upgrade_round_trip() -> None:
             text=True,
         )
 
+    async def verify_immutable_triggers() -> None:
+        engine = create_async_engine(dsn)
+        try:
+            async with engine.connect() as connection:
+                count = await connection.scalar(
+                    text(
+                        "SELECT count(*) FROM pg_trigger WHERE tgname = 'reject_immutable_write' "
+                        "AND tgrelid IN ('practice.attempts'::regclass, "
+                        "'practice.study_activity'::regclass)"
+                    )
+                )
+                assert count == 2
+        finally:
+            await engine.dispose()
+
+    asyncio.run(verify_immutable_triggers())
+
 
 @pytest.mark.asyncio
 async def test_sql_repository_commits_job_and_outbox_atomically(

@@ -1,6 +1,6 @@
 # TASK-21 — Hiruzen Attempts, Progress and Resume
 
-**Status:** planned  
+**Status:** complete (2026-10-10)
 **Priority:** P0  
 **Depends on:** TASK-19, TASK-20
 
@@ -56,3 +56,18 @@ uv run pytest apps/practice/tests tests/integration/practice -q
 uv run pytest tests/integration/security -q
 uv run python scripts/validate_hiruzen_baseline.py
 ```
+
+For observable API acceptance, use a `READY` set and its exercise IDs from
+`GET /v1/practice/sets/{set_id}`. Submit to
+`POST /v1/practice/sets/{set_id}/exercises/{exercise_id}/attempts` with a distinct
+`Idempotency-Key` for each answer; repeating the same key must return the same attempt.
+The first two incorrect responses have `hint` but `released_answer: null`; the third
+incorrect response or `POST .../give-up` contains the answer and cited rationale.
+`GET /v1/practice/study-status` and `GET /v1/practice/resume` show only safe progress
+and navigation. `DELETE /v1/practice/resume` clears the cursor without deleting history.
+
+Build and deployment remain the project-wide process in the root README. The API
+and Practice worker require the `p210001` Practice migration before startup. The
+currently checked-in Helm topology does **not** deploy the independent Practice worker
+or migration; this is TASK-23 and does not affect the isolated TASK-21 API/test gate.
+Acceptance evidence: [2026-10-10-task-21.md](../verification/2026-10-10-task-21.md).

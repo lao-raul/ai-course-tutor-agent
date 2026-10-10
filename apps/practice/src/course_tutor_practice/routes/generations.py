@@ -28,6 +28,7 @@ from course_tutor_practice.application.generation import (
 from course_tutor_practice.db.repository import SqlPracticeRepository
 from course_tutor_practice.ports import OutlineProvider, PracticeRepository
 from course_tutor_practice.ports.outline import UnavailableOutlineProvider
+from course_tutor_practice.routes.study_dependencies import ensure_published_access
 from course_tutor_shared import get_correlation_id
 
 router = APIRouter(tags=["practice-generation"])
@@ -185,10 +186,14 @@ async def cancel_practice_generation(
 async def get_practice_set(
     set_id: UUID,
     principal: Annotated[Principal, Depends(get_current_principal)],
+    bearer: Annotated[str, Header(alias="Authorization")],
     repository: Annotated[PracticeRepository, Depends(_repository)],
+    catalog: Annotated[AgentCatalogClient, Depends(_catalog)],
 ) -> PracticeSetView:
     value = await repository.get_practice_set(principal.tenant_id, principal.user_id, set_id)
-    if value is None:
+    if value is None or not await ensure_published_access(
+        catalog, bearer, value.book_id, value.course_id, value.content_version_id
+    ):
         raise HTTPException(status_code=404, detail="practice set not found")
     return PracticeSetView(
         id=value.id,

@@ -39,7 +39,7 @@ The existing `apps/api` path and `course_tutor_api` package name remain unchange
 | 19 | [TASK-24](task-24-agent-textbook-outline-extraction-and-api.md) | complete (2026-10-09) | P0 | Agent-owned deterministic textbook outline extraction and API | TASK-15, TASK-18 |
 | 20 | [TASK-19](task-19-hiruzen-persistence-and-generation-jobs.md) | complete (2026-10-08) | P0 | Practice schema, default StudyPlan and asynchronous generation jobs | TASK-18; parallel with TASK-24 |
 | 21 | [TASK-20](task-20-hiruzen-grounded-generation.md) | complete (2026-10-10) | P0 | Delegated evidence API and validated grounded question generation | TASK-18, TASK-19 |
-| 22 | [TASK-21](task-21-hiruzen-attempts-progress-and-resume.md) | planned | P0 | Attempts, release policy, progress and safe resume | TASK-19, TASK-20 |
+| 22 | [TASK-21](task-21-hiruzen-attempts-progress-and-resume.md) | complete (2026-10-10) | P0 | Attempts, release policy, progress and safe resume | TASK-19, TASK-20 |
 | 23 | [TASK-22](task-22-hiruzen-chat-and-web-experience.md) | planned | P1 | Book discovery, practice UI and direct Agent tutoring chat | TASK-18–TASK-21, TASK-24 |
 | 24 | [TASK-23](task-23-hiruzen-deployment-and-quality-gates.md) | planned | P0 | Independent workloads, CI/E2E and golden-set quality gates | TASK-18–TASK-22, TASK-24 |
 
@@ -66,8 +66,11 @@ contract, idempotent generation jobs and lease-safe worker boundary on 2026-10-0
 TASK-24 completed deterministic Agent outline extraction, persistence and the authorized
 versioned outline API on 2026-10-09. TASK-20 completed delegated, version-pinned Agent
 evidence retrieval, structured generation, deterministic validation and the redacted
-Chen Lin Grade 3 real-model pilot on 2026-10-10. TASK-21 is now unblocked; TASK-22 still
-waits for TASK-21.
+Chen Lin Grade 3 real-model pilot on 2026-10-10. TASK-21 completed immutable,
+idempotent submissions, staged answer release, grading provenance, rebuildable progress,
+authorization-safe resume and consent-gated compact memory signals on 2026-10-10.
+TASK-22 is now unblocked; TASK-23 infrastructure work may proceed in parallel, with
+full release acceptance waiting for TASK-22.
 
 The accepted Hiruzen v0.3 expansion starts at TASK-18. Its specialist requirements,
 operation boundary and verification mapping are maintained in
