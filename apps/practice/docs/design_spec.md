@@ -1,6 +1,6 @@
 # Hiruzen Design Specification
 
-**Status:** accepted v0.3 architecture; H1/H1a catalog-outline, H2 jobs and H3 grounded generation implemented
+**Status:** accepted v0.3 architecture; H1/H1a catalog-outline, H2 jobs, H3 grounded generation and H4 attempts/progress implemented
 **Updated:** 2026-10-10
 **Function specification:** [function_spec.md](function_spec.md)  
 **Platform decision:** [ADR-006](../../../docs/adr/006-hiruzen-ownership-and-agent-integration.md)
@@ -370,6 +370,10 @@ explicit privileged endpoint/read model and audit event.
 - Progress survives a new textbook version; an existing PracticeSet remains pinned to
   its original version, while new generation uses the latest published version.
 - Any signal sent to Agent memory is compact, consent-aware and contains no answer text.
+- Hiruzen persists an explicit learner opt-in for study-memory sharing. The versioned
+  `hiruzen.study.v1` read contract emits at most one bounded mastery signal per
+  StudyPlan; there is no automatic raw-attempt/answer export. A future Agent consumer
+  must independently enforce its own memory consent before storing a signal.
 - First release applies no time-based automatic deletion to attempts or progress.
   Explicit privacy export/deletion follows the platform policy and must preserve any
   legally required audit tombstone; retention changes are configuration, not LLM policy.

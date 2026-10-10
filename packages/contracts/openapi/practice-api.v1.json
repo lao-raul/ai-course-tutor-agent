@@ -127,6 +127,45 @@
         }
       }
     },
+    "/v1/practice/sets/{set_id}/exercises/{exercise_id}/attempts": {
+      "parameters": [{"$ref": "#/components/parameters/PracticeSetId"}, {"$ref": "#/components/parameters/ExerciseId"}, {"$ref": "#/components/parameters/IdempotencyKey"}],
+      "post": {
+        "operationId": "submitPracticeAnswer",
+        "x-implementation-status": "implemented",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SubmitAnswer"}}}},
+        "responses": {"200": {"description": "Feedback with staged hint or released answer", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AttemptFeedback"}}}}, "404": {"description": "Exercise is not owned or no longer authorized"}, "409": {"description": "Idempotency conflict or completed exercise"}, "422": {"description": "Invalid answer"}, "503": {"description": "Rubric evaluator unavailable"}}
+      }
+    },
+    "/v1/practice/sets/{set_id}/exercises/{exercise_id}/give-up": {
+      "parameters": [{"$ref": "#/components/parameters/PracticeSetId"}, {"$ref": "#/components/parameters/ExerciseId"}, {"$ref": "#/components/parameters/IdempotencyKey"}],
+      "post": {
+        "operationId": "giveUpPracticeExercise",
+        "x-implementation-status": "implemented",
+        "responses": {"200": {"description": "Answer and rationale released", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AttemptFeedback"}}}}, "404": {"description": "Exercise not found"}, "409": {"description": "Exercise already complete"}}
+      }
+    },
+    "/v1/practice/exercises/{exercise_id}/reports": {
+      "parameters": [{"$ref": "#/components/parameters/ExerciseId"}, {"$ref": "#/components/parameters/IdempotencyKey"}],
+      "post": {
+        "operationId": "reportPracticeExercise",
+        "x-implementation-status": "implemented",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExerciseReportRequest"}}}},
+        "responses": {"200": {"description": "Question report accepted without answer material"}, "404": {"description": "Exercise not found"}, "409": {"description": "Idempotency conflict"}}
+      }
+    },
+    "/v1/practice/study-status": {
+      "get": {"operationId": "getStudyStatus", "x-implementation-status": "implemented", "responses": {"200": {"description": "Authorized learner progress with no answer keys", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/StudyStatus"}}}}}}
+    },
+    "/v1/practice/resume": {
+      "get": {"operationId": "resumeStudy", "x-implementation-status": "implemented", "responses": {"200": {"description": "Latest authorized safe exercise or null", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Resume"}}}}}},
+      "delete": {"operationId": "resetResumeCursor", "x-implementation-status": "implemented", "parameters": [{"$ref": "#/components/parameters/IdempotencyKey"}], "responses": {"204": {"description": "Resume cursor cleared without deleting attempts"}}}
+    },
+    "/v1/practice/study-status/memory-consent": {
+      "put": {"operationId": "setStudyMemoryConsent", "x-implementation-status": "implemented", "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["enabled"], "properties": {"enabled": {"type": "boolean"}}}}}}, "responses": {"200": {"description": "Memory sharing preference updated"}}}
+    },
+    "/v1/practice/study-status/memory-signals": {
+      "get": {"operationId": "getStudyMemorySignals", "x-implementation-status": "implemented", "responses": {"200": {"description": "Versioned compact consent-gated signals without answers"}, "403": {"description": "Consent disabled"}}}
+    },
     "/v1/practice/courses/{course_id}/exercises:generate": {
       "parameters": [
         {"$ref": "#/components/parameters/CourseId"},
@@ -153,12 +192,19 @@
       "CourseId": {"name": "course_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
       "GenerationId": {"name": "generation_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
       "PracticeSetId": {"name": "set_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+      "ExerciseId": {"name": "exercise_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
       "IdempotencyKey": {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 255}}
     },
     "schemas": {
       "Health": {"type": "object", "required": ["status", "service", "version", "revision"], "properties": {"status": {"const": "ok"}, "service": {"const": "practice-api"}, "version": {"type": "string"}, "revision": {"type": "string"}}},
       "Capabilities": {"type": "object", "required": ["exercise_generation", "implemented_features"], "properties": {"exercise_generation": {"const": "asynchronous_jobs"}, "implemented_features": {"type": "array", "items": {"type": "string"}}}},
-      "GenerateRequest": {"type": "object", "additionalProperties": false, "properties": {"count": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5}, "course_id": {"type": ["string", "null"], "format": "uuid"}, "study_plan_id": {"type": ["string", "null"], "format": "uuid"}, "module_id": {"type": ["string", "null"], "format": "uuid"}, "topic": {"type": ["string", "null"]}, "difficulty": {"enum": ["introductory", "standard", "challenge"], "default": "standard"}, "question_types": {"type": "array", "items": {"enum": ["multiple_choice", "true_false", "fill_in_the_blank", "short_answer"]}}, "language": {"enum": ["zh", "en", "bilingual"], "default": "zh"}}}
+      "GenerateRequest": {"type": "object", "additionalProperties": false, "properties": {"count": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5}, "course_id": {"type": ["string", "null"], "format": "uuid"}, "study_plan_id": {"type": ["string", "null"], "format": "uuid"}, "module_id": {"type": ["string", "null"], "format": "uuid"}, "topic": {"type": ["string", "null"]}, "difficulty": {"enum": ["introductory", "standard", "challenge"], "default": "standard"}, "question_types": {"type": "array", "items": {"enum": ["multiple_choice", "true_false", "fill_in_the_blank", "short_answer"]}}, "language": {"enum": ["zh", "en", "bilingual"], "default": "zh"}}},
+      "SubmitAnswer": {"type": "object", "additionalProperties": false, "required": ["answer"], "properties": {"answer": {"oneOf": [{"type": "string", "minLength": 1, "maxLength": 4000}, {"type": "boolean"}]}}},
+      "AnswerRelease": {"type": "object", "required": ["answer", "rationale", "evidence_citation_ids"], "properties": {"answer": {"oneOf": [{"type": "string"}, {"type": "boolean"}, {"type": "array", "items": {"type": "string"}}]}, "rationale": {"type": "string"}, "evidence_citation_ids": {"type": "array", "items": {"type": "string"}}}},
+      "AttemptFeedback": {"type": "object", "required": ["id", "exercise_id", "attempt_number", "outcome", "correct", "provisional", "evaluator", "evaluator_version", "created_at"], "properties": {"id": {"type": "string", "format": "uuid"}, "exercise_id": {"type": "string", "format": "uuid"}, "attempt_number": {"type": "integer", "minimum": 1}, "outcome": {"enum": ["correct", "incorrect", "provisional", "gave_up"]}, "correct": {"type": ["boolean", "null"]}, "score": {"type": ["number", "null"]}, "provisional": {"type": "boolean"}, "hint": {"type": ["string", "null"]}, "released_answer": {"anyOf": [{"$ref": "#/components/schemas/AnswerRelease"}, {"type": "null"}]}, "evaluator": {"type": "string"}, "evaluator_version": {"type": "string"}, "created_at": {"type": "string", "format": "date-time"}}},
+      "ExerciseReportRequest": {"type": "object", "required": ["reason"], "properties": {"reason": {"enum": ["incorrect", "ambiguous", "unsafe"]}, "detail": {"type": "string", "maxLength": 1000}}},
+      "StudyStatus": {"type": "object", "required": ["sets", "plans"], "properties": {"sets": {"type": "array", "items": {"type": "object"}, "description": "Per-set completion, mastery and next safe exercise; no answer material"}, "plans": {"type": "array", "items": {"type": "object"}, "description": "Per-plan aggregate progress and bounded topic mastery"}}},
+      "Resume": {"oneOf": [{"type": "object", "required": ["practice_set_id", "study_plan_id", "book_id", "course_id", "content_version_id", "exercise_id", "attempt_number", "released"], "properties": {"practice_set_id": {"type": "string", "format": "uuid"}, "study_plan_id": {"type": "string", "format": "uuid"}, "book_id": {"type": "string", "format": "uuid"}, "course_id": {"type": "string", "format": "uuid"}, "content_version_id": {"type": "string", "format": "uuid"}, "exercise_id": {"type": "string", "format": "uuid"}, "attempt_number": {"type": "integer"}, "released": {"type": "boolean"}}}, {"type": "null"}]}
     }
   }
 }
