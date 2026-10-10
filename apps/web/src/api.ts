@@ -4,7 +4,7 @@ const API_BASE = '/v1';
 const LOCAL_AUTH_TOKEN = import.meta.env.VITE_LOCAL_AUTH_TOKEN ?? 'local-dev-token';
 const authHeaders = { Authorization: `Bearer ${LOCAL_AUTH_TOKEN}` };
 
-function requestHeaders(extra: Record<string, string> = {}): Record<string, string> {
+export function requestHeaders(extra: Record<string, string> = {}): Record<string, string> {
   return {
     ...authHeaders,
     'X-Correlation-ID': crypto.randomUUID(),
