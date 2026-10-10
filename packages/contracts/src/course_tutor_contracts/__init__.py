@@ -82,6 +82,11 @@ from course_tutor_contracts.practice import (
     TrueFalseExerciseDraft,
     TrueFalseExerciseView,
 )
+from course_tutor_contracts.practice_evidence import (
+    PracticeEvidenceChunk,
+    PracticeEvidenceRequest,
+    PracticeEvidenceResponse,
+)
 from course_tutor_contracts.retrieval import (
     ChatCitation,
     ChatRequest,
@@ -148,6 +153,9 @@ __all__ = [
     "PracticeCapabilities",
     "PracticeDifficulty",
     "PracticeError",
+    "PracticeEvidenceChunk",
+    "PracticeEvidenceRequest",
+    "PracticeEvidenceResponse",
     "PracticeGenerationView",
     "PracticeLanguage",
     "PracticeNotImplementedError",

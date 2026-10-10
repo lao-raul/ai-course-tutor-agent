@@ -1,0 +1,19 @@
+{
+  "version": "hiruzen-generation-pilot-v1",
+  "synthetic_fixture": "tests/fixtures/hiruzen/fltrp-grade3-grounded-fake.json",
+  "synthetic_cases": [
+    "zh_multiple_choice_default",
+    "en_true_false",
+    "bilingual_blank",
+    "zh_short_answer"
+  ],
+  "real_pilot": {
+    "book_family": "FLTRP Grade-3-start, Chen Lin, Grade 3 first term",
+    "source_mount": "operator-provided read-only ChinaTextbook mount",
+    "page": 11,
+    "question_count": 1,
+    "question_type": "multiple_choice",
+    "language": "zh",
+    "review_status": "automated pilot only; release golden-set human review belongs to TASK-23"
+  }
+}

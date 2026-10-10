@@ -17,6 +17,7 @@ Optional environment variables:
   LLM_EMBEDDING_MODEL           Defaults to text-embedding-qwen3-embedding-0.6b
   LLM_EMBEDDING_DIMENSION       Defaults to 1024
   LM_STUDIO_API_KEY             Defaults to an empty local key
+  COURSE_TUTOR_PRACTICE_DELEGATION_SECRET  Stable shared Agent/Practice key; defaults to a hash of the local bearer token
 
 Options:
   --host-path PATH              NAS mount (default: /Volumes/home/ChinaTextbook)
@@ -61,6 +62,7 @@ chat_model="${LLM_CHAT_MODEL:-qwen/qwen3.6-35b-a3b}"
 embedding_model="${LLM_EMBEDDING_MODEL:-text-embedding-qwen3-embedding-0.6b}"
 embedding_dimension="${LLM_EMBEDDING_DIMENSION:-1024}"
 llm_api_key="${LM_STUDIO_API_KEY:-}"
+delegation_secret="${COURSE_TUTOR_PRACTICE_DELEGATION_SECRET:-$(printf '%s' "$auth_token" | shasum -a 256 | awk '{print $1}')}"
 runtime_secret="course-tutor-local-runtime"
 
 [[ "$host_path" = /* ]] || { echo "--host-path must be absolute" >&2; exit 2; }
@@ -189,6 +191,7 @@ kubectl -n "$namespace" create secret generic "$runtime_secret" \
   --from-literal=minio-access-key=course-tutor \
   --from-literal=minio-secret-key="$minio_secret" \
   --from-literal=llm-api-key="$llm_api_key" \
+  --from-literal=practice-delegation-secret="$delegation_secret" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
 echo "==> Running NAS and LM Studio preflight"

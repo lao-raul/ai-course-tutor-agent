@@ -1,7 +1,7 @@
 # Hiruzen Design Specification
 
-**Status:** accepted v0.3 architecture; H1/H1a catalog-outline and H2 jobs implemented
-**Updated:** 2026-10-08
+**Status:** accepted v0.3 architecture; H1/H1a catalog-outline, H2 jobs and H3 grounded generation implemented
+**Updated:** 2026-10-10
 **Function specification:** [function_spec.md](function_spec.md)  
 **Platform decision:** [ADR-006](../../../docs/adr/006-hiruzen-ownership-and-agent-integration.md)
 
@@ -149,22 +149,25 @@ data is never used to grant access.
 
 ### 5.1 Authentication
 
-- Browser calls use the learner's OIDC/JWT token.
-- Local/CI browser calls use the existing bearer/JWT provider. Hiruzen forwards the
-  verified user bearer token to Agent and supplies a separately configured internal
-  service credential on delegated catalog/evidence calls; Agent validates both.
-- Production replaces the local service credential with the selected workload-identity
-  mechanism. OIDC issuer, audience and claim mapping are deployment configuration and
-  must be fixed before production activation; they do not alter service contracts.
-- Agent derives tenant, role, course membership and access rank. Hiruzen never sends
-  trusted `tenant_id`, role or access rank fields.
-- Correlation and trace headers propagate across both services.
+- Browser calls use the learner's OIDC/JWT token. Catalog and outline HTTP calls forward
+  that bearer to Agent, which performs normal learner authorization.
+- After verifying the learner at generation submission, Hiruzen issues a signed,
+  five-minute, job-scoped delegation token for its asynchronous worker. The token binds
+  tenant/user/access rank, generation, Book, Course and ContentVersion; the original
+  browser bearer is not persisted in the job.
+- Agent verifies the delegation signature and scope, then rechecks the current
+  published Book/CourseRun/ContentVersion binding. This first-release endpoint accepts
+  only `tenant_authenticated` ChinaTextbook runs; other course policies fail closed.
+  Both services receive the signing secret through runtime Secret configuration.
+- Production workload identity and token rotation are deployment-hardening work in
+  TASK-23. OIDC issuer, audience and claim mapping remain deployment configuration.
+- Correlation ID propagates from the job to Agent and LM Studio HTTP requests; Agent
+  records a retrieval trace ID on the resulting PracticeSet.
 
 ### 5.2 Required Agent operations
 
-The catalog operation names below are implemented and versioned by TASK-18. The outline
-operation is implemented by TASK-24; the practice-evidence operation remains planned
-for TASK-20.
+The catalog operations are implemented and versioned by TASK-18, the outline operation
+by TASK-24, and the practice-evidence operation by TASK-20.
 
 | Operation | Method/path | Purpose |
 |---|---|---|
@@ -182,15 +185,18 @@ for TASK-20.
 | `approveCatalogImportCandidate` | `POST /v1/admin/catalog/imports/{import_id}/candidates/{candidate_id}/approve` | Create Book/system CourseRun and queue ingestion |
 | `rejectCatalogImportCandidate` | `POST /v1/admin/catalog/imports/{import_id}/candidates/{candidate_id}/reject` | Reject without deleting scan evidence |
 
-`retrievePracticeEvidence` accepts book/course, optional module/topic, difficulty intent,
-question types and requested evidence budget. It performs Agent-side ACL/content-version
-filters and returns:
+`retrievePracticeEvidence` accepts a job-scoped delegation token and exact Book,
+Course and ContentVersion IDs, plus a bounded query and evidence limit. Module title or
+topic is translated to a query by Hiruzen; difficulty and question types remain in the
+generation request, not the retrieval contract. Agent performs publication and
+version-pinned ACL filtering and returns:
 
 - `course_id`, `book_id`, `content_version_id`;
 - ordered chunk IDs and source/page/slide anchors;
 - bounded evidence text;
 - retrieval trace ID, scores and policy version;
-- allowed content classes and solution-release policy.
+- allowed content classes (currently instructional `content` only) and solution-release
+  policy.
 
 It never returns evidence above the delegated user's access rank.
 
@@ -441,10 +447,12 @@ Implementation tasks TASK-18 through TASK-24 implement these slices; TASK-19 and
 TASK-24 are deliberately parallel behind the `OutlineProvider` contract. Their
 requirement and verification coverage is maintained in
 [requirements-traceability.md](requirements-traceability.md). H2 accepts and persists
-generation jobs through the versioned API. Until H3/TASK-20 supplies grounded evidence
-and generation, the worker transparently retries/fails with a dependency reason and
-never fabricates a PracticeSet.
+generation jobs through the versioned API. H3 provides Agent-scoped evidence retrieval,
+schema-constrained generation, deterministic validation and sanitized failures. H6/TASK-23
+still owns independent Practice migration/worker Helm workloads and release-wide quality
+gates; implementing H3 alone does not make the new worker available in the current chart.
 
 H1/TASK-18 was completed on 2026-10-07; H2/TASK-19 completed on 2026-10-08 and
-H1a/TASK-24 completed on 2026-10-09. H3/TASK-20 is now unblocked. H5/TASK-22 still
-waits for TASK-20 and TASK-21 before final browser acceptance.
+H1a/TASK-24 completed on 2026-10-09. H3/TASK-20 completed its scoped fake-provider,
+cross-service and redacted real-pilot acceptance on 2026-10-10. H5/TASK-22 still waits
+for TASK-21 before final browser acceptance.

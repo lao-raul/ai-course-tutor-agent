@@ -1,0 +1,33 @@
+{
+  "description": "Synthetic, non-copyrighted evidence shaped like the selected FLTRP Chen Lin Grade 3 pilot; hosted CI never reads the NAS.",
+  "book_id": "11111111-1111-4111-8111-111111111111",
+  "course_id": "22222222-2222-4222-8222-222222222222",
+  "content_version_id": "33333333-3333-4333-8333-333333333333",
+  "generation_id": "44444444-4444-4444-8444-444444444444",
+  "retrieval_trace_id": "55555555-5555-4555-8555-555555555555",
+  "chunk_id": "66666666-6666-4666-8666-666666666666",
+  "source_id": "77777777-7777-4777-8777-777777777777",
+  "evidence": "Unit 1: Hello is a greeting. Children say Hello when they meet a friend.",
+  "cases": [
+    {
+      "name": "zh_multiple_choice_default",
+      "request": {"count": 1, "question_types": ["multiple_choice"]},
+      "draft": {"type": "multiple_choice", "prompt": "Which word is the greeting in Unit 1?", "difficulty": "standard", "language": "zh", "evidence_citation_ids": ["66666666-6666-4666-8666-666666666666"], "rationale": "The source identifies Hello as a greeting.", "options": [{"id": "a", "text": "Hello"}, {"id": "b", "text": "Goodbye"}], "correct_option_id": "a"}
+    },
+    {
+      "name": "en_true_false",
+      "request": {"count": 1, "language": "en", "question_types": ["true_false"]},
+      "draft": {"type": "true_false", "prompt": "Unit 1 teaches a greeting for friends.", "difficulty": "standard", "language": "en", "evidence_citation_ids": ["66666666-6666-4666-8666-666666666666"], "rationale": "The source says children greet a friend.", "answer": true}
+    },
+    {
+      "name": "bilingual_blank",
+      "request": {"count": 1, "language": "bilingual", "question_types": ["fill_in_the_blank"]},
+      "draft": {"type": "fill_in_the_blank", "prompt": "Fill in the greeting: ____!", "difficulty": "standard", "language": "bilingual", "evidence_citation_ids": ["66666666-6666-4666-8666-666666666666"], "rationale": "The source gives the greeting Hello.", "acceptable_answers": ["Hello"]}
+    },
+    {
+      "name": "zh_short_answer",
+      "request": {"count": 1, "question_types": ["short_answer"]},
+      "draft": {"type": "short_answer", "prompt": "Describe the greeting used when meeting a friend.", "difficulty": "standard", "language": "zh", "evidence_citation_ids": ["66666666-6666-4666-8666-666666666666"], "rationale": "The source connects Hello with greeting a friend.", "rubric": [{"description": "Names the greeting Hello", "weight": 1.0}], "exemplar_answer": "Hello is a greeting.", "pass_threshold": 0.7}
+    }
+  ]
+}

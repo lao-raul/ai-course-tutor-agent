@@ -6,7 +6,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from course_tutor_contracts import CatalogBookOutline, CatalogOutlineNode
+from course_tutor_contracts import (
+    CatalogBookOutline,
+    CatalogOutlineNode,
+    PracticeEvidenceChunk,
+    PracticeEvidenceRequest,
+    PracticeEvidenceResponse,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 OPENAPI_DIR = ROOT / "packages/contracts/openapi"
@@ -68,6 +74,13 @@ def _validate_outline_parity(agent_document: dict[str, Any]) -> None:
     expected = {
         "CatalogBookOutline": set(CatalogBookOutline.model_json_schema().get("required", [])),
         "CatalogOutlineNode": set(CatalogOutlineNode.model_json_schema().get("required", [])),
+        "PracticeEvidenceRequest": set(
+            PracticeEvidenceRequest.model_json_schema().get("required", [])
+        ),
+        "PracticeEvidenceChunk": set(PracticeEvidenceChunk.model_json_schema().get("required", [])),
+        "PracticeEvidenceResponse": set(
+            PracticeEvidenceResponse.model_json_schema().get("required", [])
+        ),
     }
     for name, required in expected.items():
         actual = set(schemas[name].get("required", []))

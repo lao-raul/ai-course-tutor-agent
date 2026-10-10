@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from course_tutor_auth import Principal
+from course_tutor_auth.practice_delegation import issue_practice_delegation
 from course_tutor_contracts import (
     CatalogBookDetail,
     CatalogCourseView,
@@ -17,6 +18,7 @@ from course_tutor_contracts import (
 )
 from course_tutor_practice.domain import GenerationRecord, ModuleRecord, StudyPlanRecord
 from course_tutor_practice.ports import OutlineProvider, PracticeRepository
+from course_tutor_shared import get_settings
 
 PLAN_NAMESPACE = uuid.UUID("1df5f2a2-16e5-4f40-b985-46c9a7345bc7")
 GENERATION_NAMESPACE = uuid.UUID("75fd5e44-7c05-40c0-af3c-2f2d9305bb03")
@@ -124,8 +126,13 @@ class StudyPlanService:
 
 
 class GenerationService:
-    def __init__(self, repository: PracticeRepository) -> None:
+    def __init__(
+        self, repository: PracticeRepository, delegation_secret: str | None = None
+    ) -> None:
         self._repository = repository
+        self._delegation_secret = (
+            delegation_secret or get_settings().practice_delegation_secret.get_secret_value()
+        )
 
     async def submit(
         self,
@@ -144,11 +151,27 @@ class GenerationService:
         }:
             raise ValueError("module_id does not belong to the selected study plan")
         now = _now()
+        generation_id = uuid.uuid5(
+            GENERATION_NAMESPACE,
+            f"{principal.tenant_id}:{principal.user_id}:{idempotency_key}",
+        )
+        deadline_at = now + timedelta(minutes=5)
+        request_payload = request.model_dump(mode="json")
+        request_payload["_delegation_token"] = issue_practice_delegation(
+            principal,
+            generation_id=generation_id,
+            book_id=plan.book_id,
+            course_id=plan.course_id,
+            content_version_id=plan.content_version_id,
+            expires_at=deadline_at,
+            secret=self._delegation_secret,
+        )
+        if request.module_id is not None:
+            request_payload["_module_title"] = next(
+                module.title for module in plan.modules if module.id == request.module_id
+            )
         generation = GenerationRecord(
-            id=uuid.uuid5(
-                GENERATION_NAMESPACE,
-                f"{principal.tenant_id}:{principal.user_id}:{idempotency_key}",
-            ),
+            id=generation_id,
             tenant_id=principal.tenant_id,
             user_id=principal.user_id,
             study_plan_id=plan.id,
@@ -158,11 +181,11 @@ class GenerationService:
             course_run_id=plan.course_run_id,
             content_version_id=plan.content_version_id,
             idempotency_key=idempotency_key,
-            request_payload=request.model_dump(mode="json"),
+            request_payload=request_payload,
             requested_count=request.count,
             status=GenerationStatus.QUEUED,
             correlation_id=correlation_id,
-            deadline_at=now + timedelta(minutes=5),
+            deadline_at=deadline_at,
             attempt_count=0,
             created_at=now,
             updated_at=now,

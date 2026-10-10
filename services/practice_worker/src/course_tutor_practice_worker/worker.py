@@ -5,13 +5,19 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
-from course_tutor_contracts import ExerciseDraft, GenerationStatus
+from course_tutor_contracts import GenerationStatus
 from course_tutor_practice.domain import GenerationRecord
+from course_tutor_practice.generation.errors import GenerationFailure
+from course_tutor_practice.generation.schemas import GenerationContext, GenerationOutcome
 from course_tutor_practice.ports import PracticeRepository
 
 
 class GenerationExecutor(Protocol):
-    async def generate(self, job: GenerationRecord) -> tuple[ExerciseDraft, ...]: ...
+    async def retrieve(self, job: GenerationRecord) -> GenerationContext: ...
+
+    async def generate(
+        self, job: GenerationRecord, context: GenerationContext
+    ) -> GenerationOutcome: ...
 
 
 class RetryableGenerationError(RuntimeError):
@@ -43,32 +49,42 @@ class PracticeWorker:
         if job is None:
             return False
         try:
+            context = await self._executor.retrieve(job)
             await self._repository.transition_generation(job.id, GenerationStatus.GENERATING)
-            drafts = await self._executor.generate(job)
-            if len(drafts) != job.requested_count:
-                raise ValueError("executor returned a different question count")
+            outcome = await self._executor.generate(job, context)
+            if len(outcome.drafts) != job.requested_count:
+                raise GenerationFailure("count_mismatch")
             await self._repository.transition_generation(job.id, GenerationStatus.VALIDATING)
             await self._repository.complete_generation(
                 job.id,
-                drafts,
-                seed=0,
-                prompt_version="task-19-port-v1",
-                model_version="provider-supplied",
-                validator_version="task-19-schema-v1",
+                outcome.drafts,
+                seed=outcome.seed,
+                prompt_version=outcome.prompt_version,
+                model_version=outcome.model_version,
+                validator_version=outcome.validator_version,
+                retrieval_trace_id=outcome.retrieval_trace_id,
             )
-        except RetryableGenerationError as exc:
+        except GenerationFailure as exc:
+            await self._repository.retry_or_fail_generation(
+                job.id,
+                exc.code,
+                exc.code,
+                retryable=exc.retryable,
+                max_attempts=self._max_attempts,
+            )
+        except RetryableGenerationError:
             await self._repository.retry_or_fail_generation(
                 job.id,
                 "dependency_unavailable",
-                str(exc),
+                "dependency_unavailable",
                 retryable=True,
                 max_attempts=self._max_attempts,
             )
-        except Exception as exc:
+        except Exception:
             await self._repository.retry_or_fail_generation(
                 job.id,
                 "generation_failed",
-                str(exc),
+                "unexpected generation failure",
                 retryable=False,
                 max_attempts=self._max_attempts,
             )

@@ -1,6 +1,6 @@
 # TASK-20 — Hiruzen Grounded Practice Generation
 
-**Status:** planned  
+**Status:** complete (2026-10-10)
 **Priority:** P0  
 **Depends on:** TASK-18, TASK-19
 
@@ -54,6 +54,14 @@ attempt/progress APIs.
 uv run pytest tests/unit/practice tests/integration/practice tests/e2e/practice -q
 uv run python tests/evaluation/hiruzen/run.py --provider fake
 uv run python scripts/validate_hiruzen_baseline.py
+uv run python scripts/validate_openapi.py
+uv run python scripts/verify_practice_pilot.py \
+  --pdf "$CHINA_TEXTBOOK_PILOT_PDF" --page 11 \
+  --llm-base-url http://192.168.50.146:1234/v1 \
+  --model qwen/qwen3.6-35b-a3b
 ```
 
-The selected real FLTRP golden set remains a manual, redacted acceptance run.
+The redacted real FLTRP pilot result and test matrix are recorded in
+[the TASK-20 verification report](../verification/2026-10-10-task-20.md). The
+release-wide, human-reviewed golden-set quality thresholds and Practice worker
+Helm deployment remain TASK-23, not part of this slice.

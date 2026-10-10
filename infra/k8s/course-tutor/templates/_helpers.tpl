@@ -146,4 +146,9 @@ app.kubernetes.io/instance: {{ .Release.Name }}
     secretKeyRef:
       name: {{ include "course-tutor.secretName" . }}
       key: llm-api-key
+- name: PRACTICE_DELEGATION_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "course-tutor.secretName" . }}
+      key: practice-delegation-secret
 {{- end }}

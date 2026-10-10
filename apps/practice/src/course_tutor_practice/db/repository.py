@@ -403,6 +403,7 @@ class SqlPracticeRepository:
         prompt_version: str,
         model_version: str,
         validator_version: str,
+        retrieval_trace_id: UUID | None = None,
     ) -> PracticeSetRecord:
         existing_id = await self._session.scalar(
             select(PracticeSet.id).where(PracticeSet.generation_job_id == generation_id)
@@ -420,6 +421,8 @@ class SqlPracticeRepository:
             raise LookupError("generation not found")
         if GenerationStatus(job.status) is not GenerationStatus.VALIDATING:
             raise ValueError("generation must be validating before completion")
+        if len(drafts) != job.requested_count:
+            raise ValueError("generation count mismatch")
         set_id = uuid.uuid5(uuid.NAMESPACE_URL, f"practice-set:{generation_id}")
         evidence_ids = sorted(
             {citation for draft in drafts for citation in draft.evidence_citation_ids}
@@ -439,8 +442,12 @@ class SqlPracticeRepository:
             validator_version=validator_version,
             evidence_chunk_ids=evidence_ids,
             correlation_id=job.correlation_id,
+            retrieval_trace_id=retrieval_trace_id,
         )
         self._session.add(model)
+        # The rows use scalar foreign keys rather than ORM relationships, so flush
+        # the parent explicitly before an autoflush can insert child exercises.
+        await self._session.flush()
         for ordinal, draft in enumerate(drafts):
             exercise_id = uuid.uuid5(uuid.NAMESPACE_URL, f"exercise:{set_id}:{ordinal}")
             presentation, protected, rationale, fingerprint, _view = split_exercise_draft(

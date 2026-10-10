@@ -103,6 +103,7 @@ secrets:
   minioAccessKey: course-tutor
   minioSecretKey: local-development-only
   llmApiKey: ci-fake-key
+  practiceDelegationSecret: local-practice-delegation-secret
 
 courseContent:
   enabled: false
