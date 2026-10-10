@@ -10,6 +10,7 @@ import {
   updateMemory,
 } from './api';
 import { RichText } from './RichText';
+import HiruzenApp from './HiruzenApp';
 
 interface Message {
   id: string;
@@ -20,7 +21,7 @@ interface Message {
   error?: string;
 }
 
-export default function App() {
+function CourseTutorApp() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -453,3 +454,14 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
   },
 };
+
+export default function App() {
+  const [mode, setMode] = useState<'hiruzen' | 'course-tutor'>('hiruzen');
+  return <>
+    <div style={{ display: 'flex', gap: 8, padding: '6px 18px', background: '#17243a' }}>
+      <button type="button" aria-current={mode === 'hiruzen' ? 'page' : undefined} onClick={() => setMode('hiruzen')}>Hiruzen</button>
+      <button type="button" aria-current={mode === 'course-tutor' ? 'page' : undefined} onClick={() => setMode('course-tutor')}>Course Tutor</button>
+    </div>
+    {mode === 'hiruzen' ? <HiruzenApp /> : <CourseTutorApp />}
+  </>;
+}

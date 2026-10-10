@@ -1,6 +1,6 @@
 # TASK-22 — Hiruzen Chat and Web Experience
 
-**Status:** planned  
+**Status:** complete (2026-10-10)
 **Priority:** P1  
 **Depends on:** TASK-18–TASK-21, TASK-24
 
@@ -27,8 +27,8 @@ live tutoring, progress and resume.
 | Progress/resume experience | `apps/web/src/features/study/` |
 | Direct Agent SSE inline/live chat adapter | `apps/web/src/features/tutor/` |
 | Language and accessibility UI resources | `apps/web/src/features/settings/`, `apps/web/src/i18n/` |
-| Component and browser E2E tests | `apps/web/src/**/*.test.tsx`, `tests/e2e/hiruzen/` |
-| UX verification evidence | `docs/verification/<date>-task-22.md` |
+| Component and browser E2E tests | `apps/web/src/**/*.test.tsx`, `apps/web/tests/e2e/hiruzen/` |
+| UX verification evidence | `docs/verification/2026-10-10-task-22.md` |
 
 ## Acceptance criteria
 
@@ -53,8 +53,11 @@ Chapter/Topic navigation is backed by the published textbook outline.
 
 ```bash
 npm --prefix apps/web test
+npm --prefix apps/web run lint
 npm --prefix apps/web run build
-uv run pytest tests/e2e/hiruzen -q
+npm --prefix apps/web run test:e2e
 ```
 
-The completion evidence includes a manual keyboard/accessibility and bilingual UX review.
+The completion evidence includes keyboard/accessibility and bilingual browser checks.
+The generated-fixture browser suite is independent of home NAS and LM Studio; real
+FLTRP model/content acceptance remains TASK-23.

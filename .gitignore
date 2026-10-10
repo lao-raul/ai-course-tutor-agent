@@ -22,6 +22,8 @@ node_modules/
 dist/
 coverage/
 build/
+apps/web/test-results/
+apps/web/playwright-report/
 
 # Runtime development data — course material never enters source control.
 data/raw/*
