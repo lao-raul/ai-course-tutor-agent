@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     local_user_display_name: str = "Local Developer"
     local_user_role: str = "platform_admin"
     local_access_label: str = "restricted"
+    practice_delegation_secret: SecretStr = SecretStr("local-practice-delegation-secret")
     oidc_issuer: str | None = None
     oidc_audience: str | None = None
     oidc_jwks_url: str | None = None
@@ -157,6 +158,13 @@ class Settings(BaseSettings):
             raise ValueError(f"local_access_label must be one of {sorted(allowed)}")
         return value
 
+    @field_validator("practice_delegation_secret")
+    @classmethod
+    def _valid_practice_delegation_secret(cls, value: SecretStr) -> SecretStr:
+        if len(value.get_secret_value()) < 24:
+            raise ValueError("PRACTICE_DELEGATION_SECRET must be at least 24 characters")
+        return value
+
     @field_validator("course_source_path", mode="before")
     @classmethod
     def _reject_url_source_root(cls, value: object) -> object:
@@ -215,6 +223,11 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "production OIDC algorithms must be approved asymmetric algorithms"
                 )
+            if (
+                self.practice_delegation_secret.get_secret_value()
+                == "local-practice-delegation-secret"
+            ):
+                raise ValueError("PRACTICE_DELEGATION_SECRET must be configured in production")
         return self
 
     @property

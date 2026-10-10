@@ -118,6 +118,7 @@ async def get_book_study_plan(
 async def create_practice_generation(
     book_id: UUID,
     body: GeneratePracticeRequest,
+    request: Request,
     principal: Annotated[Principal, Depends(get_current_principal)],
     bearer: Annotated[str, Header(alias="Authorization")],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=255)],
@@ -130,7 +131,9 @@ async def create_practice_generation(
         principal, book, course, bearer, get_correlation_id()
     )
     try:
-        job, _created = await GenerationService(repository).submit(
+        job, _created = await GenerationService(
+            repository, request.app.state.settings.practice_delegation_secret.get_secret_value()
+        ).submit(
             principal,
             plan,
             body,
@@ -209,6 +212,7 @@ async def get_practice_set(
 async def generate_practice_exercises_compatibility(
     course_id: UUID,
     body: GeneratePracticeRequest,
+    request: Request,
     principal: Annotated[Principal, Depends(get_current_principal)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=255)],
     repository: Annotated[PracticeRepository, Depends(_repository)],
@@ -223,7 +227,9 @@ async def generate_practice_exercises_compatibility(
         )
     compatible = body.model_copy(update={"course_id": course_id, "study_plan_id": plan.id})
     try:
-        job, _created = await GenerationService(repository).submit(
+        job, _created = await GenerationService(
+            repository, request.app.state.settings.practice_delegation_secret.get_secret_value()
+        ).submit(
             principal,
             plan,
             compatible,

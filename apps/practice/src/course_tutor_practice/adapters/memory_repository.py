@@ -169,8 +169,9 @@ class InMemoryPracticeRepository:
         prompt_version: str,
         model_version: str,
         validator_version: str,
+        retrieval_trace_id: UUID | None = None,
     ) -> PracticeSetRecord:
-        del seed, prompt_version, model_version, validator_version
+        del seed, prompt_version, model_version, validator_version, retrieval_trace_id
         job = self.generations[generation_id]
         if existing := next(
             (value for value in self.sets.values() if value.generation_id == generation_id), None
@@ -178,6 +179,8 @@ class InMemoryPracticeRepository:
             return existing
         if job.status is not GenerationStatus.VALIDATING:
             raise ValueError("generation must be validating before completion")
+        if len(drafts) != job.requested_count:
+            raise ValueError("generation count mismatch")
         set_id = uuid.uuid5(uuid.NAMESPACE_URL, f"practice-set:{generation_id}")
         views = tuple(
             split_exercise_draft(

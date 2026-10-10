@@ -127,6 +127,7 @@ class PracticeSet(Base, TimestampMixin):
     validator_version: Mapped[str] = mapped_column(String(64))
     evidence_chunk_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
     correlation_id: Mapped[str] = mapped_column(String(64))
+    retrieval_trace_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
 
 
 class Exercise(Base, TimestampMixin):

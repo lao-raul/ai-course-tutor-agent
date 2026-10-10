@@ -3,7 +3,9 @@
 Hiruzen is the independently owned practice boundary. TASK-19 provides deterministic
 default StudyPlans, a protected four-type Exercise contract, idempotent asynchronous
 generation jobs, learner-safe PracticeSet reads and a lease-safe worker port. TASK-20
-will connect that worker to Agent evidence retrieval and structured LLM generation.
+connects that worker to Agent's version-pinned evidence API and structured LLM
+generation with validation. TASK-21 and TASK-22 will add attempts/progress and the UI;
+TASK-23 will deploy the independent Practice worker through Helm.
 
 The architecture and product contracts are maintained in:
 
@@ -20,6 +22,11 @@ when omitted, local development uses `POSTGRES_DSN` on the shared server.
 ```bash
 uv run alembic -c apps/practice/alembic.ini upgrade head
 ```
+
+The Practice and Agent processes must share the same
+`PRACTICE_DELEGATION_SECRET` (at least 24 characters; non-placeholder in production).
+The Agent API must be reachable at `AGENT_BASE_URL`, and the worker needs the
+configured OpenAI-compatible `LLM_BASE_URL` and `LLM_CHAT_MODEL`.
 
 ## Run and observe the API
 
@@ -44,13 +51,22 @@ curl -X POST \
 ```
 
 The accepted job is observable through
-`GET /v1/practice/generations/{generation_id}`. Until TASK-20 is complete, no real
-question generation is attempted; failure/retry remains explicit.
+`GET /v1/practice/generations/{generation_id}`. With the Practice migration applied
+and Agent/LLM dependencies configured, a separate worker process runs the job:
+
+```bash
+uv run python -m course_tutor_practice_worker
+```
+
+The current Helm chart does not yet include the independent Practice migration and
+worker workloads; deployment of those processes is part of TASK-23. The current
+browser UI also does not yet expose the Hiruzen generation flow.
 
 ## Verification
 
 ```bash
-uv run pytest apps/practice/tests tests/integration/practice -q
+uv run pytest apps/practice/tests tests/unit/practice tests/integration/practice tests/e2e/practice -q
+uv run python tests/evaluation/hiruzen/run.py --provider fake
 uv run python scripts/validate_hiruzen_baseline.py
 ```
 

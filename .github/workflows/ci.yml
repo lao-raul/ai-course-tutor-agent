@@ -102,6 +102,10 @@ jobs:
           --junitxml=build/reports/integration.xml
       - name: RAG quality gate
         run: uv run python tests/retrieval_benchmark.py --output build/reports/rag-metrics.json
+      - name: Hiruzen grounded generation fixture gate
+        run: >-
+          uv run python tests/evaluation/hiruzen/run.py --provider fake
+          --output build/reports/hiruzen-metrics.json
       - name: Collect service diagnostics
         if: failure()
         run: docker compose -f infra/docker/docker-compose.test.yml logs --no-color > build/reports/integration-services.log

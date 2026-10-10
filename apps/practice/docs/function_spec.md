@@ -1,7 +1,7 @@
 # Hiruzen Function Specification
 
-**Status:** accepted v0.3 baseline; H1/H1a catalog-outline and H2 persistence/jobs implemented
-**Updated:** 2026-10-08
+**Status:** accepted v0.3 baseline; H1/H1a catalog-outline, H2 persistence/jobs and H3 grounded generation implemented
+**Updated:** 2026-10-10
 **Application:** `apps/practice` / `practice-api`  
 **Parent specifications:**
 [platform function spec](../../../docs/function-spec.md),

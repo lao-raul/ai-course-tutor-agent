@@ -18,6 +18,7 @@ from course_tutor_api.routes import (
     courses,
     health,
     memories,
+    practice_evidence,
 )
 from course_tutor_shared import (
     CorrelationIdMiddleware,
@@ -72,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(catalog_admin.router)
     app.include_router(catalog.router)
     app.include_router(catalog_outline.router)
+    app.include_router(practice_evidence.router)
     app.include_router(chat.router)
     app.include_router(courses.router)
     app.include_router(memories.router)

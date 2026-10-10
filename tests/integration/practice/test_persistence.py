@@ -13,10 +13,17 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
 from course_tutor_auth import Principal
-from course_tutor_contracts import GeneratePracticeRequest, GenerationStatus
+from course_tutor_contracts import (
+    ChoiceOption,
+    GeneratePracticeRequest,
+    GenerationStatus,
+    MultipleChoiceExerciseDraft,
+    PracticeDifficulty,
+    PracticeLanguage,
+)
 from course_tutor_contracts.enums import AccessLabel, UserRole
 from course_tutor_practice.application.generation import GenerationService
-from course_tutor_practice.db import Base, GenerationJob, PracticeOutboxEvent
+from course_tutor_practice.db import Base, GenerationJob, PracticeOutboxEvent, PracticeSet
 from course_tutor_practice.db.repository import SqlPracticeRepository
 from course_tutor_practice.domain import ModuleRecord, StudyPlanRecord
 from tests.support.postgres import assert_safe_test_database_dsn, reset_test_schema
@@ -83,7 +90,7 @@ async def test_sql_repository_commits_job_and_outbox_atomically(
         await repository.save_study_plan(plan)
         service = GenerationService(repository)
         first, first_created = await service.submit(
-            principal, plan, GeneratePracticeRequest(count=2), "same-key", "corr"
+            principal, plan, GeneratePracticeRequest(count=1), "same-key", "corr"
         )
         replay, replay_created = await service.submit(
             principal, plan, GeneratePracticeRequest(count=7), "same-key", "corr-2"
@@ -91,7 +98,7 @@ async def test_sql_repository_commits_job_and_outbox_atomically(
         assert first_created is True
         assert replay_created is False
         assert first.id == replay.id
-        assert replay.requested_count == 2
+        assert replay.requested_count == 1
         assert await session.scalar(select(func.count()).select_from(GenerationJob)) == 1
         assert await session.scalar(select(func.count()).select_from(PracticeOutboxEvent)) == 1
 
@@ -99,6 +106,37 @@ async def test_sql_repository_commits_job_and_outbox_atomically(
             "worker-a", datetime.now(UTC), timedelta(seconds=30)
         )
         assert claimed is not None and claimed.status is GenerationStatus.RETRIEVING
+        await repository.transition_generation(first.id, GenerationStatus.GENERATING)
+        await repository.transition_generation(first.id, GenerationStatus.VALIDATING)
+        trace_id = uuid.uuid4()
+        await repository.complete_generation(
+            first.id,
+            (
+                MultipleChoiceExerciseDraft(
+                    prompt="Which word is a greeting?",
+                    difficulty=PracticeDifficulty.STANDARD,
+                    language=PracticeLanguage.ZH,
+                    evidence_citation_ids=(str(uuid.uuid4()),),
+                    rationale="The cited passage says Hello is a greeting.",
+                    options=(
+                        ChoiceOption(id="a", text="Hello"),
+                        ChoiceOption(id="b", text="Goodbye"),
+                    ),
+                    correct_option_id="a",
+                ),
+            ),
+            seed=42,
+            prompt_version="hiruzen-grounded-v1",
+            model_version="fake",
+            validator_version="hiruzen-validation-v1",
+            retrieval_trace_id=trace_id,
+        )
+        stored = await session.scalar(
+            select(PracticeSet).where(PracticeSet.generation_job_id == first.id)
+        )
+        assert stored is not None
+        assert stored.retrieval_trace_id == trace_id
+        assert stored.seed == 42
 
 
 def test_practice_metadata_has_no_agent_schema_foreign_keys() -> None:

@@ -13,17 +13,34 @@ from course_tutor_contracts import (
     GenerationStatus,
     MultipleChoiceExerciseDraft,
     PracticeDifficulty,
+    PracticeEvidenceResponse,
     PracticeLanguage,
 )
 from course_tutor_contracts.enums import AccessLabel, UserRole
 from course_tutor_practice.adapters.memory_repository import InMemoryPracticeRepository
 from course_tutor_practice.application.generation import GenerationService
 from course_tutor_practice.domain import ModuleRecord, StudyPlanRecord
+from course_tutor_practice.generation.schemas import GenerationContext, GenerationOutcome
 
 
 class FakeExecutor:
-    async def generate(self, _job):  # type: ignore[no-untyped-def]
-        return (
+    async def retrieve(self, job):  # type: ignore[no-untyped-def]
+        return GenerationContext(
+            PracticeEvidenceResponse(
+                generation_id=job.id,
+                book_id=job.book_id,
+                course_id=job.course_id,
+                content_version_id=job.content_version_id,
+                retrieval_trace_id=uuid4(),
+                retrieval_policy_version="fake",
+                allowed_content_classes=(),
+                solution_release_after_incorrect_attempts=3,
+                chunks=(),
+            )
+        )
+
+    async def generate(self, _job, context):  # type: ignore[no-untyped-def]
+        drafts = (
             MultipleChoiceExerciseDraft(
                 prompt="Choose the greeting.",
                 difficulty=PracticeDifficulty.INTRODUCTORY,
@@ -36,6 +53,9 @@ class FakeExecutor:
                 correct_option_id="a",
                 rationale="The cited dialogue starts with Hello.",
             ),
+        )
+        return GenerationOutcome(
+            drafts, 1, "test", "fake", "test", context.evidence.retrieval_trace_id
         )
 
 

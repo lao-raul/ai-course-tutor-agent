@@ -64,4 +64,5 @@ class PracticeRepository(Protocol):
         prompt_version: str,
         model_version: str,
         validator_version: str,
+        retrieval_trace_id: UUID | None = None,
     ) -> PracticeSetRecord: ...

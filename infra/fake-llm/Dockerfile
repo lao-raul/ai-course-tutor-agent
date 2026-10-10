@@ -1,4 +1,4 @@
-FROM python:3.12.11-slim-bookworm
+FROM public.ecr.aws/docker/library/python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
 ARG BUILD_VERSION=0.1.0-dev
 ARG BUILD_REVISION=unknown
 LABEL org.opencontainers.image.title="course-tutor-fake-llm" \

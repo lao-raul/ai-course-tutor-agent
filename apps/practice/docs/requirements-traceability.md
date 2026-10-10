@@ -1,7 +1,7 @@
 # Hiruzen Requirements Traceability — v0.3
 
 **Status:** active  
-**Updated:** 2026-10-08
+**Updated:** 2026-10-10
 
 This matrix is the delivery source of truth for Hiruzen requirements. Operation IDs
 refer to the approved operation boundary in the Hiruzen function/design specifications;
@@ -17,19 +17,19 @@ they become canonical OpenAPI operations in the task that implements them.
 | HFR-CAT-6 | TASK-18 | searchPracticeBooks, getPracticeBook | path/credential response leakage tests | implemented |
 | HFR-COURSE-1 | TASK-18 | listBookCourses, listCatalogBookCourses | delegated authorization tests | implemented |
 | HFR-COURSE-2 | TASK-19 | getBookStudyPlan | deterministic default StudyPlan ordering/policy tests | implemented |
-| HFR-COURSE-3 | TASK-19, TASK-20 | createPracticeGeneration, retrievePracticeEvidence | immutable Agent ID/version reference tests | planned |
+| HFR-COURSE-3 | TASK-19, TASK-20 | createPracticeGeneration, retrievePracticeEvidence | immutable Agent ID/version reference tests | implemented |
 | HFR-COURSE-4 | TASK-19, TASK-24 | getCatalogBookOutline, getBookStudyPlan, createPracticeGeneration | deterministic outline extraction/API plus outline-derived and book-level fallback plan tests | implemented |
-| HFR-GEN-1 | TASK-19, TASK-20 | createPracticeGeneration | request boundary/type/count tests | planned |
+| HFR-GEN-1 | TASK-19, TASK-20 | createPracticeGeneration | request boundary/type/count tests | implemented |
 | HFR-GEN-2 | TASK-19 | createPracticeGeneration, getPracticeGeneration, cancelPracticeGeneration | asynchronous state-machine/cancellation tests | implemented |
-| HFR-GEN-3 | TASK-20 | retrievePracticeEvidence | delegated authorization/content-version tests | planned |
-| HFR-GEN-4 | TASK-20 | getPracticeSet, retrievePracticeEvidence | citation and answer-support gates | planned |
-| HFR-GEN-5 | TASK-20 | getPracticeGeneration | schema/count/type/duplicate/leakage tests | planned |
-| HFR-GEN-6 | TASK-19, TASK-20 | getPracticeSet | reproducibility metadata persistence tests | planned |
+| HFR-GEN-3 | TASK-20 | retrievePracticeEvidence | delegated authorization/content-version tests | implemented |
+| HFR-GEN-4 | TASK-20 | getPracticeSet, retrievePracticeEvidence | citation and deterministic answer-support gates; semantic golden review remains HNFR-4 | implemented |
+| HFR-GEN-5 | TASK-20 | getPracticeGeneration | schema/count/type/duplicate/leakage tests | implemented |
+| HFR-GEN-6 | TASK-19, TASK-20 | getPracticeSet | reproducibility metadata persistence tests | implemented |
 | HFR-GEN-7 | TASK-19 | createPracticeGeneration | replay/concurrent idempotency tests | implemented |
-| HFR-GEN-8 | TASK-20 | getPracticeGeneration | insufficient-evidence failure tests | planned |
+| HFR-GEN-8 | TASK-20 | getPracticeGeneration | insufficient-evidence failure tests | implemented |
 | HFR-GEN-9 | TASK-20, TASK-21 | getPracticeSet, submitPracticeAnswer | protected-answer leakage matrix | planned |
 | HFR-GEN-10 | TASK-20, TASK-22 | previewPracticeSet | instructor preview labeling/audit tests | planned |
-| HFR-GEN-11 | TASK-20, TASK-22 | createPracticeGeneration | Chinese-default and language-selection tests | planned |
+| HFR-GEN-11 | TASK-20, TASK-22 | createPracticeGeneration | API Chinese-default and three-language tests; learner UI remains TASK-22 | in_progress |
 | HFR-ANS-1 | TASK-21 | submitPracticeAnswer | submission replay/policy tests | planned |
 | HFR-ANS-2 | TASK-21 | submitPracticeAnswer | deterministic and provisional grading tests | planned |
 | HFR-ANS-3 | TASK-21 | submitPracticeAnswer | staged feedback/release tests | planned |
@@ -50,13 +50,13 @@ they become canonical OpenAPI operations in the task that implements them.
 | HFR-PROG-6 | TASK-21 | getStudyStatus | consent and compact-memory contract tests | planned |
 | HNFR-1 | TASK-18, TASK-21, TASK-23 | searchPracticeBooks, resumeStudy | LAN performance benchmark | planned |
 | HNFR-2 | TASK-19, TASK-23 | createPracticeGeneration | submission latency/deadline tests | planned |
-| HNFR-3 | TASK-20, TASK-23 | getPracticeSet | schema and evidence coverage gate | planned |
+| HNFR-3 | TASK-20, TASK-23 | getPracticeSet | fake schema/evidence coverage gate implemented; release-wide gate remains TASK-23 | in_progress |
 | HNFR-4 | TASK-20, TASK-23 | getPracticeSet | approved FLTRP golden-set report | planned |
 | HNFR-5 | TASK-19, TASK-21, TASK-23 | getPracticeGeneration, getStudyStatus | dependency outage and availability drills | planned |
 | HNFR-6 | TASK-19, TASK-23 | createPracticeGeneration, submitPracticeAnswer | horizontal-scale/replay tests | planned |
 | HNFR-7 | TASK-20, TASK-21, TASK-23, TASK-24 | getCatalogBookOutline, createPracticeGeneration, submitPracticeAnswer | outline and practice telemetry redaction tests | planned |
 | HNFR-8 | TASK-19, TASK-23 | createPracticeGeneration | schema ownership/migration tests | planned |
-| HNFR-9 | TASK-18, TASK-19, TASK-20, TASK-23 | createPracticeGeneration, retrievePracticeEvidence | cross-service correlation trace tests | planned |
+| HNFR-9 | TASK-18, TASK-19, TASK-20, TASK-23 | createPracticeGeneration, retrievePracticeEvidence | job-to-Agent and LM Studio correlation implemented; release-wide trace gate remains TASK-23 | in_progress |
 | HNFR-10 | TASK-18, TASK-20, TASK-23, TASK-24 | searchPracticeBooks, getCatalogBookOutline, createPracticeGeneration | hosted-CI network isolation tests | planned |
 | HNFR-11 | TASK-23 | practiceHealth, practiceReady | Helm/Kind security and policy tests | planned |
 

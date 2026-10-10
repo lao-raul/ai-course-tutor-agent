@@ -12,7 +12,10 @@ from course_tutor_contracts import (
     CatalogBookPage,
     CatalogCategoryView,
     CatalogCourseView,
+    PracticeEvidenceRequest,
+    PracticeEvidenceResponse,
 )
+from course_tutor_practice.generation.errors import GenerationFailure
 
 
 class AgentCatalogError(RuntimeError):
@@ -102,3 +105,47 @@ class HttpAgentCatalogClient:
 
 
 __all__ = ["AgentCatalogClient", "AgentCatalogError", "HttpAgentCatalogClient"]
+
+
+class HttpAgentEvidenceProvider:
+    def __init__(self, base_url: str, client: httpx.AsyncClient | None = None) -> None:
+        self._owns_client = client is None
+        self._client = client or httpx.AsyncClient(base_url=base_url.rstrip("/"), timeout=20.0)
+
+    async def retrieve(
+        self, request: PracticeEvidenceRequest, delegation_token: str, correlation_id: str
+    ) -> PracticeEvidenceResponse:
+        try:
+            response = await self._client.post(
+                "/v1/internal/practice/evidence:retrieve",
+                json=request.model_dump(mode="json"),
+                headers={
+                    "Authorization": f"Bearer {delegation_token}",
+                    "X-Correlation-ID": correlation_id,
+                },
+            )
+        except httpx.HTTPError as exc:
+            raise GenerationFailure("evidence_unavailable", retryable=True) from exc
+        if response.status_code in {401, 403, 404, 409}:
+            raise GenerationFailure("evidence_access_denied")
+        if response.is_error:
+            raise GenerationFailure(
+                "evidence_unavailable",
+                retryable=response.status_code >= 500 or response.status_code == 429,
+            )
+        try:
+            evidence = PracticeEvidenceResponse.model_validate(response.json())
+        except (ValueError, TypeError) as exc:
+            raise GenerationFailure("invalid_evidence_response") from exc
+        if (
+            evidence.generation_id != request.generation_id
+            or evidence.book_id != request.book_id
+            or evidence.course_id != request.course_id
+            or evidence.content_version_id != request.content_version_id
+        ):
+            raise GenerationFailure("evidence_scope_mismatch")
+        return evidence
+
+    async def aclose(self) -> None:
+        if self._owns_client:
+            await self._client.aclose()
