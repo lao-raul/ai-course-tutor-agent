@@ -197,7 +197,9 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _production_requires_real_secrets(self) -> Settings:
         if self.environment is Environment.PRODUCTION:
-            if self.minio_secret_key.get_secret_value() == "change-me-in-production":
+            if self.service_name not in {"practice-api", "practice-worker"} and (
+                self.minio_secret_key.get_secret_value() == "change-me-in-production"
+            ):
                 raise ValueError("MINIO_SECRET_KEY must be changed outside local development")
             if self.auth_mode is not AuthMode.OIDC:
                 raise ValueError("AUTH_MODE must be oidc in production")

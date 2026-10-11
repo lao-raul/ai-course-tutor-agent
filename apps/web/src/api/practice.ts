@@ -34,6 +34,8 @@ export interface BookCourse {
   code: string;
   name: string;
   content_version_id: string;
+  content_version_sequence?: number | null;
+  content_version_published_at?: string | null;
 }
 
 export interface BookDetail extends Book { courses: BookCourse[] }
@@ -92,6 +94,14 @@ export interface PracticeSet {
   content_version_id: string;
   study_plan_id: string;
   exercises: Exercise[];
+  evidence_sources?: EvidenceSource[];
+}
+export interface EvidenceSource {
+  chunk_id: string;
+  relative_path: string;
+  anchor_type: string;
+  anchor_value: string;
+  text_excerpt: string;
 }
 export interface AnswerRelease {
   answer: string | boolean | string[];

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import cast
 from uuid import uuid4
 
@@ -96,3 +98,59 @@ async def test_worker_completes_exactly_one_idempotent_practice_set() -> None:
     assert completed.practice_set_id is not None
     assert await worker.run_once() is False
     assert len(repository.sets) == 1
+
+
+@pytest.mark.asyncio
+async def test_worker_renews_lease_during_slow_inference() -> None:
+    repository = InMemoryPracticeRepository()
+    principal = Principal(
+        user_id=uuid4(),
+        tenant_id=uuid4(),
+        role=UserRole.STUDENT,
+        access_label=AccessLabel.ENROLLED,
+        subject="worker-test",
+    )
+    plan = StudyPlanRecord(
+        id=uuid4(),
+        tenant_id=principal.tenant_id,
+        book_id=uuid4(),
+        course_id=uuid4(),
+        course_run_id=uuid4(),
+        content_version_id=uuid4(),
+        name="Default",
+        revision=1,
+        modules=(ModuleRecord(id=uuid4(), ordinal=0, title="Book"),),
+    )
+    await repository.save_study_plan(plan)
+    job, _ = await GenerationService(repository).submit(
+        principal, plan, GeneratePracticeRequest(count=1), "slow-key", "corr"
+    )
+
+    class SlowExecutor(FakeExecutor):
+        async def generate(self, _job, context):  # type: ignore[no-untyped-def]
+            await asyncio.sleep(0.35)
+            return await super().generate(_job, context)  # type: ignore[no-untyped-call]
+
+    async def renew(generation_id, worker_id, duration):  # type: ignore[no-untyped-def]
+        return await repository.renew_generation_lease(
+            generation_id, worker_id, datetime.now(UTC), duration
+        )
+
+    worker = PracticeWorker(
+        repository,
+        cast("GenerationExecutor", SlowExecutor()),
+        worker_id="worker-a",
+        lease_duration=timedelta(milliseconds=120),
+        renew_lease=renew,
+    )
+    running = asyncio.create_task(worker.run_once())
+    await asyncio.sleep(0.2)
+    assert (
+        await repository.claim_next_generation(
+            "worker-b", datetime.now(UTC), timedelta(milliseconds=120)
+        )
+        is None
+    )
+    assert await running
+    completed = await repository.get_generation(principal.tenant_id, principal.user_id, job.id)
+    assert completed is not None and completed.status is GenerationStatus.READY

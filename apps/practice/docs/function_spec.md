@@ -105,7 +105,7 @@ must activate the deterministic book-level fallback rather than guessed structur
 |---|---|
 | HFR-GEN-1 | A learner can request 1–20 questions for a Book, defaulting to 5, with optional system CourseRun, StudyPlan topic/module, `introductory`/`standard`/`challenge` difficulty and allowed question types. |
 | HFR-GEN-2 | Generation returns an accepted job promptly; status can be polled until `READY`, `FAILED` or `CANCELLED`. |
-| HFR-GEN-3 | Agent performs authorization and evidence retrieval against the currently published content version before any LLM generation. |
+| HFR-GEN-3 | Agent performs authorization and evidence retrieval against the currently published content version before any LLM generation. A selected outline node is resolved by stable ID to that book's source and physical PDF page range; repeated labels such as “Unit 1” in other modules must not leak into its evidence. |
 | HFR-GEN-4 | Every accepted exercise contains at least one valid evidence citation; its answer and rationale must be supportable by those cited chunks. |
 | HFR-GEN-5 | Generation output passes strict schema, count, type, citation, answerability, duplicate and answer-leakage validation before becoming `READY`. |
 | HFR-GEN-6 | The stored PracticeSet records content version, evidence chunk IDs, prompt version, generation model, validation version, random seed and correlation ID. |
@@ -114,6 +114,7 @@ must activate the deterministic book-level fallback rather than guessed structur
 | HFR-GEN-9 | Student retrieval never exposes protected answers, rationales or solution-bearing evidence before the applicable submit/release policy permits it. |
 | HFR-GEN-10 | Instructor preview is clearly labeled AI-generated and is not automatically published as official assessment material. |
 | HFR-GEN-11 | The learner can select Chinese, English or bilingual generation; omitted language defaults to Chinese. |
+| HFR-GEN-12 | The learner sees a readable textbook content revision (edition, published sequence/date) and, for each exercise citation, the authorized source filename, page/location and a short excerpt. Internal version and chunk UUIDs remain transport identifiers, not learner-facing labels; unavailable metadata is clearly identified instead of displaying an ID. |
 
 HFR-GEN-10 is tracked by TASK-25 as a separate instructor capability. It is not an
 implicit part of the TASK-22 learner UI or TASK-23 deployment gates.

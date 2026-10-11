@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from course_tutor_contracts import ExerciseDraft, PracticeEvidenceResponse
 
-PROMPT_VERSION = "hiruzen-grounded-v1"
+PROMPT_VERSION = "hiruzen-grounded-v2"
 VALIDATOR_VERSION = "hiruzen-validation-v1"
 
 

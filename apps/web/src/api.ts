@@ -1,12 +1,40 @@
 import type { ChatCitation, ChatRequest, Course, MemoryFact } from './types';
 
 const API_BASE = '/v1';
-const LOCAL_AUTH_TOKEN = import.meta.env.VITE_LOCAL_AUTH_TOKEN ?? 'local-dev-token';
-const authHeaders = { Authorization: `Bearer ${LOCAL_AUTH_TOKEN}` };
+const TOKEN_STORAGE_KEY = 'course-tutor-local-access-token';
+let pageAccessToken = '';
+
+export function getAccessToken(): string {
+  if (pageAccessToken) return pageAccessToken;
+  try {
+    const saved = window.sessionStorage.getItem(TOKEN_STORAGE_KEY);
+    if (saved) return saved;
+  } catch {
+    // Browser storage can be disabled; a token can still be used for this page load.
+  }
+  return import.meta.env.DEV ? (import.meta.env.VITE_LOCAL_AUTH_TOKEN ?? 'local-dev-token') : '';
+}
+
+export function setAccessToken(token: string): void {
+  pageAccessToken = token.trim();
+  try {
+    if (pageAccessToken) window.sessionStorage.setItem(TOKEN_STORAGE_KEY, pageAccessToken);
+    else window.sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // Keep the token in memory if session storage is unavailable.
+  }
+}
+
+export async function checkAccessToken(token: string): Promise<Response> {
+  return fetch(`${API_BASE}/practice/catalog/categories`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+}
 
 export function requestHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const token = pageAccessToken || getAccessToken();
   return {
-    ...authHeaders,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     'X-Correlation-ID': crypto.randomUUID(),
     ...extra,
   };

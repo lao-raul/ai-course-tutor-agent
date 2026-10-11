@@ -8,6 +8,9 @@ backend:
   practice:
     image: {repository: course-tutor-practice, tag: ci, digest: ""}
 
+practiceWorker:
+  image: {repository: course-tutor-practice-worker, tag: ci, digest: ""}
+
 worker:
   image: {repository: course-tutor-worker, tag: ci, digest: ""}
 

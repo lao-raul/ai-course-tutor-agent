@@ -73,3 +73,23 @@ async def test_unit_query_filters_and_boosts_only_the_matching_unit() -> None:
     assert result.candidates[0].relative_path == "webinar/unit2/Unit2_slides.pdf"
     assert result.candidates[0].score == pytest.approx(1.10)
     assert result.candidates[1].score == pytest.approx(0.90)
+
+
+@pytest.mark.asyncio
+async def test_trusted_outline_pages_filter_without_ambiguous_unit_number() -> None:
+    client = _Qdrant()
+    service = DenseRetrievalService(client, _Embedder())  # type: ignore[arg-type]
+    await service.search(
+        "Unit 1 I'm Sam",
+        tenant_id=uuid.uuid4(),
+        course_id=uuid.uuid4(),
+        content_version_id=uuid.uuid4(),
+        access_label=AccessLabel.ENROLLED,
+        source_ids=(uuid.uuid4(),),
+        page_range=(7, 9),
+    )
+    dumped = client.filter.model_dump(mode="json")
+    assert "page_number" in str(dumped)
+    assert "anchor_type" in str(dumped)
+    assert "content_scopes" not in str(dumped)
+    assert "source_id" in str(dumped)

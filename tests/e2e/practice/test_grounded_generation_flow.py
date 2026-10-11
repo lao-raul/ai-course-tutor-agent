@@ -106,8 +106,16 @@ async def test_published_agent_evidence_produces_a_safe_practice_set(
         model = "deterministic-e2e"
 
         async def generate_json(
-            self, _messages: list[dict[str, str]], _seed: int, _correlation_id: str
+            self,
+            _messages: list[dict[str, str]],
+            _seed: int,
+            _correlation_id: str,
+            *,
+            count: int,
+            temperature: float,
         ) -> str:
+            assert count == 1
+            assert temperature == 0.1
             draft = MultipleChoiceExerciseDraft(
                 prompt="哪一个是见面时使用的问候语?",
                 options=(

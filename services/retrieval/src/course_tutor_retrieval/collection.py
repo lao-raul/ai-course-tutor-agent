@@ -56,6 +56,7 @@ async def ensure_collection(client: QdrantClient) -> None:
         ("chunk_class", PayloadSchemaType.KEYWORD),
         ("relative_path", PayloadSchemaType.KEYWORD),
         ("content_scopes", PayloadSchemaType.KEYWORD),
+        ("page_number", PayloadSchemaType.INTEGER),
         ("anchor_type", PayloadSchemaType.KEYWORD),
         ("mime_type", PayloadSchemaType.KEYWORD),
     ]:

@@ -28,7 +28,8 @@ verify_container() {
 }
 
 verify_container backend agent-api agent
-verify_container backend practice-api practice
+verify_container practice-api practice-api practice
+verify_container practice-worker practice-worker practice_worker
 verify_container worker ingestion-worker worker
 verify_container web web web
 

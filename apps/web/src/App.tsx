@@ -11,6 +11,7 @@ import {
 } from './api';
 import { RichText } from './RichText';
 import HiruzenApp from './HiruzenApp';
+import { LocalAccessGate } from './LocalAccessGate';
 
 interface Message {
   id: string;
@@ -457,11 +458,11 @@ const styles: Record<string, React.CSSProperties> = {
 
 export default function App() {
   const [mode, setMode] = useState<'hiruzen' | 'course-tutor'>('hiruzen');
-  return <>
+  return <LocalAccessGate>
     <div style={{ display: 'flex', gap: 8, padding: '6px 18px', background: '#17243a' }}>
       <button type="button" aria-current={mode === 'hiruzen' ? 'page' : undefined} onClick={() => setMode('hiruzen')}>Hiruzen</button>
       <button type="button" aria-current={mode === 'course-tutor' ? 'page' : undefined} onClick={() => setMode('course-tutor')}>Course Tutor</button>
     </div>
     {mode === 'hiruzen' ? <HiruzenApp /> : <CourseTutorApp />}
-  </>;
+  </LocalAccessGate>;
 }

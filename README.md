@@ -44,7 +44,7 @@ TAG="$IMAGE_TAG" scripts/build-docker.sh
 也可以只构建指定目标：
 
 ```bash
-TAG="$IMAGE_TAG" scripts/build-docker.sh agent-api practice-api ingestion-worker web
+TAG="$IMAGE_TAG" scripts/build-docker.sh agent-api practice-api practice-worker ingestion-worker web
 TAG="$IMAGE_TAG" scripts/build-docker.sh web
 ```
 
@@ -52,6 +52,7 @@ TAG="$IMAGE_TAG" scripts/build-docker.sh web
 
 - `course-tutor-agent:$IMAGE_TAG`
 - `course-tutor-practice:$IMAGE_TAG`
+- `course-tutor-practice-worker:$IMAGE_TAG`
 - `course-tutor-worker:$IMAGE_TAG`
 - `course-tutor-web:$IMAGE_TAG`
 - `course-tutor-fake-llm:$IMAGE_TAG`（仅 CI/离线测试使用）
@@ -123,11 +124,12 @@ chat/embedding model ID 和真实 embedding dimension。CI 不使用这些私有
 
 ```bash
 export IMAGE_TAG=local-$(git rev-parse --short HEAD)-$(date +%H%M%S)
-TAG="$IMAGE_TAG" scripts/build-docker.sh agent-api practice-api ingestion-worker web
+TAG="$IMAGE_TAG" scripts/build-docker.sh agent-api practice-api practice-worker ingestion-worker web
 
 kind load docker-image --name course-tutor-real \
   "course-tutor-agent:$IMAGE_TAG" \
   "course-tutor-practice:$IMAGE_TAG" \
+  "course-tutor-practice-worker:$IMAGE_TAG" \
   "course-tutor-worker:$IMAGE_TAG" \
   "course-tutor-web:$IMAGE_TAG"
 ```
@@ -153,6 +155,7 @@ helm upgrade --install course-tutor infra/k8s/course-tutor \
   -f .local/course-tutor.values.yaml \
   --set-string backend.agent.image.tag="$IMAGE_TAG" \
   --set-string backend.practice.image.tag="$IMAGE_TAG" \
+  --set-string practiceWorker.image.tag="$IMAGE_TAG" \
   --set-string worker.image.tag="$IMAGE_TAG" \
   --set-string web.image.tag="$IMAGE_TAG" \
   --atomic --wait --wait-for-jobs --timeout 10m

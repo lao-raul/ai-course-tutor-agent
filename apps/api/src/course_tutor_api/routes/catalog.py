@@ -14,14 +14,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from course_tutor_api.auth import Principal, get_current_principal
+from course_tutor_api.citation_display import display_excerpt
 from course_tutor_api.db import (
     Book,
+    BookContentBinding,
     BookCourseBinding,
     Category,
+    Chunk,
     ContentVersion,
     Course,
     CourseRun,
     Publisher,
+    SourceDocument,
 )
 from course_tutor_api.dependencies import get_session
 from course_tutor_contracts import (
@@ -30,13 +34,18 @@ from course_tutor_contracts import (
     CatalogBookPage,
     CatalogBookSummary,
     CatalogCategoryView,
+    CatalogCitationResolveRequest,
+    CatalogCitationView,
     CatalogCourseView,
+    ChunkClass,
     ContentVersionStatus,
     CourseAccessPolicy,
     EducationLevel,
 )
 
 router = APIRouter(prefix="/v1/catalog", tags=["catalog"])
+
+_ACCESS_RANK = {"public": 0, "enrolled": 1, "staff_only": 2, "restricted": 3}
 
 
 def _normalize(value: str) -> str:
@@ -264,6 +273,8 @@ async def _book_courses(
             code=course.code,
             name=course.name,
             content_version_id=version.id,
+            content_version_sequence=version.sequence,
+            content_version_published_at=version.published_at,
         )
         for course, course_run, version in result.all()
     )
@@ -317,3 +328,47 @@ async def list_catalog_book_courses(
 ) -> list[CatalogCourseView]:
     await _get_published_book(session, principal, book_id)
     return list(await _book_courses(session, principal, book_id))
+
+
+@router.post(
+    "/books/{book_id}/citations:resolve",
+    response_model=list[CatalogCitationView],
+    operation_id="resolveCatalogBookCitations",
+)
+async def resolve_catalog_book_citations(
+    book_id: UUID,
+    body: CatalogCitationResolveRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
+) -> list[CatalogCitationView]:
+    """Resolve only content chunks bound to the learner's published textbook."""
+    await _get_published_book(session, principal, book_id)
+    courses = await _book_courses(session, principal, book_id)
+    if not any(
+        course.course_id == body.course_id and course.content_version_id == body.content_version_id
+        for course in courses
+    ):
+        raise HTTPException(status_code=404, detail="published textbook evidence not found")
+    result = await session.execute(
+        select(Chunk, SourceDocument)
+        .join(SourceDocument, SourceDocument.id == Chunk.source_id)
+        .join(BookContentBinding, BookContentBinding.source_id == SourceDocument.id)
+        .where(
+            BookContentBinding.book_id == book_id,
+            BookContentBinding.content_version_id == body.content_version_id,
+            Chunk.id.in_(body.chunk_ids),
+            Chunk.chunk_class == ChunkClass.CONTENT,
+        )
+    )
+    visible = {
+        chunk.id: CatalogCitationView(
+            chunk_id=chunk.id,
+            relative_path=source.relative_path,
+            anchor_type=chunk.anchor_type,
+            anchor_value=chunk.anchor_value,
+            text_excerpt=display_excerpt(chunk.text),
+        )
+        for chunk, source in result.all()
+        if _ACCESS_RANK[source.access_label.value] <= _ACCESS_RANK[principal.access_label.value]
+    }
+    return [visible[chunk_id] for chunk_id in dict.fromkeys(body.chunk_ids) if chunk_id in visible]

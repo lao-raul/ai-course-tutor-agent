@@ -14,13 +14,34 @@
 {{- fail "courseContent.enabled and ciFixture.enabled cannot both be true" -}}
 {{- end -}}
 {{- if eq .Values.config.environment "production" -}}
-{{- range $name, $image := dict "agent" .Values.backend.agent.image "practice" .Values.backend.practice.image "worker" .Values.worker.image "web" .Values.web.image -}}
+{{- range $name, $image := dict "agent" .Values.backend.agent.image "practice" .Values.backend.practice.image "practice-worker" .Values.practiceWorker.image "worker" .Values.worker.image "web" .Values.web.image -}}
 {{- if not $image.digest -}}
 {{- fail (printf "production image %s must use an immutable digest" $name) -}}
 {{- end -}}
 {{- end -}}
 {{- if lt (int .Values.backend.replicas) 2 -}}
 {{- fail "production backend.replicas must be at least 2" -}}
+{{- end -}}
+{{- if lt (int .Values.backend.practice.replicas) 2 -}}
+{{- fail "production backend.practice.replicas must be at least 2" -}}
+{{- end -}}
+{{- if lt (int .Values.practiceWorker.replicas) 2 -}}
+{{- fail "production practiceWorker.replicas must be at least 2" -}}
+{{- end -}}
+{{- if not .Values.practiceWorker.enabled -}}
+{{- fail "production practiceWorker.enabled must be true" -}}
+{{- end -}}
+{{- if not .Values.secrets.practicePostgresDsnSecret -}}
+{{- fail "production requires a restricted Practice database Secret" -}}
+{{- end -}}
+{{- if not .Values.networkPolicy.enabled -}}
+{{- fail "production networkPolicy.enabled must be true" -}}
+{{- end -}}
+{{- if not (and .Values.backend.practice.autoscaling.enabled .Values.practiceWorker.autoscaling.enabled) -}}
+{{- fail "production Practice API and Worker HPAs must be enabled" -}}
+{{- end -}}
+{{- if not (and .Values.backend.practice.podDisruptionBudget.enabled .Values.practiceWorker.podDisruptionBudget.enabled) -}}
+{{- fail "production Practice API and Worker PDBs must be enabled" -}}
 {{- end -}}
 {{- end -}}
 {{- end }}
@@ -131,6 +152,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
       name: {{ include "course-tutor.secretName" . }}
       key: local-auth-token
 {{- end }}
+
 - name: MINIO_ACCESS_KEY
   valueFrom:
     secretKeyRef:
@@ -141,6 +163,79 @@ app.kubernetes.io/instance: {{ .Release.Name }}
     secretKeyRef:
       name: {{ include "course-tutor.secretName" . }}
       key: minio-secret-key
+- name: LLM_API_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "course-tutor.secretName" . }}
+      key: llm-api-key
+- name: PRACTICE_DELEGATION_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "course-tutor.secretName" . }}
+      key: practice-delegation-secret
+{{- end }}
+
+{{- define "course-tutor.practiceDsnEnv" -}}
+{{- if .Values.secrets.practicePostgresDsnSecret }}
+- name: POSTGRES_DSN
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.secrets.practicePostgresDsnSecret }}
+      key: practice-postgres-dsn
+- name: PRACTICE_POSTGRES_DSN
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.secrets.practicePostgresDsnSecret }}
+      key: practice-postgres-dsn
+{{- else }}
+- name: POSTGRES_DSN
+  value: {{ default .Values.config.postgresDsn .Values.config.practicePostgresDsn | quote }}
+- name: PRACTICE_POSTGRES_DSN
+  value: {{ .Values.config.practicePostgresDsn | quote }}
+{{- end }}
+{{- end }}
+
+{{- define "course-tutor.practiceEnv" -}}
+- name: ENVIRONMENT
+  value: {{ .Values.config.environment | quote }}
+- name: LOG_LEVEL
+  value: {{ .Values.config.logLevel | quote }}
+- name: LOG_FORMAT
+  value: {{ .Values.config.logFormat | quote }}
+- name: AUTH_MODE
+  value: {{ .Values.config.authMode | quote }}
+- name: OIDC_ISSUER
+  value: {{ .Values.config.oidcIssuer | quote }}
+- name: OIDC_AUDIENCE
+  value: {{ .Values.config.oidcAudience | quote }}
+- name: OIDC_JWKS_URL
+  value: {{ .Values.config.oidcJwksUrl | quote }}
+- name: OIDC_ALGORITHMS
+  value: {{ .Values.config.oidcAlgorithms | quote }}
+{{ include "course-tutor.practiceDsnEnv" . }}
+- name: AGENT_BASE_URL
+  value: {{ .Values.config.agentBaseUrl | quote }}
+- name: LLM_BASE_URL
+  value: {{ .Values.config.llmBaseUrl | quote }}
+- name: LLM_CHAT_MODEL
+  value: {{ .Values.config.llmChatModel | quote }}
+- name: METRICS_ENABLED
+  value: {{ .Values.config.metricsEnabled | quote }}
+- name: OTEL_ENABLED
+  value: {{ .Values.config.otelEnabled | quote }}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ .Values.config.otelExporterOtlpEndpoint | quote }}
+- name: BUILD_VERSION
+  value: {{ .Chart.AppVersion | quote }}
+- name: BUILD_REVISION
+  value: {{ default "unknown" .Values.global.buildRevision | quote }}
+{{- if eq .Values.config.authMode "local" }}
+- name: LOCAL_AUTH_TOKEN
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "course-tutor.secretName" . }}
+      key: local-auth-token
+{{- end }}
 - name: LLM_API_KEY
   valueFrom:
     secretKeyRef:

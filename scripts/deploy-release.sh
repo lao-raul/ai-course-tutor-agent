@@ -11,6 +11,18 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 record_dir="${DEPLOY_OUTPUT_DIR:-${repo_root}/build/release}"
 mkdir -p "${record_dir}"
 
+if [[ "${environment}" == "production" ]]; then
+  golden_report="${HIRUZEN_GOLDEN_REPORT:-}"
+  test -n "${golden_report}" && test -f "${golden_report}" || {
+    echo "Production requires HIRUZEN_GOLDEN_REPORT with human-approved pilot evidence" >&2
+    exit 1
+  }
+  python3 "${repo_root}/tests/evaluation/hiruzen/golden_gate.py" \
+    --report "${golden_report}" \
+    --release-sha "$(jq -r .release_sha "${manifest}")" \
+    --output "${record_dir}/hiruzen-golden-gate.json"
+fi
+
 previous_revision="$(helm history "${release}" -n "${namespace}" -o json 2>/dev/null \
   | jq -r '[.[] | select(.status == "deployed")][-1].revision // empty')"
 
@@ -25,6 +37,8 @@ helm upgrade --install "${release}" "${chart_archive}" \
   --set-string "backend.agent.image.digest=$(jq -r .images.agent.digest "${manifest}")" \
   --set-string "backend.practice.image.repository=$(jq -r .images.practice.repository "${manifest}")" \
   --set-string "backend.practice.image.digest=$(jq -r .images.practice.digest "${manifest}")" \
+  --set-string "practiceWorker.image.repository=$(jq -r .images.practice_worker.repository "${manifest}")" \
+  --set-string "practiceWorker.image.digest=$(jq -r .images.practice_worker.digest "${manifest}")" \
   --set-string "worker.image.repository=$(jq -r .images.worker.repository "${manifest}")" \
   --set-string "worker.image.digest=$(jq -r .images.worker.digest "${manifest}")" \
   --set-string "web.image.repository=$(jq -r .images.web.repository "${manifest}")" \

@@ -26,8 +26,8 @@ def _alembic_assignment(path: Path, name: str) -> str | None:
     raise ValueError(f"{path}: missing {name} assignment")
 
 
-def _alembic_head() -> str:
-    versions = ROOT / "apps" / "api" / "alembic" / "versions"
+def _alembic_head(app_name: str) -> str:
+    versions = ROOT / "apps" / app_name / "alembic" / "versions"
     revisions: set[str] = set()
     parents: set[str] = set()
     for path in sorted(versions.glob("*.py")):
@@ -66,6 +66,7 @@ def main() -> None:
         "release-manifest",
         "steps.publish.outputs.agent_digest",
         "steps.publish.outputs.practice_digest",
+        "steps.publish.outputs.practice_worker_digest",
         "steps.publish.outputs.worker_digest",
         "steps.publish.outputs.web_digest",
     )
@@ -83,7 +84,7 @@ def main() -> None:
         (ROOT / "infra" / "k8s" / "course-tutor" / "values.yaml").read_text(encoding="utf-8")
     )
     try:
-        alembic_head = _alembic_head()
+        alembic_head = _alembic_head("api")
     except ValueError as exc:
         failures.append(str(exc))
     else:
@@ -92,6 +93,17 @@ def main() -> None:
             failures.append(
                 "Helm expectedAlembicRevision must match the Alembic head: "
                 f"expected {alembic_head}, found {configured_revision}"
+            )
+    try:
+        practice_head = _alembic_head("practice")
+    except ValueError as exc:
+        failures.append(str(exc))
+    else:
+        configured_practice = chart_values["config"].get("expectedPracticeAlembicRevision")
+        if configured_practice != practice_head:
+            failures.append(
+                "Helm expectedPracticeAlembicRevision must match the Practice head: "
+                f"expected {practice_head}, found {configured_practice}"
             )
 
     dashboard = json.loads(

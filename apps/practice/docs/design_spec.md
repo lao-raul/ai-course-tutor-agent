@@ -50,8 +50,8 @@ flowchart LR
    prompt/model versions and seed. Regeneration creates a new revision.
 7. **Answer material is protected.** Student DTOs and database access paths separate
    question presentation from answer/rationale fields.
-8. **Independent deployment.** The current dummy sidecar may remain during transition,
-   but production Hiruzen moves to its own Deployment and scaling policy.
+8. **Independent deployment.** Agent API, Hiruzen API and Hiruzen Worker now have
+   distinct Helm Deployments, scaling policies and source-volume boundaries.
 
 ## 3. Bounded contexts and ownership
 
@@ -175,6 +175,7 @@ by TASK-24, and the practice-evidence operation by TASK-20.
 | `searchCatalogBooks` | `GET /v1/catalog/books` | Authorized cursor-paginated Book search |
 | `getCatalogBook` | `GET /v1/catalog/books/{book_id}` | Book detail and current publication state |
 | `listCatalogBookCourses` | `GET /v1/catalog/books/{book_id}/courses` | Authorized CourseRuns for a Book |
+| `resolveCatalogBookCitations` | `POST /v1/catalog/books/{book_id}/citations:resolve` | Resolve stored chunk IDs to path-safe filename, page/location and short text excerpt for the exact currently published Book/Course/ContentVersion; reject cross-book, stale and higher-access evidence |
 | `getCatalogBookOutline` | `GET /v1/catalog/books/{book_id}/outline` | Authorized outline for the exact published Book/ContentVersion |
 | `retrievePracticeEvidence` | `POST /v1/internal/practice/evidence:retrieve` | Bounded evidence for generation, including immutable chunk citations |
 | `streamCourseChat` | `POST /v1/courses/{course_id}/chat` | Existing grounded SSE tutoring endpoint used directly by the browser |
@@ -185,10 +186,26 @@ by TASK-24, and the practice-evidence operation by TASK-20.
 | `approveCatalogImportCandidate` | `POST /v1/admin/catalog/imports/{import_id}/candidates/{candidate_id}/approve` | Create Book/system CourseRun and queue ingestion |
 | `rejectCatalogImportCandidate` | `POST /v1/admin/catalog/imports/{import_id}/candidates/{candidate_id}/reject` | Reject without deleting scan evidence |
 
+`getPracticeSet` resolves its stored citation IDs through Agent at read time, so
+existing immutable PracticeSets gain readable source labels without a data
+migration. Agent authorizes the Book/Course/ContentVersion binding, source access
+label and instructional chunk class before returning a short excerpt. Hiruzen
+returns this as learner-safe `evidence_sources`; the Web UI renders a filename,
+page/location and excerpt, or an unavailable-source label when metadata cannot
+be resolved. Display excerpts are selected conservatively from contiguous
+readable sentences; the raw chunk is never rewritten for retrieval, validation
+or storage. If OCR is too noisy to quote, the UI retains filename/page and
+states that the excerpt is unavailable. Catalog Course views also expose publication sequence/date for a
+readable version label, while UUIDs remain stable transport identifiers.
+
 `retrievePracticeEvidence` accepts a job-scoped delegation token and exact Book,
-Course and ContentVersion IDs, plus a bounded query and evidence limit. Module title or
-topic is translated to a query by Hiruzen; difficulty and question types remain in the
-generation request, not the retrieval contract. Agent performs publication and
+Course and ContentVersion IDs, plus a bounded query and evidence limit. A selected
+module also supplies its stable outline_node_id; Agent resolves that ID against the
+published BookOutline and restricts retrieval to its bound source and physical PDF
+page interval. The next sibling or ancestor-level node closes the interval, so
+repeated labels such as “Unit 1” in different modules cannot mix. Module title or
+topic is translated to a query by Hiruzen; difficulty and question types remain in
+the generation request, not the retrieval contract. Agent performs publication and
 version-pinned ACL filtering and returns:
 
 - `course_id`, `book_id`, `content_version_id`;
@@ -259,7 +276,8 @@ TASK-24 implements this boundary with the following deterministic precedence:
 
 1. embedded PDF bookmarks;
 2. reliable table-of-contents text and heading rules;
-3. OCR only when the document has no reliable text layer.
+3. OCR where a document or individual page has no reliable text layer. Hybrid PDFs
+   keep good embedded text and OCR only sparse pages, one page at a time.
 
 The canonical extractor never relies on unconstrained LLM output. Each response carries
 `book_id`, `content_version_id`, `AVAILABLE`/`UNAVAILABLE` status, extractor version,
@@ -267,6 +285,9 @@ confidence/provenance and ordered nodes with stable ID, parent, depth, title, or
 and page range. Low-confidence or invalid structure is explicitly `UNAVAILABLE`; no
 chapter or objective is inferred. Hiruzen accesses the operation through an
 `OutlineProvider` port and applies the one-book-module fallback for unavailable output.
+The extraction pipeline version changes when this OCR behavior changes, so an unchanged
+PDF can be re-ingested as a new immutable content version instead of reusing incomplete
+chunks from the prior pipeline.
 
 ## 7. Persistence model
 
@@ -322,6 +343,16 @@ stateDiagram-v2
    - normalized duplicate/fingerprint detection;
    - answer/rationale not present in student-visible prompt;
    - unsafe or solution-prohibited evidence excluded.
+   The worker validates candidates individually and retains only those that pass.
+   If a batch is short, contains duplicates, or has invalid answers/citations, it
+   requests only the missing number of questions with a new seed and the accepted
+   prompts as exclusions. Repair calls constrain the JSON-schema array cardinality,
+   focus on one underused evidence chunk, rotate allowed question types and use a
+   higher sampling temperature for diversity. The
+   repair budget is two calls for a single question or
+   at most eight calls for larger sets, bounded by the job deadline. The full set
+   passes the same batch validator before it is persisted; a partial set is never
+   published.
 9. Optionally perform one bounded model-based groundedness/ambiguity review.
 10. Persist immutable `READY` set or a sanitized failure reason.
 
@@ -455,10 +486,11 @@ requirement and verification coverage is maintained in
 [requirements-traceability.md](requirements-traceability.md). H2 accepts and persists
 generation jobs through the versioned API. H3 provides Agent-scoped evidence retrieval,
 schema-constrained generation, deterministic validation and sanitized failures. H6/TASK-23
-still owns independent Practice migration/worker Helm workloads and release-wide quality
-gates; implementing H3 alone does not make the new worker available in the current chart.
+implements independent Practice migration/API/worker Helm workloads and a fail-closed
+quality gate; real-textbook human approval remains required.
 
 H1/TASK-18 was completed on 2026-10-07; H2/TASK-19 completed on 2026-10-08 and
 H1a/TASK-24 completed on 2026-10-09. H3/TASK-20 completed its scoped fake-provider,
 cross-service and redacted real-pilot acceptance on 2026-10-10. H4/TASK-21 and
-H5/TASK-22 completed on 2026-10-10. H6/TASK-23 and H7/TASK-25 remain planned.
+H5/TASK-22 completed on 2026-10-10. H6/TASK-23 is in progress pending its Kind and
+human-approved golden-set evidence; H7/TASK-25 remains planned.

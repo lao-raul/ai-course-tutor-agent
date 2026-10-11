@@ -93,29 +93,6 @@ spec:
               mountPath: {{ .Values.courseContent.mountPath }}
               readOnly: true
           {{- end }}
-        - name: practice-api
-          image: {{ include "course-tutor.image" (list .Values.backend.practice.image) }}
-          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
-          ports:
-            - {name: practice-http, containerPort: {{ .Values.backend.practice.port }}, protocol: TCP}
-          env:
-            {{- include "course-tutor.commonEnv" . | nindent 12 }}
-          readinessProbe:
-            httpGet: {path: /readyz, port: practice-http}
-            initialDelaySeconds: 2
-            periodSeconds: 5
-          livenessProbe:
-            httpGet: {path: /healthz, port: practice-http}
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          resources:
-            {{- toYaml .Values.backend.practice.resources | nindent 12 }}
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities: {drop: ["ALL"]}
-          volumeMounts:
-            - {name: runtime-tmp, mountPath: /tmp}
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname

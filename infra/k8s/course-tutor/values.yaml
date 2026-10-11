@@ -22,6 +22,8 @@ backend:
       requests: {cpu: 100m, memory: 256Mi}
       limits: {cpu: "1", memory: 1Gi}
   practice:
+    replicas: 1
+    revisionHistoryLimit: 3
     image:
       repository: course-tutor-practice
       tag: dev
@@ -30,6 +32,34 @@ backend:
     resources:
       requests: {cpu: 50m, memory: 96Mi}
       limits: {cpu: 500m, memory: 256Mi}
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      targetCPUUtilizationPercentage: 70
+    podDisruptionBudget:
+      enabled: false
+      minAvailable: 1
+
+practiceWorker:
+  enabled: true
+  replicas: 1
+  revisionHistoryLimit: 3
+  image:
+    repository: course-tutor-practice-worker
+    tag: dev
+    digest: ""
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: "1", memory: 512Mi}
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
 
 worker:
   enabled: true
@@ -77,7 +107,9 @@ config:
   oidcJwksUrl: ""
   oidcAlgorithms: RS256
   postgresDsn: postgresql+asyncpg://course_tutor:course_tutor@course-tutor-postgres:5432/course_tutor
-  agentBaseUrl: http://127.0.0.1:8000
+  agentBaseUrl: http://course-tutor-agent:8000
+  practicePostgresDsn: ""
+  expectedPracticeAlembicRevision: p210001
   redisUrl: redis://course-tutor-redis:6379/0
   qdrantUrl: http://course-tutor-qdrant:6333
   minioEndpoint: http://course-tutor-minio:9000
@@ -99,6 +131,7 @@ config:
 
 secrets:
   existingSecret: ""
+  practicePostgresDsnSecret: ""
   localAuthToken: local-dev-token
   minioAccessKey: course-tutor
   minioSecretKey: local-development-only

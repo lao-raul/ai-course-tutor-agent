@@ -3,11 +3,18 @@
 A release is eligible only when every required item has machine-readable evidence.
 
 - [ ] CI for the exact commit is green, including tests, RAG gates, scans and Kind.
-- [ ] Release manifest records chart version, actor and four signed image digests.
+- [ ] Release manifest records chart version, actor and five signed image digests
+      (Agent API, Practice API, Practice Worker, ingestion worker, Web).
 - [ ] Environment values reference external secrets and immutable images; production
       has at least two backend replicas, PDB and HPA enabled.
 - [ ] Running image IDs equal the release manifest and post-deploy Agent, Practice, Web,
       metrics and RAG smoke checks pass.
+- [ ] Practice migration reaches `p210001` before API/worker readiness; independent
+      Practice pods have no `course-content` volume and their HPA/PDB/policies render.
+- [ ] The selected FLTRP Chen Lin Grade 3 first-term real-pilot report contains at
+      least 20 human-reviewed cases, named dated approval, latency samples and
+      HNFR-5–11 operational evidence; `golden_gate.py` passes. A synthetic CI report
+      cannot satisfy this production gate.
 - [ ] Current RAG benchmark meets Recall@5, citation precision and abstention thresholds.
 - [ ] HA drill loses one backend pod under traffic with zero failed health requests.
 - [ ] Worker duplicate-delivery and memory-purge idempotency tests pass.

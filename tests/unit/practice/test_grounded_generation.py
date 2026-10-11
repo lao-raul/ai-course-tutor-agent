@@ -102,9 +102,11 @@ class EvidenceStub:
     def __init__(self, response: PracticeEvidenceResponse) -> None:
         self.response = response
         self.calls = 0
+        self.last_request = None
 
     async def retrieve(self, request, token, correlation_id):  # type: ignore[no-untyped-def]
         self.calls += 1
+        self.last_request = request
         claims = verify_practice_delegation(
             token, Settings().practice_delegation_secret.get_secret_value()
         )
@@ -114,6 +116,36 @@ class EvidenceStub:
         return self.response
 
 
+@pytest.mark.asyncio
+async def test_selected_outline_node_is_sent_to_agent_evidence() -> None:
+    repository = InMemoryPracticeRepository()
+    principal = _principal()
+    module = ModuleRecord(id=uuid4(), ordinal=0, title="Unit 1 I'm Sam", outline_node_id="ol_sam")
+    plan = StudyPlanRecord(
+        id=uuid4(),
+        tenant_id=principal.tenant_id,
+        book_id=uuid4(),
+        course_id=uuid4(),
+        course_run_id=uuid4(),
+        content_version_id=uuid4(),
+        name="FLTRP Grade 3",
+        revision=1,
+        modules=(module,),
+    )
+    await repository.save_study_plan(plan)
+    job, _ = await GenerationService(repository).submit(
+        principal,
+        plan,
+        GeneratePracticeRequest(count=1, module_id=module.id),
+        "outline-key",
+        "corr",
+    )
+    stub = EvidenceStub(_evidence(job))
+    await GroundedGenerationExecutor(stub, InferenceStub([])).retrieve(job)
+    assert job.request_payload["_outline_node_id"] == "ol_sam"
+    assert stub.last_request.outline_node_id == "ol_sam"
+
+
 class InferenceStub:
     model = "fake-practice-model"
 
@@ -121,13 +153,24 @@ class InferenceStub:
         self.outputs = outputs
         self.calls = 0
         self.messages: list[list[dict[str, str]]] = []
+        self.seeds: list[int] = []
+        self.temperatures: list[float] = []
 
     async def generate_json(
-        self, messages: list[dict[str, str]], seed: int, correlation_id: str
+        self,
+        messages: list[dict[str, str]],
+        seed: int,
+        correlation_id: str,
+        *,
+        count: int,
+        temperature: float,
     ) -> str:
         assert seed >= 0
+        assert count >= 1
         assert correlation_id == "corr"
         self.messages.append(messages)
+        self.seeds.append(seed)
+        self.temperatures.append(temperature)
         result = self.outputs[self.calls]
         self.calls += 1
         return result
@@ -211,6 +254,114 @@ async def test_invalid_generation_repairs_once_then_fails_without_leaking_text()
 
 
 @pytest.mark.asyncio
+async def test_partial_batch_keeps_valid_questions_and_tops_up_missing_count() -> None:
+    repository, job = await _job(GeneratePracticeRequest(count=5))
+    evidence = _evidence(job)
+    citation = str(evidence.chunks[0].chunk_id)
+    multiple_choice = _draft(QuestionType.MULTIPLE_CHOICE, PracticeLanguage.ZH, citation)
+    true_false = _draft(QuestionType.TRUE_FALSE, PracticeLanguage.ZH, citation)
+    fill_blank = _draft(QuestionType.FILL_IN_THE_BLANK, PracticeLanguage.ZH, citation)
+    leaked = multiple_choice.model_copy(update={"prompt": "Is Hello the greeting?"})
+    first = GeneratedBatch(
+        exercises=(multiple_choice, true_false, fill_blank, multiple_choice, leaked)
+    ).model_dump_json()
+    second = GeneratedBatch(
+        exercises=(
+            true_false.model_copy(update={"prompt": "Children greet a friend in Unit 1."}),
+            true_false.model_copy(update={"prompt": "A friend hears a greeting in Unit 1."}),
+        )
+    ).model_dump_json()
+    inference = InferenceStub([first, second])
+    worker = PracticeWorker(
+        repository,
+        GroundedGenerationExecutor(EvidenceStub(evidence), inference),
+        worker_id="fake-worker",
+    )
+    assert await worker.run_once()
+    completed = await repository.get_generation(job.tenant_id, job.user_id, job.id)
+    assert completed is not None and completed.status.value == "ready"
+    assert inference.calls == 2
+    assert inference.seeds[0] != inference.seeds[1]
+    assert inference.temperatures == [0.1, 0.75]
+    assert "Generate exactly 2 questions" in inference.messages[1][1]["content"]
+    assert multiple_choice.prompt in inference.messages[1][1]["content"]
+    safe_set = await repository.get_practice_set(
+        job.tenant_id, job.user_id, completed.practice_set_id
+    )
+    assert safe_set is not None and len(safe_set.exercises) == 5
+    assert len({exercise.prompt for exercise in safe_set.exercises}) == 5
+    assert all(exercise.evidence_citation_ids == (citation,) for exercise in safe_set.exercises)
+
+
+@pytest.mark.asyncio
+async def test_count_mismatch_tops_up_instead_of_discarding_valid_questions() -> None:
+    repository, job = await _job(GeneratePracticeRequest(count=3))
+    evidence = _evidence(job)
+    citation = str(evidence.chunks[0].chunk_id)
+    first_draft = _draft(QuestionType.TRUE_FALSE, PracticeLanguage.ZH, citation)
+    second_draft = first_draft.model_copy(update={"prompt": "Children greet a friend in Unit 1."})
+    third_draft = first_draft.model_copy(update={"prompt": "A friend hears a greeting in Unit 1."})
+    inference = InferenceStub(
+        [
+            GeneratedBatch(exercises=(first_draft, second_draft)).model_dump_json(),
+            GeneratedBatch(exercises=(third_draft,)).model_dump_json(),
+        ]
+    )
+    worker = PracticeWorker(
+        repository,
+        GroundedGenerationExecutor(EvidenceStub(evidence), inference),
+        worker_id="fake-worker",
+    )
+    assert await worker.run_once()
+    completed = await repository.get_generation(job.tenant_id, job.user_id, job.id)
+    assert completed is not None and completed.status.value == "ready"
+    assert "Generate exactly 1 question" in inference.messages[1][1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_repair_focuses_on_underused_evidence_and_a_single_type() -> None:
+    repository, job = await _job(GeneratePracticeRequest(count=2))
+    original = _evidence(job)
+    second_chunk = original.chunks[0].model_copy(
+        update={
+            "chunk_id": uuid4(),
+            "text": "Goodbye is a farewell. Children say Goodbye when they leave a friend.",
+            "anchor_value": "5",
+        }
+    )
+    evidence = original.model_copy(update={"chunks": (*original.chunks, second_chunk)})
+    first_draft = _draft(
+        QuestionType.TRUE_FALSE, PracticeLanguage.ZH, str(original.chunks[0].chunk_id)
+    )
+    second_draft = first_draft.model_copy(
+        update={
+            "prompt": "Children say Goodbye when they leave a friend.",
+            "evidence_citation_ids": (str(second_chunk.chunk_id),),
+            "rationale": "The cited text says Goodbye is a farewell.",
+        }
+    )
+    inference = InferenceStub(
+        [
+            GeneratedBatch(exercises=(first_draft,)).model_dump_json(),
+            GeneratedBatch(exercises=(second_draft,)).model_dump_json(),
+        ]
+    )
+    worker = PracticeWorker(
+        repository,
+        GroundedGenerationExecutor(EvidenceStub(evidence), inference),
+        worker_id="fake-worker",
+    )
+    assert await worker.run_once()
+    completed = await repository.get_generation(job.tenant_id, job.user_id, job.id)
+    assert completed is not None and completed.status.value == "ready"
+    repair_prompt = inference.messages[1][1]["content"]
+    assert str(second_chunk.chunk_id) in repair_prompt
+    assert str(original.chunks[0].chunk_id) not in repair_prompt
+    assert "allowed types=true_false" in repair_prompt
+    assert "This is a repair call" in inference.messages[1][0]["content"]
+
+
+@pytest.mark.asyncio
 async def test_insufficient_evidence_never_calls_inference_or_stores_questions() -> None:
     repository, job = await _job(GeneratePracticeRequest(count=1))
     empty = _evidence(job).model_copy(update={"chunks": ()})
@@ -285,12 +436,30 @@ async def test_lm_studio_json_schema_and_reasoning_content_fallback() -> None:
         inference = OpenAICompatiblePracticeInference(
             "http://lm.test/v1", "fake-model", "fake-key", http
         )
-        assert await inference.generate_json([{"role": "user", "content": "test"}], 42, "corr") == (
-            '{"exercises": []}'
-        )
+        assert await inference.generate_json(
+            [{"role": "user", "content": "test"}], 42, "corr", count=1
+        ) == ('{"exercises": []}')
     assert observed["seed"] == 42
+    assert observed["temperature"] == 0.1
     assert observed["correlation_id"] == "corr"
     response_format = observed["response_format"]
     assert isinstance(response_format, dict)
     assert response_format["type"] == "json_schema"
     assert response_format["json_schema"]["schema"]["type"] == "object"
+    exercises_schema = response_format["json_schema"]["schema"]["properties"]["exercises"]
+    assert exercises_schema["minItems"] == exercises_schema["maxItems"] == 1
+
+
+@pytest.mark.asyncio
+async def test_lm_studio_empty_api_key_omits_authorization_header() -> None:
+    inference = OpenAICompatiblePracticeInference("http://lm.test/v1", "fake-model", "")
+    try:
+        assert "Authorization" not in inference._client.headers
+    finally:
+        await inference.aclose()
+
+    authenticated = OpenAICompatiblePracticeInference("http://lm.test/v1", "fake-model", "fake-key")
+    try:
+        assert authenticated._client.headers["Authorization"] == "Bearer fake-key"
+    finally:
+        await authenticated.aclose()

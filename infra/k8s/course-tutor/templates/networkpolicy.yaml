@@ -18,7 +18,7 @@ spec:
     matchExpressions:
       - key: app.kubernetes.io/component
         operator: In
-        values: [backend, worker, web, migration]
+        values: [backend, worker, web, migration, helm-test]
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
@@ -35,4 +35,78 @@ spec:
         - {protocol: TCP, port: 6333}
         - {protocol: TCP, port: 9000}
         - {protocol: TCP, port: 1234}
+        - {protocol: TCP, port: 8000}
+        - {protocol: TCP, port: 8001}
+---
+# Practice has no access to source PVCs or the ingestion stores. Only the
+# Agent API, Practice database, configured inference endpoint and DNS are needed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-practice-api
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "course-tutor.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: practice-api
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values: [web, helm-test]
+      ports: [{protocol: TCP, port: 8001}]
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "course-tutor.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: backend
+      ports: [{protocol: TCP, port: 8000}]
+    - ports: [{protocol: TCP, port: 5432}, {protocol: TCP, port: 1234}, {protocol: TCP, port: 443}, {protocol: TCP, port: 4318}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-practice-worker
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "course-tutor.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: practice-worker
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "course-tutor.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: backend
+      ports: [{protocol: TCP, port: 8000}]
+    - ports: [{protocol: TCP, port: 5432}, {protocol: TCP, port: 1234}, {protocol: TCP, port: 443}, {protocol: TCP, port: 4318}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-practice-migration
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "course-tutor.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: practice-migration
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    - ports: [{protocol: TCP, port: 5432}]
 {{- end }}

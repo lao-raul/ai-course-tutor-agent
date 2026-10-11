@@ -96,6 +96,7 @@ test('catalog → generate → hint → release → tutor → resume', async ({ 
 test('language defaults to Chinese and survives a reload', async ({ page }) => {
   await page.route('**/v1/practice/**', (route) => route.fulfill({ contentType: 'application/json', body: route.request().url().endsWith('/categories') ? '[]' : '{"items":[],"next_cursor":null}' }));
   await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Hiruzen' })).toBeVisible();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: 'Hiruzen' })).toBeFocused();
   const language = page.getByRole('combobox', { name: '语言' });
@@ -107,4 +108,23 @@ test('language defaults to Chinese and survives a reload', async ({ page }) => {
   await page.getByRole('combobox', { name: 'Language' }).selectOption('bilingual');
   await page.reload();
   await expect(page.getByRole('heading', { name: '找教材 / Books' })).toBeVisible();
+});
+
+test('an expired local token prompts for the current cluster token', async ({ page }) => {
+  await page.route('**/v1/practice/**', async (route) => {
+    const authorization = route.request().headers().authorization;
+    if (authorization !== 'Bearer current-token') {
+      await route.fulfill({ status: 401, contentType: 'application/json', body: '{"detail":"unauthorized"}' });
+      return;
+    }
+    const body = route.request().url().endsWith('/categories') ? '[]' : '{"items":[],"next_cursor":null}';
+    await route.fulfill({ contentType: 'application/json', body });
+  });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Hiruzen · 本地访问' })).toBeVisible();
+  await page.getByLabel('访问令牌 / Access token').fill('current-token');
+  await page.getByRole('button', { name: '连接 / Connect' }).click();
+  await expect(page.getByRole('heading', { name: '找教材' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '找教材' })).toBeVisible();
 });

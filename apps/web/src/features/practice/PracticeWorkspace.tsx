@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { practiceApi } from '../../api/practice';
-import type { BookDetail, Difficulty, Exercise, Feedback, Generation, Language, PracticeSet, SetProgress, StudyPlan } from '../../api/practice';
+import type { BookDetail, Difficulty, EvidenceSource, Exercise, Feedback, Generation, Language, PracticeSet, SetProgress, StudyPlan } from '../../api/practice';
 import type { Labels } from '../../i18n';
 import { RichText } from '../../RichText';
 import { TutorChat } from '../tutor/TutorChat';
+import { textbookVersionLabel } from './provenance';
 
 interface Props {
   bookId: string;
@@ -16,6 +17,17 @@ interface Props {
 
 function answerText(answer: string | boolean | string[]): string {
   return Array.isArray(answer) ? answer.join(' / ') : String(answer);
+}
+
+export function EvidenceSources({ ids, sources, labels }: { ids: string[]; sources: EvidenceSource[]; labels: Labels }) {
+  const byId = new Map(sources.map((source) => [source.chunk_id, source]));
+  return <details><summary>{labels.sources} ({ids.length})</summary><ul>{ids.map((id) => {
+    const source = byId.get(id);
+    if (!source) return <li key={id}>{labels.sourceUnavailable}</li>;
+    const name = source.relative_path.split('/').pop() || source.relative_path;
+    const location = source.anchor_type === 'page' ? labels.page.split('{page}').join(source.anchor_value) : source.anchor_value;
+    return <li key={id}><span title={source.relative_path}>{name} · {location}</span><blockquote>{source.text_excerpt || labels.excerptUnavailable}</blockquote></li>;
+  })}</ul></details>;
 }
 
 export function PracticeWorkspace({ bookId, language, labels, resume, onProgress, onBack }: Props) {
@@ -146,7 +158,7 @@ export function PracticeWorkspace({ bookId, language, labels, resume, onProgress
       <label>{labels.course}
         <span>{book.courses.find((course) => course.course_id === plan.course_id)?.name ?? plan.course_id}</span>
       </label>
-      <p>{labels.sourceVersion}: <code>{plan.content_version_id}</code></p>
+      <p>{labels.sourceVersion}: {textbookVersionLabel(book, plan, labels, language)}</p>
       {!practiceSet && <div className="hiruzen-controls">
         <label>{labels.plan}
           <select value={moduleId} onChange={(event) => setModuleId(event.target.value)}>
@@ -182,7 +194,7 @@ export function PracticeWorkspace({ bookId, language, labels, resume, onProgress
               {feedback.hint && <p>{labels.hint}: {feedback.hint}</p>}
               {feedback.released_answer && <div><strong>{labels.revealed}: {answerText(feedback.released_answer.answer)}</strong><RichText text={feedback.released_answer.rationale} /></div>}
             </div>}
-            <details><summary>{labels.sources} ({exercise.evidence_citation_ids.length})</summary><ul>{exercise.evidence_citation_ids.map((id) => <li key={id}><code>{id}</code></li>)}</ul></details>
+            <EvidenceSources ids={exercise.evidence_citation_ids} sources={practiceSet.evidence_sources ?? []} labels={labels} />
             <details><summary>{labels.report}</summary><div className="hiruzen-controls">
               <label>{labels.reportReason}<select value={reportReason} onChange={(event) => setReportReason(event.target.value as typeof reportReason)}><option value="incorrect">{labels.reportIncorrect}</option><option value="ambiguous">{labels.reportAmbiguous}</option><option value="unsafe">{labels.reportUnsafe}</option></select></label>
               <label>{labels.reportDetail}<input value={reportDetail} maxLength={1000} onChange={(event) => setReportDetail(event.target.value)} /></label>

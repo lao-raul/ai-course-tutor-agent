@@ -17,6 +17,7 @@ from qdrant_client.models import (
     MatchAny,
     MatchValue,
     NestedCondition,
+    Range,
 )
 
 from course_tutor_api.providers.base import EmbeddingProvider
@@ -66,6 +67,7 @@ class DenseRetrievalService:
         access_label: AccessLabel,
         limit: int = 20,
         source_ids: tuple[uuid.UUID, ...] | None = None,
+        page_range: tuple[int, int] | None = None,
     ) -> RetrievalResult:
         """Execute dense retrieval and return ranked candidates.
 
@@ -83,7 +85,7 @@ class DenseRetrievalService:
         query_vector = await self._embed.embed([query])
         t_embed = (time.monotonic() - t0) * 1000
         t_query = time.monotonic()
-        query_scopes = extract_content_scopes(query)
+        query_scopes = () if page_range is not None else extract_content_scopes(query)
         with span("qdrant.query", **{"db.system": "qdrant", "db.operation.name": "query"}):
             results = await asyncio.to_thread(
                 self._client.query_points,
@@ -96,6 +98,7 @@ class DenseRetrievalService:
                     access_label,
                     content_scopes=query_scopes,
                     source_ids=source_ids,
+                    page_range=page_range,
                 ),
                 limit=limit * 3,
                 with_payload=True,
@@ -176,6 +179,7 @@ class DenseRetrievalService:
         access_label: AccessLabel,
         content_scopes: tuple[str, ...] = (),
         source_ids: tuple[uuid.UUID, ...] | None = None,
+        page_range: tuple[int, int] | None = None,
     ) -> Filter:
         allowed_labels = [
             label.value
@@ -206,6 +210,16 @@ class DenseRetrievalService:
                     key="content_scopes",
                     match=MatchAny(any=list(content_scopes)),
                 )
+            )
+        if page_range is not None:
+            conditions.extend(
+                [
+                    FieldCondition(key="anchor_type", match=MatchValue(value="page")),
+                    FieldCondition(
+                        key="page_number",
+                        range=Range(gte=page_range[0], lte=page_range[1]),
+                    ),
+                ]
             )
         return Filter(must=conditions)
 

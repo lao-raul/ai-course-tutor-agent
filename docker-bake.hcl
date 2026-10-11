@@ -15,7 +15,7 @@ variable "BUILD_SOURCE" {
 }
 
 group "default" {
-  targets = ["agent-api", "practice-api", "ingestion-worker", "web", "fake-llm"]
+  targets = ["agent-api", "practice-api", "practice-worker", "ingestion-worker", "web", "fake-llm"]
 }
 
 target "common" {
@@ -40,6 +40,12 @@ target "practice-api" {
   inherits = ["common"]
   dockerfile = "apps/practice/Dockerfile"
   tags = ["course-tutor-practice:${TAG}"]
+}
+
+target "practice-worker" {
+  inherits = ["common"]
+  dockerfile = "services/practice_worker/Dockerfile"
+  tags = ["course-tutor-practice-worker:${TAG}"]
 }
 
 target "ingestion-worker" {

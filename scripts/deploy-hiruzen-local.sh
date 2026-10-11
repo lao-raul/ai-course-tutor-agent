@@ -158,6 +158,7 @@ fi
 images=(
   "course-tutor-agent:$image_tag"
   "course-tutor-practice:$image_tag"
+  "course-tutor-practice-worker:$image_tag"
   "course-tutor-worker:$image_tag"
   "course-tutor-web:$image_tag"
 )
@@ -171,7 +172,7 @@ kubectl config use-context "kind-$cluster_name" >/dev/null
 if [[ "$skip_build" == false ]]; then
   echo "==> Building application images with tag $image_tag"
   TAG="$image_tag" "$repo_root/scripts/build-docker.sh" \
-    agent-api practice-api ingestion-worker web
+    agent-api practice-api practice-worker ingestion-worker web
 else
   echo "==> Reusing application images with tag $image_tag"
   for image in "${images[@]}"; do
@@ -222,6 +223,7 @@ config_args=(
   --set "internalDependencies.qdrant.snapshots.enabled=false"
   --set-string "backend.agent.image.tag=$image_tag"
   --set-string "backend.practice.image.tag=$image_tag"
+  --set-string "practiceWorker.image.tag=$image_tag"
   --set-string "worker.image.tag=$image_tag"
   --set-string "web.image.tag=$image_tag"
 )
@@ -243,7 +245,8 @@ deployment_diagnostics() {
     kubectl -n "$namespace" exec "$backend_pod" -c agent-api -- \
       python -c $'import urllib.error, urllib.request\nurl = "http://127.0.0.1:8000/readyz"\ntry:\n    response = urllib.request.urlopen(url, timeout=10)\n    print(response.status, response.read().decode())\nexcept urllib.error.HTTPError as error:\n    print(error.code, error.read().decode())' >&2 || true
     kubectl -n "$namespace" logs "$backend_pod" -c agent-api --tail=100 >&2 || true
-    kubectl -n "$namespace" logs "$backend_pod" -c practice-api --tail=50 >&2 || true
+    kubectl -n "$namespace" logs deployment/course-tutor-practice-api -c practice-api --tail=50 >&2 || true
+    kubectl -n "$namespace" logs deployment/course-tutor-practice-worker -c practice-worker --tail=50 >&2 || true
   fi
   kubectl get events -n "$namespace" --sort-by=.lastTimestamp \
     | tail -60 >&2 || true
@@ -296,10 +299,16 @@ backend_pod="$(
     -o jsonpath='{.items[0].metadata.name}'
 )"
 
-echo "==> Verifying Agent and Practice readiness from the deployed Pod"
+practice_pod="$(
+  kubectl -n "$namespace" get pods \
+    -l app.kubernetes.io/component=practice-api \
+    -o jsonpath='{.items[0].metadata.name}'
+)"
+
+echo "==> Verifying Agent and Practice readiness from independent Pods"
 kubectl -n "$namespace" exec "$backend_pod" -c agent-api -- \
   python -c 'import urllib.request; print(urllib.request.urlopen("http://127.0.0.1:8000/readyz", timeout=10).read().decode())'
-kubectl -n "$namespace" exec "$backend_pod" -c practice-api -- \
+kubectl -n "$namespace" exec "$practice_pod" -c practice-api -- \
   python -c 'import urllib.request; print(urllib.request.urlopen("http://127.0.0.1:8001/readyz", timeout=10).read().decode())'
 
 helm status "$release" -n "$namespace"

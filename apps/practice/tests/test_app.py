@@ -14,6 +14,8 @@ from course_tutor_contracts import (
     CatalogBookPage,
     CatalogBookSummary,
     CatalogCategoryView,
+    CatalogCitationResolveRequest,
+    CatalogCitationView,
     CatalogCourseView,
     CategoryType,
     EducationLevel,
@@ -233,6 +235,15 @@ class _CatalogStub:
                 content_version_id=self.version_id,
             )
         ]
+
+    async def resolve_citations(
+        self,
+        _book_id: UUID,
+        _request: CatalogCitationResolveRequest,
+        _bearer: str,
+        _correlation_id: str | None,
+    ) -> list[CatalogCitationView]:
+        return []
 
 
 def test_catalog_facade_forwards_identity_and_filters_without_nas_paths() -> None:

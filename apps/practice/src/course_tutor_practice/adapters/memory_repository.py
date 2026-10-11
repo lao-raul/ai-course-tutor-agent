@@ -119,7 +119,12 @@ class InMemoryPracticeRepository:
         self, worker_id: str, now: datetime, lease_duration: timedelta
     ) -> GenerationRecord | None:
         for job in sorted(self.generations.values(), key=lambda item: item.created_at):
-            if job.status not in {GenerationStatus.QUEUED, GenerationStatus.RETRIEVING}:
+            if job.status not in {
+                GenerationStatus.QUEUED,
+                GenerationStatus.RETRIEVING,
+                GenerationStatus.GENERATING,
+                GenerationStatus.VALIDATING,
+            }:
                 continue
             lease = self.leases.get(job.id)
             if lease is not None and lease[1] > now:
@@ -145,6 +150,26 @@ class InMemoryPracticeRepository:
             self.leases[job.id] = (worker_id, now + lease_duration)
             return claimed
         return None
+
+    async def renew_generation_lease(
+        self, generation_id: UUID, worker_id: str, now: datetime, lease_duration: timedelta
+    ) -> bool:
+        lease = self.leases.get(generation_id)
+        job = self.generations.get(generation_id)
+        if (
+            lease is None
+            or job is None
+            or lease[0] != worker_id
+            or job.status
+            not in {
+                GenerationStatus.RETRIEVING,
+                GenerationStatus.GENERATING,
+                GenerationStatus.VALIDATING,
+            }
+        ):
+            return False
+        self.leases[generation_id] = (worker_id, now + lease_duration)
+        return True
 
     async def transition_generation(
         self, generation_id: UUID, target: GenerationStatus

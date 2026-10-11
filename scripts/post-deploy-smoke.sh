@@ -20,6 +20,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
+for deployment in "${service_prefix}-backend" "${service_prefix}-practice-api" "${service_prefix}-practice-worker"; do
+  kubectl -n "${namespace}" rollout status "deployment/${deployment}" --timeout=5m
+done
+for component in practice-api practice-worker; do
+  kubectl -n "${namespace}" get pods -l "app.kubernetes.io/component=${component}" -o json \
+    | jq -e '.items | length > 0 and all(.[]; all(.spec.volumes[]?; .name != "course-content"))' \
+    >/dev/null
+done
+
 kubectl -n "${namespace}" port-forward "service/${service_prefix}-agent" "${agent_port}:8000" \
   >"${tmp_dir}/agent-forward.log" 2>&1 &
 kubectl -n "${namespace}" port-forward "service/${service_prefix}-practice" "${practice_port}:8001" \

@@ -122,7 +122,7 @@
         "operationId": "getPracticeSet",
         "x-implementation-status": "implemented",
         "responses": {
-          "200": {"description": "Learner-safe PracticeSet without protected answers"},
+          "200": {"description": "Learner-safe PracticeSet with resolved textbook citation labels and excerpts, without protected answers"},
           "404": {"description": "PracticeSet not found"}
         }
       }

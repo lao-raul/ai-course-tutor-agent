@@ -18,9 +18,9 @@ ephemeral runner directory and are never uploaded.
 
 ## Publish and deploy
 
-Successful CI on `main` invokes `Publish immutable release`. It builds the four runtime
+Successful CI on `main` invokes `Publish immutable release`. It builds the five runtime
 images once, pushes SHA tags and attached SBOM/provenance, signs each digest with
-keyless cosign, packages the chart as `0.1.0-<short-sha>`, and uploads the release
+keyless cosign, packages the chart as `0.2.0-<short-sha>`, and uploads the release
 manifest as evidence.
 
 Run `Deploy or roll back immutable release` with `action=deploy`, the protected
@@ -30,6 +30,11 @@ every running image ID with the manifest, then tests Agent, Practice, Web, metri
 minimal RAG flow. Development/staging smoke failure rolls back automatically. Production
 uses Helm atomic rollback for rollout failure, but post-rollout smoke rollback requires
 the protected environment's explicit operator decision.
+
+Production deployment also requires `HIRUZEN_GOLDEN_REPORT_B64` in the protected
+environment. Decode it only on the ephemeral runner; the redacted report must pass the
+named human review and HNFR-1–11 checks before Helm is invoked. The Practice database
+credential is held in a separate Secret selected by `secrets.practicePostgresDsnSecret`.
 
 ## Manual rollback
 
