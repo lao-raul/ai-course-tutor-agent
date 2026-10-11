@@ -12,7 +12,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from course_tutor_practice.adapters.agent_client import HttpAgentEvidenceProvider
 from course_tutor_practice.adapters.inference import OpenAICompatiblePracticeInference
 from course_tutor_practice.db.repository import SqlPracticeRepository
-from course_tutor_practice_worker.grounded import GroundedGenerationExecutor
+from course_tutor_practice.domain import GenerationRecord
+from course_tutor_practice.generation.schemas import GenerationObjective
+from course_tutor_practice_worker.evidence_first import EvidenceFirstGenerationExecutor
 from course_tutor_practice_worker.worker import PracticeWorker
 from course_tutor_shared import get_settings
 
@@ -30,7 +32,14 @@ async def main() -> None:
         settings.llm_chat_model,
         settings.llm_api_key.get_secret_value(),
     )
-    executor = GroundedGenerationExecutor(evidence, inference)
+
+    async def read_objectives(
+        generation: GenerationRecord,
+    ) -> tuple[GenerationObjective, ...]:
+        async with factory() as session:
+            return await SqlPracticeRepository(session).list_recent_objectives(generation)
+
+    executor = EvidenceFirstGenerationExecutor(evidence, inference, read_objectives)
 
     async def renew_lease(generation_id: UUID, worker_id: str, duration: timedelta) -> bool:
         async with factory() as session:

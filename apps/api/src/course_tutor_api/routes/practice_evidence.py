@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Annotated
 
 import jwt
@@ -40,6 +41,12 @@ from course_tutor_contracts import (
 
 router = APIRouter(prefix="/v1/internal/practice", tags=["practice-evidence"])
 ALLOWED_CLASSES = (ChunkClass.CONTENT,)
+SUPPLEMENTARY_SECTION = re.compile(
+    r"^(?:words? (?:and expressions|list|poster)|glossary|vocabulary|"
+    r"index|appendix|preface|afterword|acknowledg|"
+    r"词汇|词语表|单词表|附录|后记|编后记|索引|致谢|版权)",
+    re.IGNORECASE,
+)
 
 
 def _outline_page_range(
@@ -64,6 +71,38 @@ def _outline_page_range(
                 break
         return (start, end) if 1 <= start <= end <= page_count else None
     return None
+
+
+def _instruction_page_range(
+    nodes: list[dict[str, object]], page_count: int
+) -> tuple[int, int] | None:
+    """Exclude late-book glossaries and publishing matter from book-level practice."""
+    try:
+        roots = sorted(
+            (
+                node
+                for item in nodes
+                if (node := CatalogOutlineNode.model_validate(item)).depth == 0
+            ),
+            key=lambda item: item.page_start,
+        )
+    except ValidationError:
+        return None
+    if not roots:
+        return None
+    start = roots[0].page_start
+    tail = next(
+        (
+            node.page_start
+            for node in roots
+            if node.page_start >= page_count * 0.6
+            and SUPPLEMENTARY_SECTION.match(node.title.strip())
+        ),
+        None,
+    )
+    if tail is None or not (1 <= start < tail <= page_count):
+        return None
+    return start, tail - 1
 
 
 @router.post(
@@ -127,7 +166,7 @@ async def retrieve_practice_evidence(
         raise HTTPException(status_code=404, detail="published textbook evidence not found")
 
     page_range = None
-    if body.outline_node_id is not None:
+    if body.outline_node_id is not None or len(source_ids) == 1:
         outline = await session.scalar(
             select(BookOutline).where(
                 BookOutline.book_id == body.book_id,
@@ -136,15 +175,28 @@ async def retrieve_practice_evidence(
             )
         )
         if outline is None or outline.source_id not in source_ids:
-            raise HTTPException(status_code=422, detail="selected textbook section unavailable")
-        source = await session.get(SourceDocument, outline.source_id)
-        page_count = (source.source_metadata or {}).get("page_count") if source else None
-        if not isinstance(page_count, int) or page_count < 1:
-            raise HTTPException(status_code=422, detail="selected textbook pages unavailable")
-        page_range = _outline_page_range(outline.nodes, body.outline_node_id, page_count)
-        if page_range is None:
-            raise HTTPException(status_code=422, detail="selected textbook section unavailable")
-        source_ids = (outline.source_id,)
+            if body.outline_node_id is not None:
+                raise HTTPException(status_code=422, detail="selected textbook section unavailable")
+        else:
+            source = await session.get(SourceDocument, outline.source_id)
+            page_count = (source.source_metadata or {}).get("page_count") if source else None
+            if not isinstance(page_count, int) or page_count < 1:
+                if body.outline_node_id is not None:
+                    raise HTTPException(
+                        status_code=422, detail="selected textbook pages unavailable"
+                    )
+            else:
+                page_range = (
+                    _outline_page_range(outline.nodes, body.outline_node_id, page_count)
+                    if body.outline_node_id is not None
+                    else _instruction_page_range(outline.nodes, page_count)
+                )
+                if body.outline_node_id is not None and page_range is None:
+                    raise HTTPException(
+                        status_code=422, detail="selected textbook section unavailable"
+                    )
+                if page_range is not None:
+                    source_ids = (outline.source_id,)
 
     pack = await _build_evidence_pack(
         retrieval_service=_get_retrieval_service(deps),
@@ -157,6 +209,20 @@ async def retrieve_practice_evidence(
         source_ids=source_ids,
         **({"page_range": page_range} if page_range is not None else {}),
         service_name=deps.settings.service_name,
+        # A single textbook is usually one PDF. Large practice sets need
+        # more independent pages than a chat answer's five-chunk budget.
+        max_from_same_source=body.limit,
+        diversify_pages=True,
+        allowed_classes=ALLOWED_CLASSES,
+        prefer_substantive=True,
+        # Binding, ACL and the published source are verified above. Generic
+        # book-level practice queries need not repeat chat's lexical gate.
+        trusted_source_scope=True,
+        # Practice extracts independent facts from several small evidence
+        # batches; chat's five-chunk prompt budget must not cap this API.
+        evidence_chunk_limit=body.limit,
+        evidence_token_limit=body.limit * 700,
+        retrieval_candidate_limit=body.limit,
     )
     allowed = tuple(chunk for chunk in pack.evidence if chunk.chunk_class in ALLOWED_CLASSES)[
         : body.limit

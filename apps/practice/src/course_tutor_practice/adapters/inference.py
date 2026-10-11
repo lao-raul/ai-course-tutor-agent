@@ -37,6 +37,26 @@ class OpenAICompatiblePracticeInference:
         if count is not None:
             schema["properties"]["exercises"]["minItems"] = count
             schema["properties"]["exercises"]["maxItems"] = count
+        return await self.generate_structured_json(
+            messages,
+            seed,
+            correlation_id,
+            schema=schema,
+            schema_name=f"hiruzen_generated_batch_v2_{count or 'any'}",
+            temperature=temperature,
+        )
+
+    async def generate_structured_json(
+        self,
+        messages: list[dict[str, str]],
+        seed: int,
+        correlation_id: str,
+        *,
+        schema: dict[str, object],
+        schema_name: str,
+        temperature: float = 0.1,
+    ) -> str:
+        """Use the same constrained LM Studio endpoint for each pipeline stage."""
         try:
             response = await self._client.post(
                 "/chat/completions",
@@ -49,7 +69,7 @@ class OpenAICompatiblePracticeInference:
                     "response_format": {
                         "type": "json_schema",
                         "json_schema": {
-                            "name": f"hiruzen_generated_batch_v2_{count or 'any'}",
+                            "name": schema_name,
                             "schema": schema,
                         },
                     },

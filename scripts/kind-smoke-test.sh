@@ -61,6 +61,6 @@ for pod in "${practice_pod}" "${worker_pod}"; do
   fi
 done
 
-helm test "${release}" --namespace "${namespace}" --logs --timeout 2m
+helm test "${release}" --namespace "${namespace}" --logs --timeout 5m
 
 echo "Verified independent Agent, Practice API and Practice Worker workloads."

@@ -239,6 +239,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--ingest", action="store_true")
+    parser.add_argument(
+        "--include-relative-path",
+        action="append",
+        default=[],
+        help="Restrict manual ingestion to this exact source-relative file (repeatable)",
+    )
     parser.add_argument("--wait", action="store_true")
     parser.add_argument("--publish", action="store_true")
     parser.add_argument("--retry-failed", action="store_true")
@@ -258,6 +264,9 @@ def main(argv: list[str] | None = None) -> int:
             queued = client.request(
                 "POST",
                 f"/v1/admin/courses/{quote(course_id)}/ingestions",
+                {"include_relative_paths": args.include_relative_path}
+                if args.include_relative_path
+                else None,
                 headers={"Idempotency-Key": f"bootstrap-{uuid.uuid4()}"},
             )
             result["ingestion"] = queued

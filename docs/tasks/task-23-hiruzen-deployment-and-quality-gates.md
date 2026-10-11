@@ -1,6 +1,9 @@
 # TASK-23 — Hiruzen Deployment and Quality Gates
 
-**Status:** in progress — code complete; isolated Kind and human-approved real golden set pending
+**Status:** in progress — quality remediation deferred to KI-001 by owner (2026-10-19); release evidence and human-approved golden gate remain pending
+
+See [Known Issues KI-001](../known-issues.md). Advance independent TASK-25 work;
+do not continue repeated quality-tuning runs until this issue is resumed.
 **Priority:** P0  
 **Depends on:** TASK-18–TASK-22, TASK-24
 
@@ -64,15 +67,9 @@ uv run python tests/evaluation/hiruzen/run.py --provider fake
 Image security gates, failure drills and the dated redacted real golden-set report must
 also pass before completion.
 
-## Acceptance ledger (2026-10-10)
+## Verification record
 
-| Criterion | State | Evidence |
-|---|---|---|
-| AC-23.1 | independent local-real workloads Ready; recovery drill pending | Separate Deployments, lease heartbeat and SQL/in-memory reclaim tests; fresh Kind install/upgrade |
-| AC-23.2 | local-real mount isolation verified; isolated CI replay pending | Fresh Kind preflight confirmed Practice has no content PVC; earlier dedicated Kind API timed out |
-| AC-23.3 | automated | Generated fixture evaluation and CI fake inference; no NAS mount |
-| AC-23.4 | render/build verified; published vulnerability scan pending | Non-root images, probes, resources, policies and Trivy workflow |
-| AC-23.5 | **blocked on human review** | `golden_gate.py` fails closed without 20 reviewed real cases and dated approval |
-| AC-23.6 | local-real install/upgrade/basic smoke passed; rollback and isolated replay pending | Fresh Kind revision 1→2, real citation and one READY PracticeSet; local-real Helm hooks disabled |
-
-Never mark this task complete based solely on the synthetic fixture or a chart render.
+All remediation history, sample results and the current acceptance status are
+maintained in the [unified TASK-23 record](../verification/2026-10-10-task-23.md).
+Deferred work is tracked by [Known Issue KI-001](../known-issues.md).
+Keep detailed status updates in that record instead of duplicating them here.

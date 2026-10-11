@@ -9,8 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from course_tutor_contracts import ExerciseDraft, PracticeEvidenceResponse
 
-PROMPT_VERSION = "hiruzen-grounded-v2"
-VALIDATOR_VERSION = "hiruzen-validation-v1"
+PROMPT_VERSION = "hiruzen-evidence-first-v25"
+VALIDATOR_VERSION = "hiruzen-validation-v42"
 
 
 class GeneratedBatch(BaseModel):
@@ -25,6 +25,13 @@ class GenerationContext:
 
 
 @dataclass(frozen=True, slots=True)
+class GenerationObjective:
+    learning_objective: str
+    answer_key: str
+    answer_keys: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class GenerationOutcome:
     drafts: tuple[ExerciseDraft, ...]
     seed: int
@@ -32,3 +39,4 @@ class GenerationOutcome:
     model_version: str
     validator_version: str
     retrieval_trace_id: UUID
+    objectives: tuple[GenerationObjective, ...] = ()

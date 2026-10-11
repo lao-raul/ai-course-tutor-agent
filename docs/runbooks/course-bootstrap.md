@@ -44,6 +44,18 @@ and status but not the host source path, token or source content. `--publish` is
 separate action and publishes the newest READY version; registration and ingestion
 never switch the active version implicitly.
 
+For a single ChinaTextbook volume under a shared NAS SourceRoot, pass an exact
+source-relative PDF path so the worker does not scan the entire NAS tree:
+
+```bash
+scripts/course-bootstrap.sh --config "$COURSE_MAPPING" --ingest --wait \
+  --include-relative-path "$BOOK_PATH_RELATIVE_TO_SOURCE_ROOT"
+```
+
+The admin ingestion endpoint accepts the same `include_relative_paths` list in
+the POST body. It rejects absolute paths, traversal and a different scope on
+an already pending job. Omitting the scope retains whole-root scan behavior.
+
 Useful inspection calls are:
 
 ```bash

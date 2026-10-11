@@ -101,6 +101,7 @@ class PracticeWorker:
                 model_version=outcome.model_version,
                 validator_version=outcome.validator_version,
                 retrieval_trace_id=outcome.retrieval_trace_id,
+                objectives=outcome.objectives,
             )
         except LostGenerationLease:
             pass

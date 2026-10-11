@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Annotated, Any
 from uuid import UUID
 
 from course_tutor_memory import TeachingPolicy
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -113,6 +113,31 @@ class IngestionQueuedResponse(BaseModel, frozen=True):
     course_id: UUID
     version_id: UUID | None = None
     status: str = "pending"
+
+
+class IngestionQueueRequest(BaseModel):
+    """Restrict a manual scan to exact source-relative files when requested."""
+
+    include_relative_paths: list[str] = Field(min_length=1, max_length=100)
+    model_config = {"extra": "forbid"}
+
+    @field_validator("include_relative_paths")
+    @classmethod
+    def validate_paths(cls, paths: list[str]) -> list[str]:
+        if len(set(paths)) != len(paths):
+            raise ValueError("include_relative_paths must not contain duplicates")
+        for raw in paths:
+            parts = raw.split("/")
+            if (
+                len(raw) > 1024
+                or not raw
+                or "\\" in raw
+                or "\x00" in raw
+                or PurePosixPath(raw).is_absolute()
+                or any(part in {"", ".", ".."} for part in parts)
+            ):
+                raise ValueError("include_relative_paths must contain source-relative files")
+        return paths
 
 
 class IngestionStatusResponse(BaseModel, frozen=True):
@@ -382,6 +407,7 @@ async def queue_ingestion(
     session: Annotated[AsyncSession, Depends(get_session)],
     principal: Annotated[Principal, Depends(require_course_admin)],
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    body: IngestionQueueRequest | None = None,
 ) -> IngestionQueuedResponse:
     """Queue an incremental scan for an already registered course."""
     course = await _tenant_course(session, course_id, principal)
@@ -412,6 +438,13 @@ async def queue_ingestion(
         .limit(1)
     )
     if pending := pending_result.scalar_one_or_none():
+        if (
+            body is not None
+            and pending.payload.get("include_relative_paths") != body.include_relative_paths
+        ):
+            raise HTTPException(
+                status_code=409, detail="pending ingestion has a different source scope"
+            )
         raw_version = pending.payload.get("version_id")
         return IngestionQueuedResponse(
             job_id=pending.id,
@@ -431,19 +464,22 @@ async def queue_ingestion(
             version_id=UUID(raw_version) if raw_version else None,
         )
 
+    event_payload: dict[str, Any] = {
+        "tenant_id": str(principal.tenant_id),
+        "course_id": str(course.id),
+        "source_root_id": str(source_root.id),
+        "course_run_id": str(course_run.id),
+        "resolved_path": source_root.absolute_path,
+        "pipeline_version": PIPELINE_VERSION,
+        "trigger": "manual",
+    }
+    if body is not None:
+        event_payload["include_relative_paths"] = body.include_relative_paths
     event = OutboxEvent(
         id=uuid.uuid4(),
         topic="ingestion.scan",
         idempotency_key=event_key,
-        payload={
-            "tenant_id": str(principal.tenant_id),
-            "course_id": str(course.id),
-            "source_root_id": str(source_root.id),
-            "course_run_id": str(course_run.id),
-            "resolved_path": source_root.absolute_path,
-            "pipeline_version": PIPELINE_VERSION,
-            "trigger": "manual",
-        },
+        payload=event_payload,
         attempts=0,
     )
     session.add(event)

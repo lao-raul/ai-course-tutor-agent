@@ -26,7 +26,12 @@ export function EvidenceSources({ ids, sources, labels }: { ids: string[]; sourc
     if (!source) return <li key={id}>{labels.sourceUnavailable}</li>;
     const name = source.relative_path.split('/').pop() || source.relative_path;
     const location = source.anchor_type === 'page' ? labels.page.split('{page}').join(source.anchor_value) : source.anchor_value;
-    return <li key={id}><span title={source.relative_path}>{name} · {location}</span><blockquote>{source.text_excerpt || labels.excerptUnavailable}</blockquote></li>;
+    const fragments = source.text_fragments || [];
+    return <li key={id}><span title={source.relative_path}>{name} · {location}</span>{
+      fragments.length > 0
+        ? <div><small>{labels.excerptFragments}</small><ul>{fragments.map((fragment, index) => <li key={`${id}-${index}`}>{fragment}</li>)}</ul></div>
+        : <blockquote>{source.text_excerpt || labels.excerptUnavailable}</blockquote>
+    }</li>;
   })}</ul></details>;
 }
 

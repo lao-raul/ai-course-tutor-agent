@@ -144,6 +144,14 @@ class PDFParser(Parser):
                     pages[page_num] = ocr_chunks
                     ocr_page_count += 1
 
+        # Human-reviewed corrections for an exact source checksum replace only
+        # their physical pages; other textbooks and editions retain normal OCR.
+        from course_tutor_ingestion.verified_pdf_pages import verified_page_chunks
+
+        corrected_pages = verified_page_chunks(entry.checksum, page_count)
+        for page_num, corrected_chunks in corrected_pages.items():
+            pages[page_num] = corrected_chunks
+
         chunks = [chunk for page_num in range(1, page_count + 1) for chunk in pages[page_num]]
         if total_chars < _PDF_TEXT_THRESHOLD and not chunks:
             return ParsedDocument(
@@ -160,6 +168,7 @@ class PDFParser(Parser):
                 "page_count": page_count,
                 "ocr": ocr_page_count > 0,
                 "ocr_page_count": ocr_page_count,
+                "verified_page_count": len(corrected_pages),
             },
             extraction_confidence=0.70 if ocr_page_count else 0.95,
         )

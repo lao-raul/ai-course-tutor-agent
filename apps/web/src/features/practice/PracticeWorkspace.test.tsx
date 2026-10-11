@@ -63,4 +63,17 @@ describe('human-readable textbook provenance', () => {
     expect(html).toContain('此页文字识别质量不足，请对照原教材。');
     expect(html).not.toContain('chunk-uuid');
   });
+
+  it('shows readable OCR fragments separately with an order warning', () => {
+    const html = renderToStaticMarkup(<EvidenceSources ids={['chunk-uuid']} sources={[{
+      chunk_id: 'chunk-uuid', relative_path: '小学/英语/三年级上册.pdf',
+      anchor_type: 'page', anchor_value: '55', text_excerpt: '',
+      text_fragments: ["Here's my sister.", "Here's my brother."],
+    }]} labels={getLabels('zh')} />);
+    expect(html).toContain('可辨认的原文片段');
+    expect(html).toContain('OCR 顺序可能与原页不同');
+    expect(html).toContain('Here&#x27;s my sister.');
+    expect(html).toContain('Here&#x27;s my brother.');
+    expect(html).not.toContain('此页文字识别质量不足');
+  });
 });
