@@ -86,6 +86,25 @@ Studio `/v1/models` 和 `/v1/embeddings` 验证这些值。需要覆盖时设置
 环境变量。可用 `scripts/deploy-hiruzen-local.sh --help` 查看路径、集群、values、tag 和
 跳过重复构建的选项。以下分步流程仍用于 Leeds 部署及手工排障。
 
+已有 Hiruzen 集群时，如只改了题目生成/校验，可单独升级 Practice Worker 并
+通过真实 API 自动生成、检查题目：
+
+```bash
+export COURSE_TUTOR_AUTH_TOKEN='replace-with-local-token'
+export PRACTICE_PILOT_BOOK_ID='replace-with-published-book-id'
+bash scripts/deploy-and-verify-practice.sh
+```
+
+默认生成 20 题；可设 `PRACTICE_PILOT_COUNT=5` 缩小测试，或设
+`PRACTICE_PILOT_MODULE_ID` 指定章节，也可设
+`PRACTICE_PILOT_QUESTION_TYPE=true_false` 单独测试某种题型。脚本默认只更新 Helm 中的
+Practice Worker 镜像；如同时改动了 Practice API，增加 `--with-practice-api` 即可一并更新。
+它不会重建集群或清除数据库。脚本从 API 轮询生成任务、读取练习集，并校验数量、
+引用、重复题干、判断题是否为完整陈述、填空题是否有可见空格，以及题干是否将未经核实的提问和回答
+拼接在一起。完整的学生端 API 响应保存在被 Git 忽略
+的 `build/reports/practice-generation-<job-id>.json`（仅当前用户可读，不含访问令牌）。
+这项自动检查不能代替 TASK-23 的人工题目质量签署。
+
 ### 1. 创建专用 Kind 集群和只读课程卷
 
 ```bash
