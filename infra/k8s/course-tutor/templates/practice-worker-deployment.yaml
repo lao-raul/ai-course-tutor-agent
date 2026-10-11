@@ -1,0 +1,77 @@
+{{- if .Values.practiceWorker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-practice-worker
+  labels:
+    {{- include "course-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: practice-worker
+spec:
+  replicas: {{ .Values.practiceWorker.replicas }}
+  revisionHistoryLimit: {{ .Values.practiceWorker.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "course-tutor.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: practice-worker
+  template:
+    metadata:
+      labels:
+        {{- include "course-tutor.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: practice-worker
+      annotations:
+        checksum/runtime-secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "course-tutor.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: wait-for-practice-migration
+          image: {{ include "course-tutor.image" (list .Values.backend.practice.image) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command: ["python", "-m", "course_tutor_practice.wait_for_migration"]
+          env:
+            {{- include "course-tutor.practiceDsnEnv" . | nindent 12 }}
+            - name: EXPECTED_PRACTICE_ALEMBIC_REVISION
+              value: {{ .Values.config.expectedPracticeAlembicRevision | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: runtime-tmp, mountPath: /tmp}
+      containers:
+        - name: practice-worker
+          image: {{ include "course-tutor.image" (list .Values.practiceWorker.image) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            {{- include "course-tutor.practiceEnv" . | nindent 12 }}
+            - name: EXPECTED_PRACTICE_ALEMBIC_REVISION
+              value: {{ .Values.config.expectedPracticeAlembicRevision | quote }}
+          readinessProbe:
+            exec:
+              command: ["python", "-m", "course_tutor_practice.wait_for_migration", "--once"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import os; os.kill(1, 0)"]
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.practiceWorker.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: runtime-tmp, mountPath: /tmp}
+      volumes:
+        - {name: runtime-tmp, emptyDir: {}}
+{{- end }}

@@ -1,9 +1,28 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { streamChat } from './api';
+import { checkAccessToken, requestHeaders, setAccessToken, streamChat } from './api';
 
 afterEach(() => {
+  setAccessToken('');
   vi.unstubAllGlobals();
+});
+
+describe('local access token', () => {
+  it('uses the current session token for requests and validates a candidate before saving it', async () => {
+    const saved = new Map<string, string>();
+    vi.stubGlobal('window', { sessionStorage: {
+      getItem: (key: string) => saved.get(key) ?? null,
+      setItem: (key: string, value: string) => { saved.set(key, value); },
+      removeItem: (key: string) => { saved.delete(key); },
+    } });
+    const fetchMock = vi.fn(async () => new Response('[]', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect((await checkAccessToken('cluster-token')).ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith('/v1/practice/catalog/categories', { headers: { Authorization: 'Bearer cluster-token' } });
+    setAccessToken('cluster-token');
+    expect(requestHeaders().Authorization).toBe('Bearer cluster-token');
+    expect([...saved.values()]).toEqual(['cluster-token']);
+  });
 });
 
 describe('streamChat', () => {

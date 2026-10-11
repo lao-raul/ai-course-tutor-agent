@@ -13,10 +13,22 @@ backend:
       tag: ""
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
   practice:
+    replicas: 2
+    autoscaling: {enabled: true}
+    podDisruptionBudget: {enabled: true}
     image:
       repository: ghcr.io/OWNER/course-tutor-practice
       tag: ""
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+practiceWorker:
+  replicas: 2
+  autoscaling: {enabled: true}
+  podDisruptionBudget: {enabled: true}
+  image:
+    repository: ghcr.io/OWNER/course-tutor-practice-worker
+    tag: ""
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
 
 worker:
   replicas: 2
@@ -58,6 +70,7 @@ config:
 
 secrets:
   existingSecret: course-tutor-production
+  practicePostgresDsnSecret: course-tutor-practice-db
   localAuthToken: ""
   minioAccessKey: ""
   minioSecretKey: ""

@@ -16,6 +16,7 @@ from course_tutor_api.db import (
     BookContentBinding,
     CatalogImportBatch,
     CatalogImportCandidate,
+    Chunk,
     ContentVersion,
     ContentVersionSource,
     Course,
@@ -26,16 +27,22 @@ from course_tutor_api.db import (
     Tenant,
 )
 from course_tutor_api.routes.admin import publish_version
-from course_tutor_api.routes.catalog import get_catalog_book, search_catalog_books
+from course_tutor_api.routes.catalog import (
+    get_catalog_book,
+    resolve_catalog_book_citations,
+    search_catalog_books,
+)
 from course_tutor_api.routes.catalog_admin import (
     approve_catalog_import_candidate,
     list_catalog_import_candidates,
     update_catalog_import_candidate,
 )
-from course_tutor_contracts import CatalogCandidateUpdateRequest
+from course_tutor_contracts import CatalogCandidateUpdateRequest, CatalogCitationResolveRequest
 from course_tutor_contracts.enums import (
     AccessLabel,
+    AnchorType,
     CatalogCandidateStatus,
+    ChunkClass,
     ContentVersionStatus,
     CourseAccessPolicy,
     EducationLevel,
@@ -195,7 +202,37 @@ async def test_catalog_scan_approval_publication_and_tenant_access(
     assert len(page.items) == 1
     detail = await get_catalog_book(page.items[0].id, db_session, learner)
     assert detail.courses[0].content_version_id == version.id
+    assert detail.courses[0].content_version_sequence == 1
+    assert detail.courses[0].content_version_published_at is not None
     assert await db_session.scalar(select(func.count(BookContentBinding.id))) == 1
+
+    chunk = Chunk(
+        id=uuid.uuid4(),
+        source_id=source.id,
+        ordinal=0,
+        text="Hello, I'm Sam!",
+        token_count=5,
+        anchor_type=AnchorType.PAGE,
+        anchor_value="9",
+        chunk_class=ChunkClass.CONTENT,
+        embedding_model_version="test-embedding",
+    )
+    db_session.add(chunk)
+    await db_session.commit()
+    citations = await resolve_catalog_book_citations(
+        detail.id,
+        CatalogCitationResolveRequest(
+            course_id=course.id,
+            content_version_id=version.id,
+            chunk_ids=(chunk.id,),
+        ),
+        db_session,
+        learner,
+    )
+    assert len(citations) == 1
+    assert citations[0].relative_path == candidate.relative_path
+    assert citations[0].anchor_value == "9"
+    assert citations[0].text_excerpt == "Hello, I'm Sam!"
 
     other_tenant = Principal(
         user_id=uuid.uuid4(),
@@ -206,6 +243,18 @@ async def test_catalog_scan_approval_publication_and_tenant_access(
         course_ids=frozenset(),
     )
     assert (await search_catalog_books(db_session, other_tenant)).items == ()
+    with pytest.raises(HTTPException) as exc:
+        await resolve_catalog_book_citations(
+            detail.id,
+            CatalogCitationResolveRequest(
+                course_id=course.id,
+                content_version_id=version.id,
+                chunk_ids=(chunk.id,),
+            ),
+            db_session,
+            other_tenant,
+        )
+    assert exc.value.status_code == 404
 
 
 async def test_normal_course_still_requires_explicit_membership(

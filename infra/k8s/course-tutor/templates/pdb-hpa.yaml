@@ -10,6 +10,64 @@ spec:
       {{- include "course-tutor.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: backend
 {{- end }}
+{{- if .Values.backend.practice.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-practice-api
+spec:
+  minAvailable: {{ .Values.backend.practice.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "course-tutor.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: practice-api
+{{- end }}
+{{- if and .Values.practiceWorker.enabled .Values.practiceWorker.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-practice-worker
+spec:
+  minAvailable: {{ .Values.practiceWorker.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "course-tutor.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: practice-worker
+{{- end }}
+{{- if .Values.backend.practice.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-practice-api
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: {{ include "course-tutor.fullname" . }}-practice-api}
+  minReplicas: {{ .Values.backend.practice.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.backend.practice.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: {{ .Values.backend.practice.autoscaling.targetCPUUtilizationPercentage }}}
+{{- end }}
+{{- if and .Values.practiceWorker.enabled .Values.practiceWorker.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "course-tutor.fullname" . }}-practice-worker
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: {{ include "course-tutor.fullname" . }}-practice-worker}
+  minReplicas: {{ .Values.practiceWorker.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.practiceWorker.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: {{ .Values.practiceWorker.autoscaling.targetCPUUtilizationPercentage }}}
+{{- end }}
 {{- if and .Values.podDisruptionBudget.enabled .Values.autoscaling.enabled }}
 ---
 {{- end }}

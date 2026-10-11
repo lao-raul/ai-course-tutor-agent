@@ -18,6 +18,55 @@ from course_tutor_contracts.enums import AccessLabel, AnchorType, UserRole
 from course_tutor_shared import Settings
 
 
+def test_outline_page_range_uses_next_sibling_not_repeated_unit_number() -> None:
+    nodes = [
+        {
+            "id": "module-1",
+            "ordinal": 0,
+            "title": "Module 1",
+            "page_start": 7,
+            "page_end": None,
+            "depth": 0,
+        },
+        {
+            "id": "sam",
+            "ordinal": 1,
+            "title": "Unit 1 I'm Sam",
+            "page_start": 7,
+            "page_end": None,
+            "depth": 1,
+        },
+        {
+            "id": "how",
+            "ordinal": 2,
+            "title": "Unit 2 How are you",
+            "page_start": 10,
+            "page_end": None,
+            "depth": 1,
+        },
+        {
+            "id": "module-2",
+            "ordinal": 3,
+            "title": "Module 2",
+            "page_start": 13,
+            "page_end": None,
+            "depth": 0,
+        },
+        {
+            "id": "smart",
+            "ordinal": 4,
+            "title": "Unit 1 I'm Ms Smart",
+            "page_start": 13,
+            "page_end": None,
+            "depth": 1,
+        },
+    ]
+    assert practice_evidence._outline_page_range(nodes, "sam", 83) == (7, 9)
+    assert practice_evidence._outline_page_range(nodes, "module-1", 83) == (7, 12)
+    assert practice_evidence._outline_page_range(nodes, "smart", 83) == (13, 83)
+    assert practice_evidence._outline_page_range(nodes, "missing", 83) is None
+
+
 class _Rows:
     def __init__(self, source_ids: tuple[object, ...]) -> None:
         self._source_ids = source_ids

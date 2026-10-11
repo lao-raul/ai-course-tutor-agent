@@ -9,6 +9,9 @@ backend:
   practice:
     image: {repository: course-tutor-practice, tag: local, digest: ""}
 
+practiceWorker:
+  image: {repository: course-tutor-practice-worker, tag: local, digest: ""}
+
 worker:
   image: {repository: course-tutor-worker, tag: local, digest: ""}
   # Text extraction from image-heavy or textbook-sized PDFs can peak above the

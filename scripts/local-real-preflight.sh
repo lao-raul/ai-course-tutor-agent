@@ -144,9 +144,11 @@ if helm_status="$(helm status "$release" -n "$namespace" -o json 2>/dev/null)"; 
       exit 1
     fi
   done
-  kubectl -n "$namespace" get pod "$backend" -o json | jq -e '
-    (.spec.containers[] | select(.name == "practice-api") | .volumeMounts // [] |
-      map(.name) | index("course-content")) == null' >/dev/null
+  for component in practice-api practice-worker; do
+    kubectl -n "$namespace" get pod \
+      -l "app.kubernetes.io/component=${component}" -o json | jq -e '
+      .items | length > 0 and all(.[]; all(.spec.volumes[]?; .name != "course-content"))' >/dev/null
+  done
   kubectl -n "$namespace" get deploy "${release}-web" -o json | jq -e '
     [.spec.template.spec.containers[].volumeMounts[]?.name] | index("course-content") == null' >/dev/null
   if kubectl -n "$namespace" get deploy,service \

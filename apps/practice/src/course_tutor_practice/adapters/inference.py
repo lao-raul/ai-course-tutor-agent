@@ -20,13 +20,23 @@ class OpenAICompatiblePracticeInference:
         self._owns_client = client is None
         self._client = client or httpx.AsyncClient(
             base_url=base_url.rstrip("/"),
-            headers={"Authorization": f"Bearer {api_key}"},
+            headers={"Authorization": f"Bearer {api_key}"} if api_key.strip() else {},
             timeout=httpx.Timeout(connect=5, read=120, write=10, pool=5),
         )
 
     async def generate_json(
-        self, messages: list[dict[str, str]], seed: int, correlation_id: str
+        self,
+        messages: list[dict[str, str]],
+        seed: int,
+        correlation_id: str,
+        *,
+        count: int | None = None,
+        temperature: float = 0.1,
     ) -> str:
+        schema = GeneratedBatch.model_json_schema()
+        if count is not None:
+            schema["properties"]["exercises"]["minItems"] = count
+            schema["properties"]["exercises"]["maxItems"] = count
         try:
             response = await self._client.post(
                 "/chat/completions",
@@ -34,13 +44,13 @@ class OpenAICompatiblePracticeInference:
                 json={
                     "model": self.model,
                     "messages": messages,
-                    "temperature": 0.1,
+                    "temperature": temperature,
                     "seed": seed,
                     "response_format": {
                         "type": "json_schema",
                         "json_schema": {
-                            "name": "hiruzen_generated_batch_v1",
-                            "schema": GeneratedBatch.model_json_schema(),
+                            "name": f"hiruzen_generated_batch_v2_{count or 'any'}",
+                            "schema": schema,
                         },
                     },
                     "stream": False,

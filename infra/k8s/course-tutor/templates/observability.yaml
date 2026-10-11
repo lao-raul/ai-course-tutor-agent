@@ -55,5 +55,6 @@ data:
   verification-result: {{ .Values.global.verificationResult | quote }}
   agent-image: {{ include "course-tutor.image" (list .Values.backend.agent.image) | quote }}
   practice-image: {{ include "course-tutor.image" (list .Values.backend.practice.image) | quote }}
+  practice-worker-image: {{ include "course-tutor.image" (list .Values.practiceWorker.image) | quote }}
   worker-image: {{ include "course-tutor.image" (list .Values.worker.image) | quote }}
   web-image: {{ include "course-tutor.image" (list .Values.web.image) | quote }}

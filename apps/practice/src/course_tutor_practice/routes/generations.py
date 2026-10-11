@@ -12,6 +12,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from course_tutor_auth import Principal, get_current_principal, principal_can_access_course
 from course_tutor_contracts import (
     CatalogBookDetail,
+    CatalogCitationResolveRequest,
+    CatalogCitationView,
     CatalogCourseView,
     GeneratePracticeRequest,
     PracticeGenerationView,
@@ -195,6 +197,32 @@ async def get_practice_set(
         catalog, bearer, value.book_id, value.course_id, value.content_version_id
     ):
         raise HTTPException(status_code=404, detail="practice set not found")
+    citation_ids = tuple(
+        dict.fromkeys(
+            citation
+            for exercise in value.exercises
+            for raw in exercise.evidence_citation_ids
+            if (citation := _citation_uuid(raw)) is not None
+        )
+    )
+    evidence_sources: tuple[CatalogCitationView, ...] = ()
+    if citation_ids:
+        try:
+            evidence_sources = tuple(
+                await catalog.resolve_citations(
+                    value.book_id,
+                    CatalogCitationResolveRequest(
+                        course_id=value.course_id,
+                        content_version_id=value.content_version_id,
+                        chunk_ids=citation_ids,
+                    ),
+                    bearer,
+                    get_correlation_id(),
+                )
+            )
+        except AgentCatalogError:
+            # A temporarily unavailable display lookup must not hide the exercises.
+            pass
     return PracticeSetView(
         id=value.id,
         generation_id=value.generation_id,
@@ -203,8 +231,16 @@ async def get_practice_set(
         course_id=value.course_id,
         content_version_id=value.content_version_id,
         exercises=value.exercises,
+        evidence_sources=evidence_sources,
         created_at=value.created_at,
     )
+
+
+def _citation_uuid(value: str) -> UUID | None:
+    try:
+        return UUID(value)
+    except ValueError:
+        return None
 
 
 @router.post(

@@ -1,12 +1,13 @@
 # Course Tutor Helm chart
 
-This is the only supported Kubernetes release package. The backend Deployment uses a
-co-located Pod: `agent-api` and `practice-api` are separate containers with independent
-ports, probes, resources and Services, but share one rollout and scaling unit.
+This is the only supported Kubernetes release package. Agent API, Practice API and
+Practice Worker run in independent Deployments. The Practice workloads cannot mount
+the source textbook PVC; only Agent ingestion workloads receive it. Practice migrations
+run as a separate Helm Job and both Practice workloads wait for its revision.
 
 ## Local/CI install
 
-Build and load the five application images, then run:
+Build and load the six application images, then run:
 
 ```bash
 helm lint infra/k8s/course-tutor -f infra/k8s/course-tutor/values-ci.yaml

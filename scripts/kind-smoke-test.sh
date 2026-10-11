@@ -25,12 +25,16 @@ helm upgrade --install "${release}" "${repo_root}/infra/k8s/course-tutor" \
 # application workloads so a newly loaded image cannot be masked by a stale Pod.
 kubectl rollout restart \
   deployment/course-tutor-backend \
+  deployment/course-tutor-practice-api \
+  deployment/course-tutor-practice-worker \
   deployment/course-tutor-worker \
   deployment/course-tutor-web \
   deployment/course-tutor-fake-llm \
   -n "${namespace}"
 
 kubectl rollout status deployment/course-tutor-backend -n "${namespace}" --timeout=5m
+kubectl rollout status deployment/course-tutor-practice-api -n "${namespace}" --timeout=5m
+kubectl rollout status deployment/course-tutor-practice-worker -n "${namespace}" --timeout=5m
 kubectl rollout status deployment/course-tutor-worker -n "${namespace}" --timeout=5m
 kubectl rollout status deployment/course-tutor-web -n "${namespace}" --timeout=5m
 kubectl rollout status deployment/course-tutor-fake-llm -n "${namespace}" --timeout=5m
@@ -44,8 +48,19 @@ containers="$(
   kubectl get pod "${backend_pod}" -n "${namespace}" \
     -o jsonpath='{range .spec.containers[*]}{.name}{"\n"}{end}' | sort | paste -sd, -
 )"
-test "${containers}" = "agent-api,practice-api"
+test "${containers}" = "agent-api"
+practice_pod="$(kubectl get pods -n "${namespace}" -l app.kubernetes.io/component=practice-api -o jsonpath='{.items[0].metadata.name}')"
+worker_pod="$(kubectl get pods -n "${namespace}" -l app.kubernetes.io/component=practice-worker -o jsonpath='{.items[0].metadata.name}')"
+test -n "${practice_pod}" && test -n "${worker_pod}"
+test "$(kubectl get pod "${practice_pod}" -n "${namespace}" -o jsonpath='{.spec.containers[0].name}')" = practice-api
+test "$(kubectl get pod "${worker_pod}" -n "${namespace}" -o jsonpath='{.spec.containers[0].name}')" = practice-worker
+for pod in "${practice_pod}" "${worker_pod}"; do
+  if kubectl get pod "${pod}" -n "${namespace}" -o json | jq -e '.spec.volumes[]? | select(.name == "course-content")' >/dev/null; then
+    echo "Practice pod ${pod} mounted course content" >&2
+    exit 1
+  fi
+done
 
 helm test "${release}" --namespace "${namespace}" --logs --timeout 2m
 
-echo "Verified ${backend_pod}: agent-api and practice-api are Ready in one Pod."
+echo "Verified independent Agent, Practice API and Practice Worker workloads."

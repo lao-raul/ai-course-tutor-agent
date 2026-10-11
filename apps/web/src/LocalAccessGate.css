@@ -1,0 +1,9 @@
+.local-access-toolbar { position: absolute; top: 5px; right: 18px; z-index: 1; }
+.local-access-toolbar button { background: #fff; border: 1px solid #8ca0b7; border-radius: 5px; cursor: pointer; padding: 4px 9px; }
+.local-access-page { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: #f5f7fb; font: 15px/1.5 system-ui, sans-serif; color: #1b293d; }
+.local-access-card { width: min(100%, 440px); padding: 24px; background: #fff; border: 1px solid #dce4ef; border-radius: 10px; box-shadow: 0 8px 24px #17355216; }
+.local-access-card h1 { margin-top: 0; }
+.local-access-card form { display: grid; gap: 10px; }
+.local-access-card input { padding: 9px; border: 1px solid #a9b7c8; border-radius: 5px; }
+.local-access-card button { padding: 8px 12px; border: 1px solid #17618e; border-radius: 5px; background: #17618e; color: #fff; cursor: pointer; }
+.local-access-card [role="alert"] { color: #842222; }

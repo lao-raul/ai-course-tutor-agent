@@ -80,6 +80,11 @@ class EmbeddingIndexer:
                 "mime_type": chunk["mime_type"],
                 "anchor_type": _val(anchor_type),
                 "anchor_value": chunk["anchor_value"],
+                "page_number": (
+                    int(str(chunk["anchor_value"]))
+                    if _val(anchor_type) == "page" and str(chunk["anchor_value"]).isdigit()
+                    else None
+                ),
                 "chunk_class": _val(chunk_class),
                 "access_label": _val(access_label),
                 "token_count": chunk.get("token_count", 0),

@@ -10,7 +10,15 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from course_tutor_api.db import Book, BookContentBinding, ContentVersion, Course, CourseRun
+from course_tutor_api.db import (
+    Book,
+    BookContentBinding,
+    BookOutline,
+    ContentVersion,
+    Course,
+    CourseRun,
+    SourceDocument,
+)
 from course_tutor_api.dependencies import Dependencies, dependencies_from_request, get_session
 from course_tutor_api.routes.chat import (
     _build_evidence_pack,
@@ -21,6 +29,7 @@ from course_tutor_api.routes.chat import (
 from course_tutor_auth.practice_delegation import verify_practice_delegation
 from course_tutor_contracts import (
     BookLifecycleStatus,
+    CatalogOutlineNode,
     ChunkClass,
     ContentVersionStatus,
     CourseAccessPolicy,
@@ -31,6 +40,30 @@ from course_tutor_contracts import (
 
 router = APIRouter(prefix="/v1/internal/practice", tags=["practice-evidence"])
 ALLOWED_CLASSES = (ChunkClass.CONTENT,)
+
+
+def _outline_page_range(
+    nodes: list[dict[str, object]], node_id: str, page_count: int
+) -> tuple[int, int] | None:
+    try:
+        ordered = sorted(
+            (CatalogOutlineNode.model_validate(item) for item in nodes),
+            key=lambda item: item.ordinal,
+        )
+    except ValidationError:
+        return None
+    for index, node in enumerate(ordered):
+        if node.id != node_id:
+            continue
+        start = node.page_start
+        end = node.page_end if node.page_end is not None else page_count
+        depth = node.depth
+        for following in ordered[index + 1 :]:
+            if following.depth <= depth and following.page_start > start:
+                end = min(end, following.page_start - 1)
+                break
+        return (start, end) if 1 <= start <= end <= page_count else None
+    return None
 
 
 @router.post(
@@ -93,6 +126,26 @@ async def retrieve_practice_evidence(
     if not source_ids:
         raise HTTPException(status_code=404, detail="published textbook evidence not found")
 
+    page_range = None
+    if body.outline_node_id is not None:
+        outline = await session.scalar(
+            select(BookOutline).where(
+                BookOutline.book_id == body.book_id,
+                BookOutline.content_version_id == body.content_version_id,
+                BookOutline.availability == "available",
+            )
+        )
+        if outline is None or outline.source_id not in source_ids:
+            raise HTTPException(status_code=422, detail="selected textbook section unavailable")
+        source = await session.get(SourceDocument, outline.source_id)
+        page_count = (source.source_metadata or {}).get("page_count") if source else None
+        if not isinstance(page_count, int) or page_count < 1:
+            raise HTTPException(status_code=422, detail="selected textbook pages unavailable")
+        page_range = _outline_page_range(outline.nodes, body.outline_node_id, page_count)
+        if page_range is None:
+            raise HTTPException(status_code=422, detail="selected textbook section unavailable")
+        source_ids = (outline.source_id,)
+
     pack = await _build_evidence_pack(
         retrieval_service=_get_retrieval_service(deps),
         reranker=_get_reranker(),
@@ -102,6 +155,7 @@ async def retrieve_practice_evidence(
         access_label=delegation.access_label,
         query=body.query,
         source_ids=source_ids,
+        **({"page_range": page_range} if page_range is not None else {}),
         service_name=deps.settings.service_name,
     )
     allowed = tuple(chunk for chunk in pack.evidence if chunk.chunk_class in ALLOWED_CLASSES)[

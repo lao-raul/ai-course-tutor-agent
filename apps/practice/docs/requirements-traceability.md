@@ -30,6 +30,7 @@ they become canonical OpenAPI operations in the task that implements them.
 | HFR-GEN-9 | TASK-20, TASK-21 | getPracticeSet, submitPracticeAnswer | protected-answer leakage matrix | implemented |
 | HFR-GEN-10 | TASK-25 | previewPracticeSet | privileged role/tenant tests, answer-leakage matrix, redacted audit and instructor browser preview | planned |
 | HFR-GEN-11 | TASK-20, TASK-22 | createPracticeGeneration | API Chinese-default and three-language tests plus learner browser persistence | implemented |
+| HFR-GEN-12 | TASK-23 | getPracticeSet, resolveCatalogBookCitations, getCatalogBook | API source-scope/ACL tests and Web version/evidence display tests | implemented |
 | HFR-ANS-1 | TASK-21 | submitPracticeAnswer | submission replay/policy tests | implemented |
 | HFR-ANS-2 | TASK-21 | submitPracticeAnswer | deterministic and provisional grading tests | implemented |
 | HFR-ANS-3 | TASK-21 | submitPracticeAnswer | staged feedback/release tests | implemented |
@@ -49,16 +50,16 @@ they become canonical OpenAPI operations in the task that implements them.
 | HFR-PROG-5 | TASK-21 | resumeStudy, resetResumeCursor | cursor reset/history retention tests | implemented |
 | HFR-PROG-6 | TASK-21 | setStudyMemoryConsent, getStudyMemorySignals | consent and compact-memory contract tests | implemented |
 | HNFR-1 | TASK-18, TASK-21, TASK-23 | searchPracticeBooks, resumeStudy | LAN performance benchmark | planned |
-| HNFR-2 | TASK-19, TASK-23 | createPracticeGeneration | submission latency/deadline tests | planned |
+| HNFR-2 | TASK-19, TASK-23 | createPracticeGeneration | deadline implemented; real LAN submission latency pending | in_progress |
 | HNFR-3 | TASK-20, TASK-23 | getPracticeSet | fake schema/evidence coverage gate implemented; release-wide gate remains TASK-23 | in_progress |
 | HNFR-4 | TASK-20, TASK-23 | getPracticeSet | approved FLTRP golden-set report | planned |
-| HNFR-5 | TASK-19, TASK-21, TASK-23 | getPracticeGeneration, getStudyStatus | dependency outage and availability drills | planned |
-| HNFR-6 | TASK-19, TASK-23 | createPracticeGeneration, submitPracticeAnswer | horizontal-scale/replay tests | planned |
-| HNFR-7 | TASK-20, TASK-21, TASK-23, TASK-24 | getCatalogBookOutline, createPracticeGeneration, submitPracticeAnswer | outline and practice telemetry redaction tests | planned |
-| HNFR-8 | TASK-19, TASK-23 | createPracticeGeneration | schema ownership/migration tests | planned |
+| HNFR-5 | TASK-19, TASK-21, TASK-23 | getPracticeGeneration, getStudyStatus | independent API/worker and health probes rendered; availability/outage evidence pending | in_progress |
+| HNFR-6 | TASK-19, TASK-23 | createPracticeGeneration, submitPracticeAnswer | lease heartbeat and SQL replay tests pass; cluster scale drill pending | in_progress |
+| HNFR-7 | TASK-20, TASK-21, TASK-23, TASK-24 | getCatalogBookOutline, createPracticeGeneration, submitPracticeAnswer | redaction tests implemented; release evidence pending | in_progress |
+| HNFR-8 | TASK-19, TASK-23 | createPracticeGeneration | Practice schema migration and restricted-Secret Helm gate implemented; production role proof pending | in_progress |
 | HNFR-9 | TASK-18, TASK-19, TASK-20, TASK-23 | createPracticeGeneration, retrievePracticeEvidence | job-to-Agent and LM Studio correlation implemented; release-wide trace gate remains TASK-23 | in_progress |
-| HNFR-10 | TASK-18, TASK-20, TASK-23, TASK-24 | searchPracticeBooks, getCatalogBookOutline, createPracticeGeneration | hosted-CI network isolation tests | planned |
-| HNFR-11 | TASK-23 | practiceHealth, practiceReady | Helm/Kind security and policy tests | planned |
+| HNFR-10 | TASK-18, TASK-20, TASK-23, TASK-24 | searchPracticeBooks, getCatalogBookOutline, createPracticeGeneration | fake fixture/CI chart profile implemented; hosted CI result pending | in_progress |
+| HNFR-11 | TASK-23 | practiceHealth, practiceReady | non-root images, migration wait, probes and Practice policies render; Kind/Trivy pending | in_progress |
 
 ## Machine validation
 

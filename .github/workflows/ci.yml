@@ -47,7 +47,8 @@ jobs:
           uv run python scripts/validate_openapi.py
       - name: Unit, contract, ACL, and SSE tests
         run: >-
-          uv run pytest tests/unit apps/practice/tests services/ingestion/tests
+          uv run pytest tests/unit tests/evaluation/hiruzen/test_golden_gate.py
+          apps/practice/tests services/ingestion/tests
           tests/integration/chat tests/integration/security
           --cov=course_tutor_api --cov=course_tutor_practice
           --cov=course_tutor_ingestion --cov=course_tutor_retrieval
@@ -147,6 +148,11 @@ jobs:
           uv run alembic -c apps/api/alembic.ini downgrade base
           uv run alembic -c apps/api/alembic.ini upgrade head
           uv run alembic -c apps/api/alembic.ini check
+      - name: Practice schema migration round trip
+        run: |
+          uv run alembic -c apps/practice/alembic.ini upgrade head
+          uv run alembic -c apps/practice/alembic.ini downgrade base
+          uv run alembic -c apps/practice/alembic.ini upgrade head
 
   secret-scan:
     name: Secret scan
@@ -217,6 +223,14 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+      - name: Scan Practice Worker image
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: course-tutor-practice-worker:ci
+          scan-type: image
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
       - name: Scan Worker image
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
@@ -258,7 +272,7 @@ jobs:
       - name: Load local images
         run: |
           kind load docker-image --name course-tutor-ci \
-            course-tutor-agent:ci course-tutor-practice:ci course-tutor-worker:ci \
+            course-tutor-agent:ci course-tutor-practice:ci course-tutor-practice-worker:ci course-tutor-worker:ci \
             course-tutor-web:ci course-tutor-fake-llm:ci
       - name: Install chart and run smoke tests
         run: scripts/kind-smoke-test.sh course-tutor-ci

@@ -59,9 +59,9 @@ and Agent/LLM dependencies configured, a separate worker process runs the job:
 uv run python -m course_tutor_practice_worker
 ```
 
-The current Helm chart does not yet include the independent Practice migration and
-worker workloads; deployment of those processes is part of TASK-23. The current
-browser UI also does not yet expose the Hiruzen generation flow.
+The Helm chart includes independent Practice migration, API and worker workloads.
+The browser UI exposes the Hiruzen generation flow; production use remains gated by
+the human-reviewed FLTRP golden set in TASK-23.
 
 Once a job is `READY`, read its learner-safe set and submit an answer. Each new
 attempt needs a new idempotency key; retrying the same key is safe:

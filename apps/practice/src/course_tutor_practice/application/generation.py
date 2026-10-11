@@ -167,9 +167,9 @@ class GenerationService:
             secret=self._delegation_secret,
         )
         if request.module_id is not None:
-            request_payload["_module_title"] = next(
-                module.title for module in plan.modules if module.id == request.module_id
-            )
+            module = next(module for module in plan.modules if module.id == request.module_id)
+            request_payload["_module_title"] = module.title
+            request_payload["_outline_node_id"] = module.outline_node_id
         generation = GenerationRecord(
             id=generation_id,
             tenant_id=principal.tenant_id,

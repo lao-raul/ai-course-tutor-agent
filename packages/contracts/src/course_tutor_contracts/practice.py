@@ -9,6 +9,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 
+from course_tutor_contracts.catalog import CatalogCitationView
+
 
 class PracticeModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -199,6 +201,7 @@ class PracticeSetView(PracticeModel):
     course_id: UUID
     content_version_id: UUID
     exercises: tuple[ExerciseView, ...]
+    evidence_sources: tuple[CatalogCitationView, ...] = ()
     created_at: datetime
 
 

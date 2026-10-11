@@ -309,7 +309,10 @@ class SqlPracticeRepository:
                     PracticeOutboxEvent.lease_expires_at.is_(None),
                     PracticeOutboxEvent.lease_expires_at <= now,
                 ),
-                GenerationJob.status.in_(["queued", "retrieving"]),
+                # A terminated worker may have advanced to GENERATING or
+                # VALIDATING before its lease expired. Those jobs must be
+                # replayable from the outbox rather than left permanently stuck.
+                GenerationJob.status.in_(["queued", "retrieving", "generating", "validating"]),
             )
             .order_by(PracticeOutboxEvent.created_at)
             .with_for_update(skip_locked=True)
@@ -338,6 +341,33 @@ class SqlPracticeRepository:
         await self._session.commit()
         await self._session.refresh(job)
         return await self._generation_record(job)
+
+    async def renew_generation_lease(
+        self, generation_id: UUID, worker_id: str, now: datetime, lease_duration: timedelta
+    ) -> bool:
+        job = await self._session.scalar(
+            select(GenerationJob).where(GenerationJob.id == generation_id).with_for_update()
+        )
+        if (
+            job is None
+            or job.lease_owner != worker_id
+            or job.status not in {"retrieving", "generating", "validating"}
+        ):
+            await self._session.rollback()
+            return False
+        event = await self._session.scalar(
+            select(PracticeOutboxEvent).where(
+                PracticeOutboxEvent.generation_job_id == generation_id
+            )
+        )
+        if event is None or event.lease_owner != worker_id or event.processed_at is not None:
+            await self._session.rollback()
+            return False
+        expires_at = now + lease_duration
+        job.lease_expires_at = expires_at
+        event.lease_expires_at = expires_at
+        await self._session.commit()
+        return True
 
     async def transition_generation(
         self, generation_id: UUID, target: GenerationStatus

@@ -81,9 +81,9 @@ class Parser(ABC):
 # --- PDF -----------------------------------------------------------------------
 
 
-# Minimum extracted chars across all pages below which we consider a PDF "empty" and
-# fall back to OCR.  Scanned PDFs typically yield < 100 chars total.
+# A text-bearing cover or contents page must not prevent OCR of scanned lesson pages.
 _PDF_TEXT_THRESHOLD = 100
+_PDF_PAGE_TEXT_THRESHOLD = 80
 
 
 def _normalize_extracted_text(value: str) -> str:
@@ -105,96 +105,93 @@ class PDFParser(Parser):
         from pypdf import PdfReader
 
         reader = PdfReader(str(artifact_path))
-        chunks: list[Chunk] = []
+        pages: dict[int, list[Chunk]] = {}
+        sparse_pages: list[int] = []
         total_chars = 0
 
         for page_num, page in enumerate(reader.pages, start=1):
             text = _normalize_extracted_text(page.extract_text() or "")
             total_chars += len(text)
-            if not text.strip():
-                continue
-            lines = text.split("\n")
-            for line in lines:
-                stripped = line.strip()
-                if not stripped:
-                    continue
-                chunk_class = self._classify_line(stripped)
-                chunks.append(
-                    Chunk(
-                        text=stripped,
-                        anchor_type="page",
-                        anchor_value=str(page_num),
-                        chunk_class=chunk_class,
-                    )
+            if len(text.strip()) < _PDF_PAGE_TEXT_THRESHOLD:
+                sparse_pages.append(page_num)
+            pages[page_num] = [
+                Chunk(
+                    text=line.strip(),
+                    anchor_type="page",
+                    anchor_value=str(page_num),
+                    chunk_class=self._classify_line(line.strip()),
                 )
+                for line in text.split("\n")
+                if line.strip()
+            ]
 
-        # OCR fallback: file is large (> 10 KB per page expected) but pypdf found
-        # almost no text → likely a scanned PDF.
         file_size = artifact_path.stat().st_size
         page_count = len(reader.pages)
-        expected_min_size = page_count * 10 * 1024  # 10 KB/page heuristic
-        if total_chars < _PDF_TEXT_THRESHOLD and file_size > expected_min_size:
+        expected_min_size = page_count * 10 * 1024
+        ocr_page_count = 0
+        if sparse_pages and file_size > expected_min_size:
             logger.info(
-                "pdf_ocr_fallback",
+                "pdf_sparse_page_ocr",
                 path=entry.relative_path,
-                total_chars=total_chars,
-                file_size=file_size,
+                sparse_pages=len(sparse_pages),
+                page_count=page_count,
             )
-            ocr_chunks, ocr_confidence = self._ocr_pages(artifact_path, entry)
-            if ocr_chunks:
-                chunks.extend(ocr_chunks)
-                return ParsedDocument(
-                    file_entry=entry,
-                    chunks=chunks,
-                    metadata={
-                        "page_count": page_count,
-                        "ocr": True,
-                    },
-                    extraction_confidence=ocr_confidence,
-                )
-            else:
-                # OCR also failed → quarantine.
-                return ParsedDocument(
-                    file_entry=entry,
-                    chunks=[],
-                    extraction_status="quarantined",
-                    failure_reason="pypdf extracted no text and OCR also failed",
-                    metadata={"page_count": page_count},
-                )
+            ocr_pages = self._ocr_pages(artifact_path, entry, sparse_pages)
+            for page_num, ocr_chunks in ocr_pages.items():
+                if len(" ".join(chunk.text for chunk in ocr_chunks)) > len(
+                    " ".join(chunk.text for chunk in pages[page_num])
+                ):
+                    pages[page_num] = ocr_chunks
+                    ocr_page_count += 1
 
+        chunks = [chunk for page_num in range(1, page_count + 1) for chunk in pages[page_num]]
+        if total_chars < _PDF_TEXT_THRESHOLD and not chunks:
+            return ParsedDocument(
+                file_entry=entry,
+                chunks=[],
+                extraction_status="quarantined",
+                failure_reason="pypdf extracted no text and OCR also failed",
+                metadata={"page_count": page_count},
+            )
         return ParsedDocument(
             file_entry=entry,
             chunks=chunks,
             metadata={
-                "page_count": len(reader.pages),
+                "page_count": page_count,
+                "ocr": ocr_page_count > 0,
+                "ocr_page_count": ocr_page_count,
             },
-            extraction_confidence=0.95,
+            extraction_confidence=0.70 if ocr_page_count else 0.95,
         )
 
     @staticmethod
-    def _ocr_pages(artifact_path: Path, entry: FileEntry) -> tuple[list[Chunk], float]:
-        """Convert PDF pages to images and run Tesseract OCR.
-
-        Returns a list of chunks and the estimated confidence (0.70 for OCR).
-        Returns an empty list if pytesseract or pdf2image are unavailable.
-        """
+    def _ocr_pages(
+        artifact_path: Path, entry: FileEntry, page_numbers: list[int]
+    ) -> dict[int, list[Chunk]]:
+        """OCR only sparse pages, rendering one page at a time to bound memory."""
         try:
             import pytesseract
             from pdf2image import convert_from_path
         except ImportError:
             logger.warning("pdf_ocr_import_missing", path=entry.relative_path)
-            return [], 0.0
+            return {}
 
-        try:
-            images = convert_from_path(str(artifact_path), dpi=200)
-        except Exception as exc:
-            logger.warning("pdf_ocr_image_convert_failed", path=entry.relative_path, exc=str(exc))
-            return [], 0.0
-
-        chunks: list[Chunk] = []
-        for page_num, image in enumerate(images, start=1):
+        result: dict[int, list[Chunk]] = {}
+        for page_num in page_numbers:
             try:
-                text = _normalize_extracted_text(pytesseract.image_to_string(image, timeout=30))
+                images = convert_from_path(
+                    str(artifact_path),
+                    dpi=200,
+                    first_page=page_num,
+                    last_page=page_num,
+                )
+                if not images:
+                    continue
+                image = images[0]
+                try:
+                    text = _normalize_extracted_text(pytesseract.image_to_string(image, timeout=30))
+                finally:
+                    image.close()
             except Exception as exc:
                 logger.warning(
                     "pdf_ocr_page_failed",
@@ -203,19 +200,17 @@ class PDFParser(Parser):
                     exc=str(exc),
                 )
                 continue
-            for line in text.split("\n"):
-                stripped = line.strip()
-                if not stripped:
-                    continue
-                chunks.append(
-                    Chunk(
-                        text=stripped,
-                        anchor_type="page",
-                        anchor_value=str(page_num),
-                        chunk_class="content",
-                    )
+            result[page_num] = [
+                Chunk(
+                    text=line.strip(),
+                    anchor_type="page",
+                    anchor_value=str(page_num),
+                    chunk_class="content",
                 )
-        return chunks, 0.70
+                for line in text.split("\n")
+                if line.strip()
+            ]
+        return result
 
     @staticmethod
     def _classify_line(line: str) -> str:

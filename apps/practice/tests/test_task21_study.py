@@ -16,6 +16,8 @@ from fastapi.testclient import TestClient
 from course_tutor_contracts import (
     BookLifecycleStatus,
     CatalogBookDetail,
+    CatalogCitationResolveRequest,
+    CatalogCitationView,
     CatalogCourseView,
     ChoiceOption,
     EducationLevel,
@@ -78,6 +80,26 @@ class CatalogStub:
                 name="English Grade 3",
                 content_version_id=self.version_id,
             )
+        ]
+
+    async def resolve_citations(
+        self,
+        _book_id: UUID,
+        request: CatalogCitationResolveRequest,
+        _bearer: str,
+        _correlation_id: str | None,
+    ) -> list[CatalogCitationView]:
+        from course_tutor_contracts import AnchorType
+
+        return [
+            CatalogCitationView(
+                chunk_id=chunk_id,
+                relative_path="小学/英语/三年级上册.pdf",
+                anchor_type=AnchorType.PAGE,
+                anchor_value="9",
+                text_excerpt="Hello, I'm Sam!",
+            )
+            for chunk_id in request.chunk_ids
         ]
 
 
@@ -207,6 +229,15 @@ def test_three_attempt_release_replay_progress_and_no_early_leakage() -> None:
     assert "PROTECTED-RATIONALE" not in set_response.text
     assert "correct_option_id" not in set_response.text
     assert "exemplar_answer" not in set_response.text
+    assert set_response.json()["evidence_sources"] == [
+        {
+            "chunk_id": set_response.json()["exercises"][0]["evidence_citation_ids"][0],
+            "relative_path": "小学/英语/三年级上册.pdf",
+            "anchor_type": "page",
+            "anchor_value": "9",
+            "text_excerpt": "Hello, I'm Sam!",
+        }
+    ]
 
     first = _submit(client, set_id, exercises[0], "b", "try-1")
     assert first.status_code == 200

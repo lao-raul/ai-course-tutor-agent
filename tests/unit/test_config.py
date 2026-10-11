@@ -62,6 +62,20 @@ def test_production_rejects_placeholder_secret() -> None:
         )
 
 
+@pytest.mark.parametrize("service_name", ["practice-api", "practice-worker"])
+def test_practice_production_does_not_require_unrelated_minio_secret(service_name: str) -> None:
+    settings = Settings(
+        environment=Environment.PRODUCTION,
+        service_name=service_name,
+        auth_mode="oidc",
+        oidc_issuer="https://identity.example",
+        oidc_audience="course-tutor",
+        oidc_jwks_url="https://identity.example/jwks",
+        practice_delegation_secret="practice-delegation-secret-for-test",
+    )
+    assert settings.service_name == service_name
+
+
 def test_secrets_are_not_reprarepr() -> None:
     """Secrets must not leak through logs or tracebacks that repr the settings."""
     settings = Settings(minio_secret_key="super-secret-value")

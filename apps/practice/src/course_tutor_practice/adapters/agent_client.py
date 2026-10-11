@@ -11,6 +11,8 @@ from course_tutor_contracts import (
     CatalogBookDetail,
     CatalogBookPage,
     CatalogCategoryView,
+    CatalogCitationResolveRequest,
+    CatalogCitationView,
     CatalogCourseView,
     PracticeEvidenceRequest,
     PracticeEvidenceResponse,
@@ -44,6 +46,14 @@ class AgentCatalogClient(Protocol):
     async def list_book_courses(
         self, book_id: UUID, bearer: str, correlation_id: str | None
     ) -> list[CatalogCourseView]: ...
+
+    async def resolve_citations(
+        self,
+        book_id: UUID,
+        request: CatalogCitationResolveRequest,
+        bearer: str,
+        correlation_id: str | None,
+    ) -> list[CatalogCitationView]: ...
 
 
 class HttpAgentCatalogClient:
@@ -99,6 +109,28 @@ class HttpAgentCatalogClient:
     ) -> list[CatalogCourseView]:
         payload = await self._get(f"/v1/catalog/books/{book_id}/courses", bearer, correlation_id)
         return [CatalogCourseView.model_validate(item) for item in payload]
+
+    async def resolve_citations(
+        self,
+        book_id: UUID,
+        request: CatalogCitationResolveRequest,
+        bearer: str,
+        correlation_id: str | None,
+    ) -> list[CatalogCitationView]:
+        headers = {"Authorization": bearer}
+        if correlation_id:
+            headers["X-Correlation-ID"] = correlation_id
+        try:
+            response = await self._client.post(
+                f"/v1/catalog/books/{book_id}/citations:resolve",
+                json=request.model_dump(mode="json"),
+                headers=headers,
+            )
+        except httpx.HTTPError as exc:
+            raise AgentCatalogError(503, "Agent catalog is unavailable") from exc
+        if response.is_error:
+            raise AgentCatalogError(response.status_code, "Textbook evidence is unavailable")
+        return [CatalogCitationView.model_validate(item) for item in response.json()]
 
     async def aclose(self) -> None:
         await self._client.aclose()

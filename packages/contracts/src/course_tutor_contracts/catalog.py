@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from course_tutor_contracts.enums import (
+    AnchorType,
     BookLifecycleStatus,
     CatalogCandidateStatus,
     CatalogImportStatus,
@@ -36,7 +37,23 @@ class CatalogCourseView(CatalogModel):
     code: str
     name: str
     content_version_id: UUID
+    content_version_sequence: int | None = Field(default=None, ge=1)
+    content_version_published_at: datetime | None = None
     access_policy: Literal["tenant_authenticated"] = "tenant_authenticated"
+
+
+class CatalogCitationResolveRequest(CatalogModel):
+    course_id: UUID
+    content_version_id: UUID
+    chunk_ids: tuple[UUID, ...] = Field(min_length=1, max_length=100)
+
+
+class CatalogCitationView(CatalogModel):
+    chunk_id: UUID
+    relative_path: str
+    anchor_type: AnchorType
+    anchor_value: str
+    text_excerpt: str
 
 
 class CatalogBookSummary(CatalogModel):

@@ -65,6 +65,7 @@ cp infra/k8s/course-tutor/values-local-real.example.yaml .local/course-tutor.val
 TAG=local scripts/build-docker.sh
 kind load docker-image --name course-tutor-real \
   course-tutor-agent:local course-tutor-practice:local \
+  course-tutor-practice-worker:local \
   course-tutor-worker:local course-tutor-web:local
 
 export LLM_BASE_URL=http://LAN_HOST:1234/v1

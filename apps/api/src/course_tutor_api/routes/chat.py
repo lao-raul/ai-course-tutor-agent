@@ -118,13 +118,19 @@ def _has_lexical_support(query: str, chunk: RetrievedChunk) -> bool:
     return bool(query_terms & evidence_terms)
 
 
-def _bounded_evidence(candidates: list[RetrievedChunk], query: str) -> list[RetrievedChunk]:
+def _bounded_evidence(
+    candidates: list[RetrievedChunk], query: str, *, trusted_page_scope: bool = False
+) -> list[RetrievedChunk]:
     evidence: list[RetrievedChunk] = []
     remaining = MAX_EVIDENCE_TOKENS
     for chunk in candidates:
         if len(evidence) >= MAX_EVIDENCE_CHUNKS or chunk.score < MIN_RELEVANCE_SCORE:
             continue
-        if chunk.score < HIGH_CONFIDENCE_RELEVANCE_SCORE and not _has_lexical_support(query, chunk):
+        if (
+            not trusted_page_scope
+            and chunk.score < HIGH_CONFIDENCE_RELEVANCE_SCORE
+            and not _has_lexical_support(query, chunk)
+        ):
             continue
         estimated = _estimate_tokens(chunk.text)
         if estimated <= remaining:
@@ -148,9 +154,11 @@ async def _build_evidence_pack(
     query: str,
     source_ids: tuple[uuid.UUID, ...] | None = None,
     service_name: str = "agent-api",
+    page_range: tuple[int, int] | None = None,
 ) -> EvidencePack:
     retrieval_started = time.perf_counter()
     with span("rag.retrieve", **{"course_tutor.retrieval.limit": 20}):
+        search_options = {"page_range": page_range} if page_range is not None else {}
         result = await retrieval_service.search(
             query=query,
             tenant_id=tenant_id,
@@ -159,14 +167,15 @@ async def _build_evidence_pack(
             access_label=access_label,
             limit=20,
             source_ids=source_ids,
+            **search_options,
         )
     rerank_started = time.perf_counter()
-    source_limit = MAX_EVIDENCE_CHUNKS if extract_content_scopes(query) else None
+    source_limit = MAX_EVIDENCE_CHUNKS if page_range or extract_content_scopes(query) else None
     reranked = reranker.rerank(
         result.candidates,
         max_from_same_source=source_limit,
     )
-    evidence = _bounded_evidence(reranked, query)
+    evidence = _bounded_evidence(reranked, query, trusted_page_scope=page_range is not None)
     rerank_ms = (time.perf_counter() - rerank_started) * 1000
     observe_retrieval(
         service_name,

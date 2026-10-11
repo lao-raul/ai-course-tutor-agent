@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import socket
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -29,6 +31,13 @@ async def main() -> None:
         settings.llm_api_key.get_secret_value(),
     )
     executor = GroundedGenerationExecutor(evidence, inference)
+
+    async def renew_lease(generation_id: UUID, worker_id: str, duration: timedelta) -> bool:
+        async with factory() as session:
+            return await SqlPracticeRepository(session).renew_generation_lease(
+                generation_id, worker_id, datetime.now(UTC), duration
+            )
+
     try:
         while True:
             async with factory() as session:
@@ -36,6 +45,7 @@ async def main() -> None:
                     SqlPracticeRepository(session),
                     executor,
                     worker_id=socket.gethostname(),
+                    renew_lease=renew_lease,
                 )
                 processed = await worker.run_once()
             if not processed:

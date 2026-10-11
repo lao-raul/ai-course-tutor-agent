@@ -31,6 +31,7 @@ on:
       KUBE_CONFIG_B64: {required: true}
       HELM_VALUES_B64: {required: true}
       SMOKE_BEARER_TOKEN: {required: true}
+      HIRUZEN_GOLDEN_REPORT_B64: {required: false}
 
 concurrency:
   group: deploy-${{ inputs.environment }}
@@ -106,20 +107,23 @@ jobs:
           }
           agent_digest="$(resolve_digest "${registry_prefix}/course-tutor-agent")"
           practice_digest="$(resolve_digest "${registry_prefix}/course-tutor-practice")"
+          practice_worker_digest="$(resolve_digest "${registry_prefix}/course-tutor-practice-worker")"
           worker_digest="$(resolve_digest "${registry_prefix}/course-tutor-worker")"
           web_digest="$(resolve_digest "${registry_prefix}/course-tutor-web")"
-          for digest in "${agent_digest}" "${practice_digest}" "${worker_digest}" "${web_digest}"; do
+          for digest in "${agent_digest}" "${practice_digest}" "${practice_worker_digest}" "${worker_digest}" "${web_digest}"; do
             [[ "${digest}" =~ ^sha256:[a-f0-9]{64}$ ]]
           done
 
           jq -n --arg release_sha "${RELEASE_SHA}" --arg release_version "${release_version}" \
             --arg agent_repository "${registry_prefix}/course-tutor-agent" --arg agent_digest "${agent_digest}" \
             --arg practice_repository "${registry_prefix}/course-tutor-practice" --arg practice_digest "${practice_digest}" \
+            --arg practice_worker_repository "${registry_prefix}/course-tutor-practice-worker" --arg practice_worker_digest "${practice_worker_digest}" \
             --arg worker_repository "${registry_prefix}/course-tutor-worker" --arg worker_digest "${worker_digest}" \
             --arg web_repository "${registry_prefix}/course-tutor-web" --arg web_digest "${web_digest}" \
             '{release_sha: $release_sha, release_version: $release_version,
               images: {agent: {repository: $agent_repository, digest: $agent_digest},
                 practice: {repository: $practice_repository, digest: $practice_digest},
+                practice_worker: {repository: $practice_worker_repository, digest: $practice_worker_digest},
                 worker: {repository: $worker_repository, digest: $worker_digest},
                 web: {repository: $web_repository, digest: $web_digest}}}' \
             > build/release/release-manifest.json
@@ -127,7 +131,14 @@ jobs:
             --version "${release_version}" --destination build/release/charts
       - name: Atomic deploy and post-deploy verification
         if: inputs.action == 'deploy'
+        env:
+          HIRUZEN_GOLDEN_REPORT_B64: ${{ secrets.HIRUZEN_GOLDEN_REPORT_B64 }}
         run: |
+          if [[ "${{ inputs.environment }}" == "production" ]]; then
+            test -n "${HIRUZEN_GOLDEN_REPORT_B64}"
+            printf '%s' "${HIRUZEN_GOLDEN_REPORT_B64}" | base64 --decode > "${RUNNER_TEMP}/hiruzen-golden-report.json"
+            export HIRUZEN_GOLDEN_REPORT="${RUNNER_TEMP}/hiruzen-golden-report.json"
+          fi
           scripts/deploy-release.sh \
             build/release/release-manifest.json \
             "build/release/charts/course-tutor-$(jq -r .release_version build/release/release-manifest.json).tgz" \

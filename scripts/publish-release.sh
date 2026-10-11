@@ -51,6 +51,7 @@ build_image() {
 
 agent_digest="$(build_image agent course-tutor-agent apps/api/Dockerfile)"
 practice_digest="$(build_image practice course-tutor-practice apps/practice/Dockerfile)"
+practice_worker_digest="$(build_image practice_worker course-tutor-practice-worker services/practice_worker/Dockerfile)"
 worker_digest="$(build_image worker course-tutor-worker services/ingestion/Dockerfile)"
 web_digest="$(build_image web course-tutor-web apps/web/Dockerfile)"
 
@@ -72,6 +73,8 @@ jq -n \
   --arg agent_digest "${agent_digest}" \
   --arg practice_repository "${registry_prefix}/course-tutor-practice" \
   --arg practice_digest "${practice_digest}" \
+  --arg practice_worker_repository "${registry_prefix}/course-tutor-practice-worker" \
+  --arg practice_worker_digest "${practice_worker_digest}" \
   --arg worker_repository "${registry_prefix}/course-tutor-worker" \
   --arg worker_digest "${worker_digest}" \
   --arg web_repository "${registry_prefix}/course-tutor-web" \
@@ -86,6 +89,7 @@ jq -n \
     images: {
       agent: {repository: $agent_repository, digest: $agent_digest},
       practice: {repository: $practice_repository, digest: $practice_digest},
+      practice_worker: {repository: $practice_worker_repository, digest: $practice_worker_digest},
       worker: {repository: $worker_repository, digest: $worker_digest},
       web: {repository: $web_repository, digest: $web_digest}
     }
@@ -97,6 +101,7 @@ if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
     echo "release_version=${release_version}"
     echo "agent_digest=${agent_digest}"
     echo "practice_digest=${practice_digest}"
+    echo "practice_worker_digest=${practice_worker_digest}"
     echo "worker_digest=${worker_digest}"
     echo "web_digest=${web_digest}"
   } >> "${GITHUB_OUTPUT}"

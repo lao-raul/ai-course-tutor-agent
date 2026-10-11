@@ -119,10 +119,30 @@ async def test_sql_repository_commits_job_and_outbox_atomically(
         assert await session.scalar(select(func.count()).select_from(GenerationJob)) == 1
         assert await session.scalar(select(func.count()).select_from(PracticeOutboxEvent)) == 1
 
+        claimed_at = datetime.now(UTC)
         claimed = await repository.claim_next_generation(
-            "worker-a", datetime.now(UTC), timedelta(seconds=30)
+            "worker-a", claimed_at, timedelta(seconds=30)
         )
         assert claimed is not None and claimed.status is GenerationStatus.RETRIEVING
+        await repository.transition_generation(first.id, GenerationStatus.GENERATING)
+        await repository.transition_generation(first.id, GenerationStatus.VALIDATING)
+        assert await repository.renew_generation_lease(
+            first.id, "worker-a", claimed_at + timedelta(seconds=20), timedelta(seconds=30)
+        )
+        assert (
+            await repository.claim_next_generation(
+                "worker-b", claimed_at + timedelta(seconds=31), timedelta(seconds=30)
+            )
+            is None
+        )
+        # Simulate a terminated worker after the validation transition. A new
+        # consumer must reclaim the committed outbox event after lease expiry.
+        recovered = await repository.claim_next_generation(
+            "worker-b", claimed_at + timedelta(seconds=51), timedelta(seconds=30)
+        )
+        assert recovered is not None and recovered.id == first.id
+        assert recovered.status is GenerationStatus.RETRIEVING
+        assert recovered.attempt_count == 2
         await repository.transition_generation(first.id, GenerationStatus.GENERATING)
         await repository.transition_generation(first.id, GenerationStatus.VALIDATING)
         trace_id = uuid.uuid4()
