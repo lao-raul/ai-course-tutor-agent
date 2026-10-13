@@ -54,6 +54,7 @@ class CatalogCitationView(CatalogModel):
     anchor_type: AnchorType
     anchor_value: str
     text_excerpt: str
+    text_fragments: tuple[str, ...] = ()
 
 
 class CatalogBookSummary(CatalogModel):

@@ -343,14 +343,16 @@ stateDiagram-v2
    - normalized duplicate/fingerprint detection;
    - answer/rationale not present in student-visible prompt;
    - unsafe or solution-prohibited evidence excluded.
-   The worker validates candidates individually and retains only those that pass.
-   If a batch is short, contains duplicates, or has invalid answers/citations, it
-   requests only the missing number of questions with a new seed and the accepted
-   prompts as exclusions. Repair calls constrain the JSON-schema array cardinality,
-   focus on one underused evidence chunk, rotate allowed question types and use a
-   higher sampling temperature for diversity. The
-   repair budget is two calls for a single question or
-   at most eight calls for larger sets, bounded by the job deadline. The full set
+   The worker parses and validates candidates individually, retaining schema-valid
+   members even if another member in the same JSON batch is malformed. If an
+   entire initial batch has invalid JSON/schema, it retries one full batch before
+   switching to smaller top-ups. When more than three questions are missing,
+   repair calls request at most four questions across rotating underused evidence chunks;
+   near completion they focus on one chunk and an underused type. Every repair
+   uses a new seed, accepted prompts as exclusions, and a higher sampling
+   temperature. The repair budget is two calls for a single question or at most
+   24 calls for larger sets, bounded by the job deadline (five minutes for up to
+   ten questions, eight minutes for larger sets). The full set
    passes the same batch validator before it is persisted; a partial set is never
    published.
 9. Optionally perform one bounded model-based groundedness/ambiguity review.

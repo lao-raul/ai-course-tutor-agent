@@ -236,6 +236,7 @@ def test_three_attempt_release_replay_progress_and_no_early_leakage() -> None:
             "anchor_type": "page",
             "anchor_value": "9",
             "text_excerpt": "Hello, I'm Sam!",
+            "text_fragments": [],
         }
     ]
 

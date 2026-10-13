@@ -102,6 +102,7 @@ export interface EvidenceSource {
   anchor_type: string;
   anchor_value: string;
   text_excerpt: string;
+  text_fragments?: string[];
 }
 export interface AnswerRelease {
   answer: string | boolean | string[];

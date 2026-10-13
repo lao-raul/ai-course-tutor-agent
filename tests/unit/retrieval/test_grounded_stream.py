@@ -5,6 +5,9 @@ import json
 import uuid
 from types import SimpleNamespace
 
+import pytest
+from course_tutor_retrieval.reranker import Reranker
+
 from course_tutor_api.routes import chat as chat_route
 from course_tutor_api.routes.chat import (
     CitationTrailerParser,
@@ -146,6 +149,91 @@ async def test_low_scores_abstain_and_evidence_has_hard_token_budget() -> None:
     assert len(pack.evidence) == 1
     assert pack.evidence[0].chunk_id == huge.chunk_id
     assert len(pack.evidence[0].text) <= chat_route.MAX_EVIDENCE_TOKENS * 4
+
+
+async def test_practice_can_select_distinct_pages_from_one_textbook_pdf() -> None:
+    source_id = uuid.uuid4()
+    candidates = [
+        _chunk("one-book.pdf", 0.95 - index * 0.01, "English dialogue with a friend").model_copy(
+            update={"source_id": source_id, "anchor_value": str((index // 2) + 1)}
+        )
+        for index in range(10)
+    ]
+    candidates[0] = candidates[0].model_copy(update={"chunk_class": ChunkClass.EXERCISE_QUESTION})
+    common = (uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), AccessLabel.ENROLLED)
+    ordinary = await _build_evidence_pack(
+        _Retrieval(candidates), Reranker(), *common, "English dialogue"
+    )
+    assert len(ordinary.evidence) == 2
+
+    practice = await _build_evidence_pack(
+        _Retrieval(candidates),
+        Reranker(),
+        *common,
+        "English dialogue",
+        max_from_same_source=20,
+        diversify_pages=True,
+        allowed_classes=(ChunkClass.CONTENT,),
+    )
+    assert len(practice.evidence) == 5
+    assert {chunk.anchor_value for chunk in practice.evidence} == {"1", "2", "3", "4", "5"}
+    assert all(chunk.chunk_class == ChunkClass.CONTENT for chunk in practice.evidence)
+
+
+async def test_practice_prefers_real_content_over_high_scoring_activity_heading() -> None:
+    heading = _chunk("one-book.pdf", 0.9, "Listen and say")
+    lesson = _chunk(
+        "one-book.pdf",
+        0.84,
+        "Sam greets his friend with Hello. His friend replies Hello, Sam. "
+        "They practise greeting each other in the classroom.",
+    )
+    common = (uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), AccessLabel.ENROLLED)
+    practice = await _build_evidence_pack(
+        _Retrieval([heading, lesson]),
+        Reranker(),
+        *common,
+        "English dialogue",
+        max_from_same_source=20,
+        diversify_pages=True,
+        allowed_classes=(ChunkClass.CONTENT,),
+        prefer_substantive=True,
+    )
+    assert practice.evidence == (lesson,)
+
+
+async def test_published_book_scope_accepts_relevant_content_without_generic_query_words() -> None:
+    lesson = _chunk(
+        "one-book.pdf",
+        0.43,
+        "Sam greets his friend with Hello. His friend replies Hello, Sam. "
+        "They practise greeting each other in the classroom.",
+    )
+    common = (uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), AccessLabel.ENROLLED)
+    ordinary = await _build_evidence_pack(
+        _Retrieval([lesson]), Reranker(), *common, "textbook core concepts"
+    )
+    assert ordinary.evidence == ()
+    practice = await _build_evidence_pack(
+        _Retrieval([lesson]),
+        Reranker(),
+        *common,
+        "textbook core concepts",
+        max_from_same_source=20,
+        allowed_classes=(ChunkClass.CONTENT,),
+        prefer_substantive=True,
+        trusted_source_scope=True,
+        source_ids=(lesson.source_id,),
+    )
+    assert practice.evidence == (lesson,)
+
+
+async def test_trusted_book_scope_requires_explicit_source_binding() -> None:
+    common = (uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), AccessLabel.ENROLLED)
+    with pytest.raises(ValueError, match="explicit source binding"):
+        await _build_evidence_pack(
+            _Retrieval([]), Reranker(), *common, "generic practice", trusted_source_scope=True
+        )
 
 
 def test_split_control_trailer_is_hidden_and_chunk_id_is_validated() -> None:

@@ -119,7 +119,7 @@ def _has_lexical_support(query: str, chunk: RetrievedChunk) -> bool:
 
 
 def _bounded_evidence(
-    candidates: list[RetrievedChunk], query: str, *, trusted_page_scope: bool = False
+    candidates: list[RetrievedChunk], query: str, *, trusted_scope: bool = False
 ) -> list[RetrievedChunk]:
     evidence: list[RetrievedChunk] = []
     remaining = MAX_EVIDENCE_TOKENS
@@ -127,7 +127,7 @@ def _bounded_evidence(
         if len(evidence) >= MAX_EVIDENCE_CHUNKS or chunk.score < MIN_RELEVANCE_SCORE:
             continue
         if (
-            not trusted_page_scope
+            not trusted_scope
             and chunk.score < HIGH_CONFIDENCE_RELEVANCE_SCORE
             and not _has_lexical_support(query, chunk)
         ):
@@ -144,6 +144,18 @@ def _bounded_evidence(
     return evidence
 
 
+def _prefer_substantive_evidence(candidates: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    """Keep short activity labels from outranking textbook examples in practice."""
+    substantive = [chunk for chunk in candidates if len(chunk.text.strip()) >= 80]
+    if not substantive:
+        return candidates
+    return sorted(
+        substantive,
+        key=lambda chunk: chunk.score + min(len(chunk.text.strip()), 400) / 400 * 0.1,
+        reverse=True,
+    )
+
+
 async def _build_evidence_pack(
     retrieval_service: Any,
     reranker: Any,
@@ -155,7 +167,14 @@ async def _build_evidence_pack(
     source_ids: tuple[uuid.UUID, ...] | None = None,
     service_name: str = "agent-api",
     page_range: tuple[int, int] | None = None,
+    max_from_same_source: int | None = None,
+    diversify_pages: bool = False,
+    allowed_classes: tuple[ChunkClass, ...] | None = None,
+    prefer_substantive: bool = False,
+    trusted_source_scope: bool = False,
 ) -> EvidencePack:
+    if trusted_source_scope and not source_ids:
+        raise ValueError("trusted source scope requires an explicit source binding")
     retrieval_started = time.perf_counter()
     with span("rag.retrieve", **{"course_tutor.retrieval.limit": 20}):
         search_options = {"page_range": page_range} if page_range is not None else {}
@@ -170,12 +189,35 @@ async def _build_evidence_pack(
             **search_options,
         )
     rerank_started = time.perf_counter()
-    source_limit = MAX_EVIDENCE_CHUNKS if page_range or extract_content_scopes(query) else None
+    source_limit = max_from_same_source or (
+        MAX_EVIDENCE_CHUNKS if page_range or extract_content_scopes(query) else None
+    )
     reranked = reranker.rerank(
         result.candidates,
         max_from_same_source=source_limit,
     )
-    evidence = _bounded_evidence(reranked, query, trusted_page_scope=page_range is not None)
+    if allowed_classes is not None:
+        reranked = [chunk for chunk in reranked if chunk.chunk_class in allowed_classes]
+    if prefer_substantive:
+        reranked = _prefer_substantive_evidence(reranked)
+    if diversify_pages:
+        first_pages: list[RetrievedChunk] = []
+        repeated_pages: list[RetrievedChunk] = []
+        seen_pages: set[tuple[uuid.UUID, str]] = set()
+        for chunk in reranked:
+            if chunk.anchor_type.value != "page":
+                repeated_pages.append(chunk)
+                continue
+            page_key = (chunk.source_id, chunk.anchor_value)
+            if page_key in seen_pages:
+                repeated_pages.append(chunk)
+            else:
+                seen_pages.add(page_key)
+                first_pages.append(chunk)
+        reranked = first_pages + repeated_pages
+    evidence = _bounded_evidence(
+        reranked, query, trusted_scope=page_range is not None or trusted_source_scope
+    )
     rerank_ms = (time.perf_counter() - rerank_started) * 1000
     observe_retrieval(
         service_name,

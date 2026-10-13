@@ -12,12 +12,19 @@ class _RubricResult(BaseModel):
 
 
 class OpenAICompatibleRubricEvaluator:
-    def __init__(self, base_url: str, model: str, api_key: str) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        api_key: str,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
         self.model_version = model
         self._client = httpx.AsyncClient(
             base_url=base_url.rstrip("/"),
-            headers={"Authorization": f"Bearer {api_key}"},
+            headers={"Authorization": f"Bearer {api_key}"} if api_key.strip() else {},
             timeout=httpx.Timeout(connect=5, read=30, write=10, pool=5),
+            transport=transport,
         )
 
     async def score(

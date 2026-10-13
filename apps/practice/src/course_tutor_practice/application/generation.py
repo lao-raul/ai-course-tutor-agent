@@ -155,7 +155,9 @@ class GenerationService:
             GENERATION_NAMESPACE,
             f"{principal.tenant_id}:{principal.user_id}:{idempotency_key}",
         )
-        deadline_at = now + timedelta(minutes=5)
+        # Large sets can need bounded repair calls on a local model; keep the
+        # delegation token and job deadline aligned without changing small jobs.
+        deadline_at = now + timedelta(minutes=8 if request.count > 10 else 5)
         request_payload = request.model_dump(mode="json")
         request_payload["_delegation_token"] = issue_practice_delegation(
             principal,

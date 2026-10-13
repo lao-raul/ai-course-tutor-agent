@@ -1,6 +1,6 @@
 # TASK-23 — Hiruzen Deployment and Quality Gates
 
-**Status:** in progress — code complete; isolated Kind and human-approved real golden set pending
+**Status:** in progress — PR #14 CI/isolated Kind passed; published release and human-approved real golden set pending
 **Priority:** P0  
 **Depends on:** TASK-18–TASK-22, TASK-24
 
@@ -64,15 +64,15 @@ uv run python tests/evaluation/hiruzen/run.py --provider fake
 Image security gates, failure drills and the dated redacted real golden-set report must
 also pass before completion.
 
-## Acceptance ledger (2026-10-10)
+## Acceptance ledger (updated 2026-10-12)
 
 | Criterion | State | Evidence |
 |---|---|---|
 | AC-23.1 | independent local-real workloads Ready; recovery drill pending | Separate Deployments, lease heartbeat and SQL/in-memory reclaim tests; fresh Kind install/upgrade |
-| AC-23.2 | local-real mount isolation verified; isolated CI replay pending | Fresh Kind preflight confirmed Practice has no content PVC; earlier dedicated Kind API timed out |
-| AC-23.3 | automated | Generated fixture evaluation and CI fake inference; no NAS mount |
-| AC-23.4 | render/build verified; published vulnerability scan pending | Non-root images, probes, resources, policies and Trivy workflow |
+| AC-23.2 | passed in PR #14 CI | Isolated Kind topology, mount-isolation and connectivity checks in the successful deployment job |
+| AC-23.3 | passed in PR #14 CI | Generated fixture evaluation and CI fake inference; no NAS mount |
+| AC-23.4 | CI image/source scans passed; published digest scan pending | Non-root images, probes, resources and policies; PR #14 deployment job passed all configured Trivy steps |
 | AC-23.5 | **blocked on human review** | `golden_gate.py` fails closed without 20 reviewed real cases and dated approval |
-| AC-23.6 | local-real install/upgrade/basic smoke passed; rollback and isolated replay pending | Fresh Kind revision 1→2, real citation and one READY PracticeSet; local-real Helm hooks disabled |
+| AC-23.6 | passed in isolated PR #14 CI; production rollback not claimed | Successful hosted deployment job includes Kind install/smoke and unconditional Helm upgrade/rollback with smoke after each transition |
 
 Never mark this task complete based solely on the synthetic fixture or a chart render.

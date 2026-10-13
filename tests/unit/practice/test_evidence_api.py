@@ -67,6 +67,45 @@ def test_outline_page_range_uses_next_sibling_not_repeated_unit_number() -> None
     assert practice_evidence._outline_page_range(nodes, "missing", 83) is None
 
 
+def test_book_level_practice_stops_before_supplementary_sections() -> None:
+    nodes = [
+        {
+            "id": "module-1",
+            "ordinal": 0,
+            "title": "Module 1",
+            "page_start": 7,
+            "page_end": None,
+            "depth": 0,
+        },
+        {
+            "id": "review",
+            "ordinal": 1,
+            "title": "Review Module",
+            "page_start": 67,
+            "page_end": None,
+            "depth": 0,
+        },
+        {
+            "id": "glossary",
+            "ordinal": 2,
+            "title": "Words and Expressions in Each Module",
+            "page_start": 71,
+            "page_end": None,
+            "depth": 0,
+        },
+        {
+            "id": "afterword",
+            "ordinal": 3,
+            "title": "后记",
+            "page_start": 82,
+            "page_end": None,
+            "depth": 0,
+        },
+    ]
+    assert practice_evidence._instruction_page_range(nodes, 84) == (7, 70)
+    assert practice_evidence._instruction_page_range(nodes[:2], 84) is None
+
+
 class _Rows:
     def __init__(self, source_ids: tuple[object, ...]) -> None:
         self._source_ids = source_ids
@@ -81,6 +120,9 @@ class _Session:
 
     async def scalars(self, _query):  # type: ignore[no-untyped-def]
         return _Rows(self.source_ids)
+
+    async def scalar(self, _query):  # type: ignore[no-untyped-def]
+        return None
 
 
 def _claims() -> tuple[PracticeEvidenceRequest, str]:
