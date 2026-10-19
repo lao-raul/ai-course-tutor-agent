@@ -30,11 +30,46 @@ from course_tutor_practice.domain import (
     PracticeSetRecord,
     StudyPlanRecord,
 )
+from course_tutor_practice.generation.errors import GenerationFailure
+from course_tutor_practice.generation.objectives import (
+    near_duplicate_objective,
+    stored_answer_keys,
+)
+from course_tutor_practice.generation.schemas import GenerationObjective
 
 
 class SqlPracticeRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    async def list_recent_objectives(
+        self, generation: GenerationRecord, *, limit: int = 10
+    ) -> tuple[GenerationObjective, ...]:
+        # The window counts accepted sets, not exercises; a large set is never
+        # partially discarded. Older sets remain for study progress/review.
+        rows = (
+            await self._session.scalars(
+                select(PracticeSet.objective_metadata)
+                .where(
+                    PracticeSet.tenant_id == generation.tenant_id,
+                    PracticeSet.user_id == generation.user_id,
+                    PracticeSet.agent_book_id == generation.book_id,
+                    PracticeSet.agent_content_version_id == generation.content_version_id,
+                    PracticeSet.objective_metadata != [],
+                )
+                .order_by(PracticeSet.created_at.desc(), PracticeSet.id.desc())
+                .limit(limit)
+            )
+        ).all()
+        return tuple(
+            GenerationObjective(
+                learning_objective=item["learning_objective"],
+                answer_key=item.get("answer_key", ""),
+                answer_keys=tuple(item.get("answer_keys", ())),
+            )
+            for row in rows
+            for item in row
+        )
 
     async def _plan_record(self, model: StudyPlan) -> StudyPlanRecord:
         modules = (
@@ -434,6 +469,7 @@ class SqlPracticeRepository:
         model_version: str,
         validator_version: str,
         retrieval_trace_id: UUID | None = None,
+        objectives: tuple[GenerationObjective, ...] = (),
     ) -> PracticeSetRecord:
         existing_id = await self._session.scalar(
             select(PracticeSet.id).where(PracticeSet.generation_job_id == generation_id)
@@ -453,6 +489,40 @@ class SqlPracticeRepository:
             raise ValueError("generation must be validating before completion")
         if len(drafts) != job.requested_count:
             raise ValueError("generation count mismatch")
+        if objectives and len(objectives) != len(drafts):
+            raise ValueError("generation objective count mismatch")
+        if objectives:
+            # Serialize completions of the same plan. The query after the lock
+            # observes a concurrent worker's newly committed objective history.
+            await self._session.scalar(
+                select(StudyPlan.id).where(StudyPlan.id == job.study_plan_id).with_for_update()
+            )
+            previous = await self.list_recent_objectives(await self._generation_record(job))
+            prior_answers = {key for item in previous for key in stored_answer_keys(item)}
+            prior_objectives = {item.learning_objective.casefold().strip() for item in previous}
+            new_answers = [stored_answer_keys(item) for item in objectives]
+            new_objectives = [item.learning_objective.casefold().strip() for item in objectives]
+            if (
+                any(keys & prior_answers for keys in new_answers)
+                or any(
+                    left & right
+                    for index, left in enumerate(new_answers)
+                    for right in new_answers[index + 1 :]
+                )
+                or any(key in prior_objectives for key in new_objectives)
+                or len(new_objectives) != len(set(new_objectives))
+                or any(
+                    near_duplicate_objective(new.learning_objective, old.learning_objective)
+                    for new in objectives
+                    for old in previous
+                )
+                or any(
+                    near_duplicate_objective(left.learning_objective, right.learning_objective)
+                    for index, left in enumerate(objectives)
+                    for right in objectives[index + 1 :]
+                )
+            ):
+                raise GenerationFailure("duplicate_objective", retryable=True)
         set_id = uuid.uuid5(uuid.NAMESPACE_URL, f"practice-set:{generation_id}")
         evidence_ids = sorted(
             {citation for draft in drafts for citation in draft.evidence_citation_ids}
@@ -471,6 +541,14 @@ class SqlPracticeRepository:
             model_version=model_version,
             validator_version=validator_version,
             evidence_chunk_ids=evidence_ids,
+            objective_metadata=[
+                {
+                    "learning_objective": item.learning_objective,
+                    "answer_key": item.answer_key,
+                    "answer_keys": list(item.answer_keys),
+                }
+                for item in objectives
+            ],
             correlation_id=job.correlation_id,
             retrieval_trace_id=retrieval_trace_id,
         )

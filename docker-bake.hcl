@@ -2,6 +2,11 @@ variable "TAG" {
   default = "dev"
 }
 
+# Override with an approved mirror when the default registry is unavailable.
+variable "PYTHON_IMAGE" {
+  default = "docker.io/library/python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258"
+}
+
 variable "BUILD_VERSION" {
   default = "0.1.0-dev"
 }
@@ -24,6 +29,7 @@ target "common" {
   # CI publishes provenance separately; local images stay single-platform/loadable.
   provenance = false
   args = {
+    PYTHON_IMAGE = PYTHON_IMAGE
     BUILD_VERSION = BUILD_VERSION
     BUILD_REVISION = BUILD_REVISION
     BUILD_SOURCE = BUILD_SOURCE

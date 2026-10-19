@@ -1,6 +1,10 @@
 # Delivery Task Index
 
 **Status:** v0.2 complete; Hiruzen v0.3 delivery active
+
+2026-10-19 scheduling: defer remaining TASK-23 question-quality remediation to
+[Known Issues KI-001](../known-issues.md) and proceed with independent TASK-25
+instructor preview. TASK-23 is not accepted or closed by this deferral.
 **Objective:** evolve the current prototype into a tested, Helm-packaged Kubernetes
 platform with two backend applications.
 
@@ -43,7 +47,7 @@ The existing `apps/api` path and `course_tutor_api` package name remain unchange
 | 22 | [TASK-21](task-21-hiruzen-attempts-progress-and-resume.md) | complete (2026-10-10) | P0 | Attempts, release policy, progress and safe resume | TASK-19, TASK-20 |
 | 23 | [TASK-22](task-22-hiruzen-chat-and-web-experience.md) | complete (2026-10-10) | P1 | Book discovery, practice UI and direct Agent tutoring chat | TASK-18–TASK-21, TASK-24 |
 | 24 | [TASK-23](task-23-hiruzen-deployment-and-quality-gates.md) | in progress | P0 | Independent workloads, CI/E2E and golden-set quality gates | TASK-18–TASK-22, TASK-24 |
-| 25 | [TASK-25](task-25-hiruzen-instructor-preview.md) | planned | P1 | Privileged AI-generated PracticeSet preview and redacted audit | TASK-18–TASK-22; parallel with TASK-23 |
+| 25 | [TASK-25](task-25-hiruzen-instructor-preview.md) | in progress | P1 | Privileged AI-generated PracticeSet preview and redacted audit | TASK-18–TASK-22; parallel with TASK-23 |
 
 Tasks may be implemented in separate branches and merged independently once their declared dependencies are present. A task is complete only when all acceptance criteria and verification steps in its file pass.
 

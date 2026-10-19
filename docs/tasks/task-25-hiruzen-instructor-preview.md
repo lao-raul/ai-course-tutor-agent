@@ -1,11 +1,20 @@
 # TASK-25 — Hiruzen Instructor Preview
 
-**Status:** planned
+**Status:** in progress (2026-10-19) — authorization boundary and implementation sequencing
 **Priority:** P1
 **Depends on:** TASK-18–TASK-22
 **Can run in parallel with:** TASK-23
 
 ## Goal
+
+Execution sequence: (1) explicit course-scoped instructor authorization and denial
+tests; (2) protected read contract, repository and redacted durable audit; (3) API
+integration and OpenAPI; (4) instructor Web preview; (5) disposable integration and
+browser acceptance. Each stage must preserve learner response isolation.
+The shared generic course-access helper permits broad instructor access and must
+not substitute for TASK-25's explicit course assignment check.
+TASK-23 quality remediation is deferred under [KI-001](../known-issues.md), not
+waived; this read-only preview does not imply quality approval or publication.
 
 Complete HFR-GEN-10 with a privileged, read-only preview of generated PracticeSets.
 An authorized instructor can inspect the question, protected answer/rationale, rubric

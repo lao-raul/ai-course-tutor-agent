@@ -20,7 +20,7 @@ class PracticeEvidenceRequest(EvidenceModel):
     content_version_id: UUID
     query: str = Field(min_length=1, max_length=1000)
     outline_node_id: str | None = Field(default=None, min_length=1, max_length=96)
-    limit: int = Field(default=5, ge=1, le=20)
+    limit: int = Field(default=5, ge=1, le=40)
 
 
 class PracticeEvidenceChunk(EvidenceModel):

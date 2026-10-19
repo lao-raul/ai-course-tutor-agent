@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, event, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from course_tutor_auth import Principal
@@ -29,11 +29,13 @@ from course_tutor_practice.domain import ModuleRecord, StudyPlanRecord
 from course_tutor_practice.domain.attempts import AttemptConflict
 
 
-async def _seed(engine: AsyncEngine) -> tuple[Principal, uuid.UUID, uuid.UUID]:
+async def _seed(
+    engine: AsyncEngine, principal: Principal | None = None, key: str = "seed"
+) -> tuple[Principal, uuid.UUID, uuid.UUID]:
     async with engine.begin() as connection:
         await connection.exec_driver_sql("CREATE SCHEMA IF NOT EXISTS practice")
         await connection.run_sync(Base.metadata.create_all)
-    principal = Principal(
+    principal = principal or Principal(
         user_id=uuid.uuid4(),
         tenant_id=uuid.uuid4(),
         role=UserRole.STUDENT,
@@ -55,7 +57,7 @@ async def _seed(engine: AsyncEngine) -> tuple[Principal, uuid.UUID, uuid.UUID]:
         generation = SqlPracticeRepository(session)
         await generation.save_study_plan(plan)
         job, _ = await GenerationService(generation).submit(
-            principal, plan, GeneratePracticeRequest(count=1), "seed", "task21-test"
+            principal, plan, GeneratePracticeRequest(count=1), key, "task21-test"
         )
         await generation.claim_next_generation("worker", datetime.now(UTC), timedelta(seconds=30))
         await generation.transition_generation(job.id, GenerationStatus.GENERATING)
@@ -82,6 +84,35 @@ async def _seed(engine: AsyncEngine) -> tuple[Principal, uuid.UUID, uuid.UUID]:
             validator_version="test",
         )
     return principal, result.id, result.exercises[0].id
+
+
+@pytest.mark.asyncio
+async def test_sql_list_progress_uses_bounded_queries_for_multiple_sets(
+    integration_db_engine: AsyncEngine,
+) -> None:
+    principal, first_set_id, _ = await _seed(integration_db_engine, key="seed-1")
+    _, second_set_id, _ = await _seed(integration_db_engine, principal, key="seed-2")
+    _, third_set_id, _ = await _seed(integration_db_engine, principal, key="seed-3")
+    statements: list[str] = []
+
+    def record_query(_connection: object, _cursor: object, statement: str, *_args: object) -> None:
+        statements.append(statement)
+
+    event.listen(integration_db_engine.sync_engine, "before_cursor_execute", record_query)
+    try:
+        async with AsyncSession(integration_db_engine, expire_on_commit=False) as session:
+            progress = await SqlStudyRepository(session).list_progress(
+                principal.tenant_id, principal.user_id
+            )
+    finally:
+        event.remove(integration_db_engine.sync_engine, "before_cursor_execute", record_query)
+    assert {item.practice_set_id for item in progress} == {
+        first_set_id,
+        second_set_id,
+        third_set_id,
+    }
+    assert all(item.total_questions == 1 and item.next_exercise_id for item in progress)
+    assert len(statements) == 5
 
 
 @pytest.mark.asyncio

@@ -8,6 +8,7 @@ from uuid import UUID
 
 from course_tutor_contracts import ExerciseDraft, GenerationStatus
 from course_tutor_practice.domain import GenerationRecord, PracticeSetRecord, StudyPlanRecord
+from course_tutor_practice.generation.schemas import GenerationObjective
 
 
 class PracticeRepository(Protocol):
@@ -41,6 +42,10 @@ class PracticeRepository(Protocol):
         self, worker_id: str, now: datetime, lease_duration: timedelta
     ) -> GenerationRecord | None: ...
 
+    async def list_recent_objectives(
+        self, generation: GenerationRecord, *, limit: int = 10
+    ) -> tuple[GenerationObjective, ...]: ...
+
     async def transition_generation(
         self, generation_id: UUID, target: GenerationStatus
     ) -> GenerationRecord: ...
@@ -65,4 +70,5 @@ class PracticeRepository(Protocol):
         model_version: str,
         validator_version: str,
         retrieval_trace_id: UUID | None = None,
+        objectives: tuple[GenerationObjective, ...] = (),
     ) -> PracticeSetRecord: ...

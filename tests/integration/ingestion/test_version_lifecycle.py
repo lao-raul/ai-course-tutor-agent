@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 from course_tutor_ingestion.embed_jobs import _process_embed_event
 from course_tutor_ingestion.jobs import IngestionJob, enqueue_due_scans, run_pending_jobs
+from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -26,6 +28,7 @@ from course_tutor_api.db import (
 )
 from course_tutor_api.routes.admin import (
     CourseRegistrationRequest,
+    IngestionQueueRequest,
     ProgrammeRegistrationRequest,
     get_course_registration,
     get_ingestion_status,
@@ -45,6 +48,15 @@ class _Indexer:
         self, chunks: list[dict[str, object]], _version: dict[str, object]
     ) -> int:
         return len(chunks)
+
+
+@pytest.mark.parametrize(
+    "path",
+    ("/etc/passwd", "../outside.pdf", "folder/../outside.pdf", "folder//book.pdf", "a\\b.pdf"),
+)
+def test_scoped_ingestion_rejects_path_escape(path: str) -> None:
+    with pytest.raises(ValidationError):
+        IngestionQueueRequest(include_relative_paths=[path])
 
 
 async def _scan(
@@ -143,6 +155,29 @@ async def test_registration_is_separate_from_ingestion(
         select(OutboxEvent.id).where(OutboxEvent.topic == "ingestion.scan")
     )
     assert len(scan_events.all()) == 1
+
+    with pytest.raises(HTTPException, match="pending ingestion has a different source scope"):
+        await queue_ingestion(
+            course.course_id,
+            db_session,
+            principal,
+            "scoped-request",
+            IngestionQueueRequest(include_relative_paths=["book.pdf"]),
+        )
+    pending_event = await db_session.get(OutboxEvent, queued.job_id)
+    assert pending_event is not None
+    pending_event.processed_at = datetime.now(UTC).replace(tzinfo=None)
+    await db_session.commit()
+    scoped = await queue_ingestion(
+        course.course_id,
+        db_session,
+        principal,
+        "scoped-request",
+        IngestionQueueRequest(include_relative_paths=["book.pdf"]),
+    )
+    scoped_event = await db_session.get(OutboxEvent, scoped.job_id)
+    assert scoped_event is not None
+    assert scoped_event.payload["include_relative_paths"] == ["book.pdf"]
 
 
 async def test_add_edit_delete_rename_build_immutable_versions(

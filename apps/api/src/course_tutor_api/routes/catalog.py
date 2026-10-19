@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from course_tutor_api.auth import Principal, get_current_principal
-from course_tutor_api.citation_display import display_excerpt
+from course_tutor_api.citation_display import display_excerpt, display_fragments
 from course_tutor_api.db import (
     Book,
     BookContentBinding,
@@ -367,6 +367,9 @@ async def resolve_catalog_book_citations(
             anchor_type=chunk.anchor_type,
             anchor_value=chunk.anchor_value,
             text_excerpt=display_excerpt(chunk.text),
+            text_fragments=(
+                display_fragments(chunk.text) if not display_excerpt(chunk.text) else ()
+            ),
         )
         for chunk, source in result.all()
         if _ACCESS_RANK[source.access_label.value] <= _ACCESS_RANK[principal.access_label.value]

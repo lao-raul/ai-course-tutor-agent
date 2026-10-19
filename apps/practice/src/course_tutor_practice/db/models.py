@@ -110,7 +110,17 @@ class GenerationJob(Base, TimestampMixin):
 
 class PracticeSet(Base, TimestampMixin):
     __tablename__ = "practice_sets"
-    __table_args__ = (UniqueConstraint("generation_job_id"),)
+    __table_args__ = (
+        UniqueConstraint("generation_job_id"),
+        Index(
+            "ix_practice_sets_objective_history",
+            "tenant_id",
+            "user_id",
+            "agent_book_id",
+            "agent_content_version_id",
+            "created_at",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     generation_job_id: Mapped[uuid.UUID] = mapped_column(
@@ -129,6 +139,7 @@ class PracticeSet(Base, TimestampMixin):
     model_version: Mapped[str] = mapped_column(String(255))
     validator_version: Mapped[str] = mapped_column(String(64))
     evidence_chunk_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    objective_metadata: Mapped[list[dict[str, str]]] = mapped_column(JSONB, default=list)
     correlation_id: Mapped[str] = mapped_column(String(64))
     retrieval_trace_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
 

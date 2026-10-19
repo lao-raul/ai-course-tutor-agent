@@ -276,6 +276,8 @@ jobs:
             course-tutor-web:ci course-tutor-fake-llm:ci
       - name: Install chart and run smoke tests
         run: scripts/kind-smoke-test.sh course-tutor-ci
+      - name: Exercise isolated Helm upgrade and rollback
+        run: bash scripts/kind-upgrade-rollback-test.sh course-tutor-ci
       - name: Verify deployment failures fail closed
         run: scripts/kind-negative-gates.sh course-tutor-ci
       - name: Collect Kubernetes diagnostics

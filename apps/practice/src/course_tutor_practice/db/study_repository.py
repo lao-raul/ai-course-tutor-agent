@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections import defaultdict
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -315,6 +316,7 @@ class SqlStudyRepository:
     async def list_progress(
         self, tenant_id: UUID, user_id: UUID
     ) -> tuple[StudySetProgressView, ...]:
+        """Rebuild live projections with bounded queries, avoiding N+1 per set."""
         sets = (
             await self._session.scalars(
                 select(PracticeSet)
@@ -322,7 +324,74 @@ class SqlStudyRepository:
                 .order_by(PracticeSet.created_at.desc())
             )
         ).all()
-        return tuple([await self._compute_projection(item) for item in sets])
+        if not sets:
+            return ()
+        set_ids = [item.id for item in sets]
+        exercises = (
+            await self._session.scalars(
+                select(Exercise)
+                .where(Exercise.practice_set_id.in_(set_ids))
+                .order_by(Exercise.practice_set_id, Exercise.ordinal)
+            )
+        ).all()
+        attempts = (
+            await self._session.scalars(
+                select(Attempt).where(
+                    Attempt.tenant_id == tenant_id,
+                    Attempt.user_id == user_id,
+                    Attempt.practice_set_id.in_(set_ids),
+                )
+            )
+        ).all()
+        activities = (
+            await self._session.scalars(
+                select(StudyActivity).where(
+                    StudyActivity.tenant_id == tenant_id,
+                    StudyActivity.user_id == user_id,
+                    StudyActivity.practice_set_id.in_(set_ids),
+                )
+            )
+        ).all()
+        module_rows = (
+            await self._session.execute(
+                select(GenerationJob.id, GenerationJob.module_id).where(
+                    GenerationJob.id.in_(item.generation_job_id for item in sets)
+                )
+            )
+        ).all()
+        modules: dict[UUID, UUID | None] = {row[0]: row[1] for row in module_rows}
+        exercise_ids: dict[UUID, list[UUID]] = defaultdict(list)
+        attempts_by_set: dict[UUID, list[AttemptRecord]] = defaultdict(list)
+        activities_by_set: dict[UUID, list[ActivityRecord]] = defaultdict(list)
+        for exercise in exercises:
+            exercise_ids[exercise.practice_set_id].append(exercise.id)
+        for attempt in attempts:
+            attempts_by_set[attempt.practice_set_id].append(self._attempt_record(attempt))
+        for activity in activities:
+            if activity.practice_set_id is not None and activity.exercise_id is not None:
+                activities_by_set[activity.practice_set_id].append(
+                    ActivityRecord(
+                        activity.id,
+                        activity.practice_set_id,
+                        activity.exercise_id,
+                        activity.event_type,
+                        activity.created_at,
+                    )
+                )
+        return tuple(
+            project_set(
+                set_id=item.id,
+                study_plan_id=item.study_plan_id,
+                book_id=item.agent_book_id,
+                course_id=item.agent_course_id,
+                content_version_id=item.agent_content_version_id,
+                exercise_ids=tuple(exercise_ids[item.id]),
+                attempts=tuple(attempts_by_set[item.id]),
+                activities=tuple(activities_by_set[item.id]),
+                module_id=modules.get(item.generation_job_id),
+            )
+            for item in sets
+        )
 
     async def get_cursor(self, tenant_id: UUID, user_id: UUID) -> tuple[UUID | None, bool]:
         cursor = await self._session.scalar(

@@ -107,7 +107,7 @@ must activate the deterministic book-level fallback rather than guessed structur
 | HFR-GEN-2 | Generation returns an accepted job promptly; status can be polled until `READY`, `FAILED` or `CANCELLED`. |
 | HFR-GEN-3 | Agent performs authorization and evidence retrieval against the currently published content version before any LLM generation. A selected outline node is resolved by stable ID to that book's source and physical PDF page range; repeated labels such as “Unit 1” in other modules must not leak into its evidence. |
 | HFR-GEN-4 | Every accepted exercise contains at least one valid evidence citation; its answer and rationale must be supportable by those cited chunks. |
-| HFR-GEN-5 | Generation output passes strict schema, count, type, citation, answerability, duplicate and answer-leakage validation before becoming `READY`. |
+| HFR-GEN-5 | Generation output passes strict schema, count, type, citation, answerability, duplicate and answer-leakage validation before becoming `READY`. Only fill-in-the-blank items may show a blank, and a fill item must be a source-backed cloze rather than an open question with a blank appended. |
 | HFR-GEN-6 | The stored PracticeSet records content version, evidence chunk IDs, prompt version, generation model, validation version, random seed and correlation ID. |
 | HFR-GEN-7 | Identical idempotency keys return the existing job/set and never create duplicate work. |
 | HFR-GEN-8 | If evidence is insufficient, Hiruzen fails transparently with a retryable/non-retryable reason rather than generating unsupported questions. |
@@ -115,6 +115,13 @@ must activate the deterministic book-level fallback rather than guessed structur
 | HFR-GEN-10 | Instructor preview is clearly labeled AI-generated and is not automatically published as official assessment material. |
 | HFR-GEN-11 | The learner can select Chinese, English or bilingual generation; omitted language defaults to Chinese. |
 | HFR-GEN-12 | The learner sees a readable textbook content revision (edition, published sequence/date) and, for each exercise citation, the authorized source filename, page/location and a short excerpt. Internal version and chunk UUIDs remain transport identifiers, not learner-facing labels; unavailable metadata is clearly identified instead of displaying an ID. |
+| HFR-GEN-13 | Generation extracts distinct, answerable textbook fact cards with exact source quotes before drafting questions. Each candidate is bound to one fact card and is independently checked for factual support, question–answer fit, unambiguous answer and distinct learning objective. A failed or unavailable check cannot publish a question; partial sets remain unpublished. This automated gate does not replace the human 20-question quality review. |
+| HFR-GEN-14 | For the same learner, textbook and immutable content version, generation compares the last 10 accepted practice sets' learning objectives across jobs to avoid immediate repeats. This rolling window permits spaced review of older material. The internal history is not exposed to learners; an unavailable history or a conflicting concurrent completion cannot silently publish a duplicate within the window. A new content version begins a new history, and human review still decides semantic diversity. |
+
+For HFR-GEN-12, OCR-derived citation previews can be partial. A valid filename and
+physical page/location remain available so the learner can consult the original
+textbook; an omitted answer in the preview alone does not reject generation.
+Human quality reviewers must verify disputed answers against the cited original page.
 
 HFR-GEN-10 is tracked by TASK-25 as a separate instructor capability. It is not an
 implicit part of the TASK-22 learner UI or TASK-23 deployment gates.

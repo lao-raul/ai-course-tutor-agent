@@ -24,6 +24,12 @@ from course_tutor_practice.domain.attempts import (
     ExerciseMaterial,
 )
 from course_tutor_practice.domain.study import ActivityRecord, project_set
+from course_tutor_practice.generation.errors import GenerationFailure
+from course_tutor_practice.generation.objectives import (
+    near_duplicate_objective,
+    stored_answer_keys,
+)
+from course_tutor_practice.generation.schemas import GenerationObjective
 
 
 class InMemoryPracticeRepository:
@@ -42,6 +48,7 @@ class InMemoryPracticeRepository:
         self._report_payloads: dict[tuple[UUID, UUID, UUID, str], tuple[str, str]] = {}
         self._reset_keys: set[tuple[UUID, UUID, str]] = set()
         self.memory_consent: dict[tuple[UUID, UUID], bool] = {}
+        self.objective_history: dict[UUID, tuple[GenerationObjective, ...]] = {}
         self._attempt_lock = asyncio.Lock()
 
     async def get_study_plan(
@@ -57,6 +64,24 @@ class InMemoryPracticeRepository:
             ),
             None,
         )
+
+    async def list_recent_objectives(
+        self, generation: GenerationRecord, *, limit: int = 10
+    ) -> tuple[GenerationObjective, ...]:
+        matching = sorted(
+            (
+                value
+                for value in self.sets.values()
+                if value.tenant_id == generation.tenant_id
+                and value.user_id == generation.user_id
+                and value.book_id == generation.book_id
+                and value.content_version_id == generation.content_version_id
+                and self.objective_history.get(value.id)
+            ),
+            key=lambda value: (value.created_at, value.id),
+            reverse=True,
+        )[:limit]
+        return tuple(item for value in matching for item in self.objective_history[value.id])
 
     async def find_study_plan_by_course(
         self, tenant_id: UUID, course_id: UUID
@@ -218,6 +243,7 @@ class InMemoryPracticeRepository:
         model_version: str,
         validator_version: str,
         retrieval_trace_id: UUID | None = None,
+        objectives: tuple[GenerationObjective, ...] = (),
     ) -> PracticeSetRecord:
         del seed, prompt_version, model_version, validator_version, retrieval_trace_id
         job = self.generations[generation_id]
@@ -229,6 +255,34 @@ class InMemoryPracticeRepository:
             raise ValueError("generation must be validating before completion")
         if len(drafts) != job.requested_count:
             raise ValueError("generation count mismatch")
+        if objectives and len(objectives) != len(drafts):
+            raise ValueError("generation objective count mismatch")
+        previous = await self.list_recent_objectives(job)
+        prior_answers = {key for item in previous for key in stored_answer_keys(item)}
+        prior_objectives = {item.learning_objective.casefold().strip() for item in previous}
+        new_answers = [stored_answer_keys(item) for item in objectives]
+        new_objectives = [item.learning_objective.casefold().strip() for item in objectives]
+        if (
+            any(keys & prior_answers for keys in new_answers)
+            or any(
+                left & right
+                for index, left in enumerate(new_answers)
+                for right in new_answers[index + 1 :]
+            )
+            or any(key in prior_objectives for key in new_objectives)
+            or len(new_objectives) != len(set(new_objectives))
+            or any(
+                near_duplicate_objective(new.learning_objective, old.learning_objective)
+                for new in objectives
+                for old in previous
+            )
+            or any(
+                near_duplicate_objective(left.learning_objective, right.learning_objective)
+                for index, left in enumerate(objectives)
+                for right in objectives[index + 1 :]
+            )
+        ):
+            raise GenerationFailure("duplicate_objective", retryable=True)
         set_id = uuid.uuid5(uuid.NAMESPACE_URL, f"practice-set:{generation_id}")
         views = tuple(
             split_exercise_draft(
@@ -251,6 +305,7 @@ class InMemoryPracticeRepository:
             created_at=datetime.now(UTC),
         )
         self.sets[record.id] = record
+        self.objective_history[record.id] = objectives
         for ordinal, draft in enumerate(drafts):
             exercise_id = views[ordinal].id
             _presentation, protected, rationale, _fingerprint, _view = split_exercise_draft(

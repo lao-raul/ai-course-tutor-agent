@@ -131,6 +131,10 @@ SCANNED -> STAGED -> APPROVED -> INGESTING -> READY -> PUBLISHED
   require corrected metadata first.
 - Approval creates one Book plus a system-managed Agent Course/CourseRun for the PDF
   volume and queues the existing ingestion lifecycle.
+- For a manual rebuild on a shared NAS root, Agent admin ingestion accepts explicit
+  `include_relative_paths` and validates source-relative file paths. Operators must
+  pass the Book's exact PDF path; an omitted scope retains the legacy whole-root
+  scan behavior and is unsuitable for a single-book rebuild.
 - The system CourseRun is marked `tenant_authenticated`; Agent derives access from the
   verified tenant for these catalog courses. Existing instructor-managed courses keep
   explicit membership ACLs, and request fields cannot select or elevate this policy.
@@ -331,30 +335,70 @@ stateDiagram-v2
 1. Validate request and idempotency key; persist `QUEUED` job.
 2. Worker claims the job with a lease/row lock.
 3. Call Agent evidence retrieval with delegated authorization.
+   The practice-only Agent endpoint can return up to 40 distinct, page-diversified
+   chunks within a 28,000-token retrieval budget; the chat endpoint retains its
+   separate five-chunk/3,500-token prompt budget. The worker processes at most
+   five retrieved chunks in each fact-extraction model call.
 4. Pin Agent content/retrieval metadata to the job.
-5. Build a versioned structured-output prompt for the requested types and difficulty.
-6. Call the configured OpenAI-compatible LLM with a JSON schema.
-7. Parse into Pydantic domain models; reject unknown fields.
-8. Run deterministic gates:
+5. Ask the configured OpenAI-compatible model for a structured batch of textbook
+   fact cards. Each card has a citation ID, an exact contiguous source quote,
+   an answer phrase inside that quote and a distinct learning objective. Reject
+   unknown citations, fabricated quotes and repeated objectives before drafting.
+   Retrieval chunks are processed in groups of at most five so a 1–20 question
+   job does not rely on a single model response to find every fact. The worker
+   makes at most two extraction passes for larger jobs, or four for a one-question
+   job with multiple in-scope chunks, deduplicates objectives, and fails as
+   insufficient evidence if no valid card remains.
+   Before extraction, read objectives from the last 10 accepted sets for the
+   same tenant, learner, book and immutable content version. This history is
+   stored privately on accepted PracticeSets (not the learner response); old
+   sets without metadata are ignored. The extractor and independent auditor
+   see prior learning-objective text. A normalized hash of substantial answer
+   expressions and meaningful adjacent-word segments blocks short cloze
+   answers from repeating a longer response across objective wording;
+   short single words remain eligible for context-dependent questions. This
+   bounded rolling window allows spaced review of older learning objectives;
+   it does not delete prior sets or learning progress. A
+   conservative lexical-overlap check catches close objective paraphrases
+   (English words and Chinese character bigrams) that the semantic model may
+   mistakenly mark distinct, without merging different vocabulary targets.
+6. For each usable fact card, ask for one schema-constrained question of an
+   allowed type, with that fact card as its explicit focus. Candidate generation
+   allows at most three type-focused attempts per fact for a one-question job,
+   or two for a larger job, and stays bounded by the job deadline. Failing
+   cards are skipped, never published. When several question types are allowed,
+   the type rotates by fact index rather than accepted-question count, so a
+   difficult type cannot pin the rest of the job to repeated failures.
+7. Parse into Pydantic domain models; reject unknown fields. Run deterministic gates:
    - requested count/type;
    - citation IDs belong to returned evidence;
    - each question has a supported answer;
    - option cardinality and one-correct-answer rules;
    - normalized duplicate/fingerprint detection;
    - answer/rationale not present in student-visible prompt;
+   - only fill-in-the-blank questions may show a visible blank marker;
+   - a fill prompt must be a true source cloze, not a question with a trailing
+     blank. The Worker constructs fill prompts from the verified fact quote and
+     its short answer phrase, then reruns deterministic plus independent semantic
+     validation. If the model picked an entire quoted sentence as its answer,
+     a source-contained content word may be chosen mechanically for the cloze;
+     the auditor receives that adjusted fact card. A quote without sufficient
+     surrounding words is rejected;
    - unsafe or solution-prohibited evidence excluded.
-   The worker validates candidates individually and retains only those that pass.
-   If a batch is short, contains duplicates, or has invalid answers/citations, it
-   requests only the missing number of questions with a new seed and the accepted
-   prompts as exclusions. Repair calls constrain the JSON-schema array cardinality,
-   focus on one underused evidence chunk, rotate allowed question types and use a
-   higher sampling temperature for diversity. The
-   repair budget is two calls for a single question or
-   at most eight calls for larger sets, bounded by the job deadline. The full set
-   passes the same batch validator before it is persisted; a partial set is never
-   published.
-9. Optionally perform one bounded model-based groundedness/ambiguity review.
-10. Persist immutable `READY` set or a sanitized failure reason.
+8. Send each deterministically valid candidate to a **separate model call** using
+   a semantic-auditor prompt and strict boolean verdict schema. The auditor
+   sees the source, fact card, candidate and previously accepted objectives. It
+   must approve source support, fact fit, question–answer relationship, one
+   unambiguous answer and objective novelty. Invalid/missing verdicts fail closed.
+9. Run the complete-set validator and persist an immutable `READY` set only if
+   the exact requested count passed all gates; otherwise persist a sanitized
+   failure. The five/eight-minute job deadline still applies. The previous
+   direct-batch generator remains only as a regression-test baseline and is not
+   wired into the production worker.
+   The final database transaction locks the StudyPlan and rechecks recent
+   objective text and answer-expression keys before inserting the PracticeSet.
+   A conflict is retryable; an unavailable history fails closed. New content
+   versions deliberately start a fresh objective window.
 
 No generation retry occurs after the deadline, and a retry never creates a second set
 for the same successful idempotency key.

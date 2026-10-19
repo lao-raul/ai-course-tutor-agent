@@ -31,6 +31,8 @@ they become canonical OpenAPI operations in the task that implements them.
 | HFR-GEN-10 | TASK-25 | previewPracticeSet | privileged role/tenant tests, answer-leakage matrix, redacted audit and instructor browser preview | planned |
 | HFR-GEN-11 | TASK-20, TASK-22 | createPracticeGeneration | API Chinese-default and three-language tests plus learner browser persistence | implemented |
 | HFR-GEN-12 | TASK-23 | getPracticeSet, resolveCatalogBookCitations, getCatalogBook | API source-scope/ACL tests and Web version/evidence display tests | implemented |
+| HFR-GEN-13 | TASK-23 | createPracticeGeneration, getPracticeGeneration | fact-card extraction, exact quote and answer binding, independent semantic verdict unit tests; real-book 20-case human quality gate pending | in_progress |
+| HFR-GEN-14 | TASK-23 | createPracticeGeneration, getPracticeGeneration | same-book cross-job objective-history isolation, concurrency recheck and fixed 20-Unit real-book diversity review | in_progress |
 | HFR-ANS-1 | TASK-21 | submitPracticeAnswer | submission replay/policy tests | implemented |
 | HFR-ANS-2 | TASK-21 | submitPracticeAnswer | deterministic and provisional grading tests | implemented |
 | HFR-ANS-3 | TASK-21 | submitPracticeAnswer | staged feedback/release tests | implemented |

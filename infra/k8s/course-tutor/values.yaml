@@ -109,7 +109,7 @@ config:
   postgresDsn: postgresql+asyncpg://course_tutor:course_tutor@course-tutor-postgres:5432/course_tutor
   agentBaseUrl: http://course-tutor-agent:8000
   practicePostgresDsn: ""
-  expectedPracticeAlembicRevision: p210001
+  expectedPracticeAlembicRevision: p220001
   redisUrl: redis://course-tutor-redis:6379/0
   qdrantUrl: http://course-tutor-qdrant:6333
   minioEndpoint: http://course-tutor-minio:9000

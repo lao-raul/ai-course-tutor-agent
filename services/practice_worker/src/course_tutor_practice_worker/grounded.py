@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Protocol
 
 import structlog
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from course_tutor_contracts import (
     ExerciseDraft,
@@ -18,6 +19,7 @@ from course_tutor_contracts import (
 from course_tutor_practice.application.validation import (
     InvalidGeneration,
     question_fingerprint,
+    repair_grounding,
     validate_batch,
     validate_draft,
 )
@@ -33,6 +35,30 @@ from course_tutor_practice.generation.schemas import (
 )
 
 logger = structlog.get_logger(__name__)
+draft_adapter: TypeAdapter[ExerciseDraft] = TypeAdapter(ExerciseDraft)
+
+
+def parse_candidates(content: str) -> tuple[tuple[ExerciseDraft, ...], int]:
+    """Keep valid drafts when one model-generated item has an invalid schema."""
+    try:
+        payload = json.loads(content)
+    except (json.JSONDecodeError, ValueError):
+        return (), 1
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"exercises"}
+        or not isinstance(payload["exercises"], list)
+        or not 1 <= len(payload["exercises"]) <= 20
+    ):
+        return (), 1
+    accepted: list[ExerciseDraft] = []
+    rejected = 0
+    for candidate in payload["exercises"]:
+        try:
+            accepted.append(draft_adapter.validate_python(candidate))
+        except ValidationError:
+            rejected += 1
+    return tuple(accepted), rejected
 
 
 class EvidenceProvider(Protocol):
@@ -84,7 +110,7 @@ class GroundedGenerationExecutor:
                 content_version_id=job.content_version_id,
                 query=query,
                 outline_node_id=outline_node_id,
-                limit=min(20, max(5, job.requested_count)),
+                limit=min(40, max(5, job.requested_count * 2)),
             ),
             token,
             job.correlation_id,
@@ -100,8 +126,10 @@ class GroundedGenerationExecutor:
         seed = job.id.int % (2**31)
         accepted: list[ExerciseDraft] = []
         fingerprints: set[str] = set()
-        # One full batch, then bounded top-ups. Single-question jobs retain one repair.
-        max_calls = 2 if request.count == 1 else min(8, request.count + 2)
+        rejected_reasons: set[str] = set()
+        # One full batch, then bounded small-batch or single-question top-ups.
+        # Small batches let a 20-question job recover from many rejected drafts.
+        max_calls = 6 if request.count == 1 else min(24, max(10, request.count + 4))
         for attempt in range(max_calls):
             if datetime.now(UTC) >= job.deadline_at:
                 raise GenerationFailure("deadline_exceeded")
@@ -109,9 +137,18 @@ class GroundedGenerationExecutor:
             attempt_seed = (seed + attempt) % (2**31)
             prompt_evidence = context.evidence
             prompt_types = request.question_types
-            if attempt and accepted:
-                # Give a small local model a concrete, underused source and a
-                # specific type instead of asking it to recreate the whole set.
+            retry_full_batch = (
+                attempt == 1 and not accepted and "invalid_schema" in rejected_reasons
+            )
+            generation_count = (
+                missing
+                if attempt == 0 or retry_full_batch
+                else (min(4, missing) if missing > 3 else 1)
+            )
+            if attempt and not retry_full_batch:
+                # Focus repair on underused evidence. Large deficits need a
+                # small diverse batch; one-at-a-time top-ups cannot fill 20
+                # questions within the bounded number of model calls.
                 eligible = (
                     tuple(
                         chunk for chunk in context.evidence.chunks if len(chunk.text.strip()) >= 120
@@ -121,58 +158,84 @@ class GroundedGenerationExecutor:
                 cited = [citation for draft in accepted for citation in draft.evidence_citation_ids]
                 ranked_chunks = sorted(
                     eligible,
-                    key=lambda chunk: (cited.count(str(chunk.chunk_id)), -len(chunk.text)),
+                    key=lambda chunk: (
+                        cited.count(str(chunk.chunk_id)),
+                        -chunk.score,
+                        -len(chunk.text),
+                    ),
                 )
-                focus_chunk = ranked_chunks[(attempt - 1) % len(ranked_chunks)]
-                prompt_evidence = context.evidence.model_copy(update={"chunks": (focus_chunk,)})
-                repair_order = (
-                    QuestionType.TRUE_FALSE,
-                    QuestionType.FILL_IN_THE_BLANK,
-                    QuestionType.MULTIPLE_CHOICE,
-                    QuestionType.SHORT_ANSWER,
-                )
-                repair_types = tuple(
-                    kind for kind in repair_order if kind in request.question_types
-                )
-                prompt_types = (repair_types[(attempt - 1) % len(repair_types)],)
+                if generation_count > 3:
+                    pool = ranked_chunks[: min(12, len(ranked_chunks))]
+                    start = ((attempt - 1) * generation_count) % len(pool)
+                    prompt_evidence = context.evidence.model_copy(
+                        update={
+                            "chunks": tuple(
+                                pool[(start + index) % len(pool)]
+                                for index in range(min(generation_count, len(pool)))
+                            )
+                        }
+                    )
+                else:
+                    focus_chunk = ranked_chunks[(attempt - 1) % len(ranked_chunks)]
+                    prompt_evidence = context.evidence.model_copy(update={"chunks": (focus_chunk,)})
+                    repair_order = (
+                        QuestionType.MULTIPLE_CHOICE,
+                        QuestionType.FILL_IN_THE_BLANK,
+                        QuestionType.SHORT_ANSWER,
+                        QuestionType.TRUE_FALSE,
+                    )
+                    repair_types = tuple(
+                        kind for kind in repair_order if kind in request.question_types
+                    )
+                    type_counts = {
+                        kind: sum(draft.type == kind for draft in accepted) for kind in repair_types
+                    }
+                    ranked_types = sorted(repair_types, key=lambda kind: type_counts[kind])
+                    prompt_types = (ranked_types[(attempt - 1) % len(ranked_types)],)
             messages = build_messages(
                 request,
                 prompt_evidence,
                 attempt_seed,
-                count=missing,
+                count=generation_count,
                 accepted_prompts=tuple(draft.prompt for draft in accepted),
                 allowed_types=prompt_types,
+                rejected_reasons=tuple(sorted(rejected_reasons)),
             )
             content = await self._inference.generate_json(
                 messages,
                 attempt_seed,
                 job.correlation_id,
-                count=missing,
-                temperature=0.1 if attempt == 0 else 0.75,
+                count=generation_count,
+                temperature=0.1 if attempt == 0 else (0.3 if request.count == 1 else 0.75),
             )
-            try:
-                batch = GeneratedBatch.model_validate_json(content)
-            except ValidationError:
+            candidates, malformed_count = parse_candidates(content)
+            if malformed_count:
+                rejected_reasons.add("invalid_schema")
                 logger.warning(
                     "practice_generation_validation_rejected",
                     generation_id=str(job.id),
                     attempt=attempt + 1,
                     reason="invalid_schema",
-                    requested_count=missing,
+                    requested_count=generation_count,
+                    rejected_count=malformed_count,
                 )
+            if not candidates:
                 continue
-            for draft in batch.exercises:
+            for draft in candidates:
                 try:
+                    draft = repair_grounding(draft, prompt_evidence)
                     validate_draft(draft, request, context.evidence)
                     fingerprint = question_fingerprint(draft.prompt)
                     if fingerprint in fingerprints:
                         raise InvalidGeneration("duplicate_question")
                 except InvalidGeneration as exc:
+                    rejected_reasons.add(exc.code)
                     logger.warning(
                         "practice_generation_validation_rejected",
                         generation_id=str(job.id),
                         attempt=attempt + 1,
                         reason=exc.code,
+                        question_type=draft.type.value,
                     )
                     continue
                 accepted.append(draft)
