@@ -205,6 +205,27 @@ class PracticeSetView(PracticeModel):
     created_at: datetime
 
 
+class InstructorExercisePreview(PracticeModel):
+    id: UUID
+    ordinal: int
+    revision: str
+    question: ExerciseDraft
+
+
+class InstructorPracticePreview(PracticeModel):
+    id: UUID
+    book_id: UUID
+    course_id: UUID
+    content_version_id: UUID
+    model_version: str
+    prompt_version: str
+    validator_version: str
+    exercises: tuple[InstructorExercisePreview, ...]
+    evidence_sources: tuple[CatalogCitationView, ...]
+    ai_generated: Literal[True] = True
+    official_assessment: Literal[False] = False
+
+
 class SubmitPracticeAnswerRequest(PracticeModel):
     answer: StrictBool | str
 

@@ -537,4 +537,9 @@ H1/TASK-18 was completed on 2026-10-07; H2/TASK-19 completed on 2026-10-08 and
 H1a/TASK-24 completed on 2026-10-09. H3/TASK-20 completed its scoped fake-provider,
 cross-service and redacted real-pilot acceptance on 2026-10-10. H4/TASK-21 and
 H5/TASK-22 completed on 2026-10-10. H6/TASK-23 is in progress pending its Kind and
-human-approved golden-set evidence; H7/TASK-25 remains planned.
+human-approved golden-set evidence; H7/TASK-25 completed scoped local acceptance on
+2026-10-19 (see the TASK-25 verification record). Its read-only preview requires an
+explicit instructor course assignment, rechecks the published Book/Course/version
+through Agent, and commits a redacted `practice.preview_audits` record before returning
+protected content. Student responses remain separate. Schema revision `p250001`
+must be applied before deploying the new API; hosted CI/live rollout remain pending.

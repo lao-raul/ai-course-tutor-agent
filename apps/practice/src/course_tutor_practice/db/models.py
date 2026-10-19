@@ -26,6 +26,17 @@ from sqlalchemy.orm import Mapped, mapped_column
 from course_tutor_practice.db.base import Base, TimestampMixin, uuid_pk
 
 
+class PreviewAudit(Base):
+    __tablename__ = "preview_audits"
+    id: Mapped[uuid.UUID] = uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    actor_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    set_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    content_version_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    correlation_id: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class StudyPlan(Base, TimestampMixin):
     __tablename__ = "study_plans"
     __table_args__ = (

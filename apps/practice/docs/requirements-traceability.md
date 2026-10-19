@@ -1,7 +1,7 @@
 # Hiruzen Requirements Traceability — v0.3
 
 **Status:** active  
-**Updated:** 2026-10-10
+**Updated:** 2026-10-19
 
 This matrix is the delivery source of truth for Hiruzen requirements. Operation IDs
 refer to the approved operation boundary in the Hiruzen function/design specifications;
@@ -28,7 +28,7 @@ they become canonical OpenAPI operations in the task that implements them.
 | HFR-GEN-7 | TASK-19 | createPracticeGeneration | replay/concurrent idempotency tests | implemented |
 | HFR-GEN-8 | TASK-20 | getPracticeGeneration | insufficient-evidence failure tests | implemented |
 | HFR-GEN-9 | TASK-20, TASK-21 | getPracticeSet, submitPracticeAnswer | protected-answer leakage matrix | implemented |
-| HFR-GEN-10 | TASK-25 | previewPracticeSet | privileged role/tenant tests, answer-leakage matrix, redacted audit and instructor browser preview | planned |
+| HFR-GEN-10 | TASK-25 | previewPracticeSet, getInstructorPreviewAccess | privileged role/tenant tests, answer-leakage matrix, redacted audit and instructor browser preview; [local acceptance](../../../docs/verification/2026-10-19-task-25.md) | implemented |
 | HFR-GEN-11 | TASK-20, TASK-22 | createPracticeGeneration | API Chinese-default and three-language tests plus learner browser persistence | implemented |
 | HFR-GEN-12 | TASK-23 | getPracticeSet, resolveCatalogBookCitations, getCatalogBook | API source-scope/ACL tests and Web version/evidence display tests | implemented |
 | HFR-GEN-13 | TASK-23 | createPracticeGeneration, getPracticeGeneration | fact-card extraction, exact quote and answer binding, independent semantic verdict unit tests; real-book 20-case human quality gate pending | in_progress |

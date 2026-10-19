@@ -5,37 +5,78 @@
     "version": "1.0.0",
     "description": "Hiruzen default StudyPlans and asynchronous practice generation jobs."
   },
-  "servers": [{"url": "/"}],
-  "security": [{"bearerAuth": []}],
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
   "paths": {
     "/healthz": {
       "get": {
         "operationId": "practiceHealth",
-                "x-implementation-status": "implemented",
+        "x-implementation-status": "implemented",
         "security": [],
-        "responses": {"200": {"description": "Process is alive", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Health"}}}}}
+        "responses": {
+          "200": {
+            "description": "Process is alive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/readyz": {
       "get": {
         "operationId": "practiceReady",
-                "x-implementation-status": "implemented",
+        "x-implementation-status": "implemented",
         "security": [],
-        "responses": {"200": {"description": "Dummy service is ready"}, "503": {"description": "A required dependency is unavailable"}}
+        "responses": {
+          "200": {
+            "description": "Dummy service is ready"
+          },
+          "503": {
+            "description": "A required dependency is unavailable"
+          }
+        }
       }
     },
     "/v1/practice/capabilities": {
       "get": {
         "operationId": "getPracticeCapabilities",
-                "x-implementation-status": "implemented",
-        "responses": {"200": {"description": "Current practice capabilities", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Capabilities"}}}}}
+        "x-implementation-status": "implemented",
+        "responses": {
+          "200": {
+            "description": "Current practice capabilities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capabilities"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/practice/catalog/categories": {
       "get": {
         "operationId": "listPracticeCategories",
         "x-implementation-status": "implemented",
-        "responses": {"200": {"description": "Authorized textbook category facets"}}
+        "responses": {
+          "200": {
+            "description": "Authorized textbook category facets"
+          }
+        }
       }
     },
     "/v1/practice/catalog/books": {
@@ -43,168 +84,1505 @@
         "operationId": "searchPracticeBooks",
         "x-implementation-status": "implemented",
         "parameters": [
-          {"name": "q", "in": "query", "schema": {"type": "string"}},
-          {"name": "education_level", "in": "query", "schema": {"type": "string"}},
-          {"name": "grade", "in": "query", "schema": {"type": "string"}},
-          {"name": "subject", "in": "query", "schema": {"type": "string"}},
-          {"name": "publisher", "in": "query", "schema": {"type": "string"}},
-          {"name": "edition", "in": "query", "schema": {"type": "string"}},
-          {"name": "term", "in": "query", "schema": {"type": "string"}},
-          {"name": "language", "in": "query", "schema": {"type": "string"}},
-          {"name": "cursor", "in": "query", "schema": {"type": "string"}},
-          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}}
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "education_level",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "grade",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subject",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "publisher",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "edition",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "term",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
         ],
-        "responses": {"200": {"description": "Published authorized books with an opaque next cursor"}}
+        "responses": {
+          "200": {
+            "description": "Published authorized books with an opaque next cursor"
+          }
+        }
       }
     },
     "/v1/practice/catalog/books/{book_id}": {
-      "parameters": [{"$ref": "#/components/parameters/BookId"}],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/BookId"
+        }
+      ],
       "get": {
         "operationId": "getPracticeBook",
         "x-implementation-status": "implemented",
-        "responses": {"200": {"description": "Published book detail"}, "404": {"description": "Book not found or unauthorized"}}
+        "responses": {
+          "200": {
+            "description": "Published book detail"
+          },
+          "404": {
+            "description": "Book not found or unauthorized"
+          }
+        }
       }
     },
     "/v1/practice/catalog/books/{book_id}/courses": {
-      "parameters": [{"$ref": "#/components/parameters/BookId"}],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/BookId"
+        }
+      ],
       "get": {
         "operationId": "listBookCourses",
         "x-implementation-status": "implemented",
-        "responses": {"200": {"description": "Authorized published system CourseRuns"}, "404": {"description": "Book not found or unauthorized"}}
+        "responses": {
+          "200": {
+            "description": "Authorized published system CourseRuns"
+          },
+          "404": {
+            "description": "Book not found or unauthorized"
+          }
+        }
       }
     },
     "/v1/practice/catalog/books/{book_id}/study-plan": {
-      "parameters": [{"$ref": "#/components/parameters/BookId"}],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/BookId"
+        }
+      ],
       "get": {
         "operationId": "getBookStudyPlan",
         "x-implementation-status": "implemented",
         "responses": {
-          "200": {"description": "Deterministic default StudyPlan for the published Book version"},
-          "404": {"description": "Book not found or unauthorized"},
-          "409": {"description": "Book has no published CourseRun"}
+          "200": {
+            "description": "Deterministic default StudyPlan for the published Book version"
+          },
+          "404": {
+            "description": "Book not found or unauthorized"
+          },
+          "409": {
+            "description": "Book has no published CourseRun"
+          }
         }
       }
     },
     "/v1/practice/catalog/books/{book_id}/generations": {
       "parameters": [
-        {"$ref": "#/components/parameters/BookId"},
-        {"$ref": "#/components/parameters/IdempotencyKey"}
+        {
+          "$ref": "#/components/parameters/BookId"
+        },
+        {
+          "$ref": "#/components/parameters/IdempotencyKey"
+        }
       ],
       "post": {
         "operationId": "createPracticeGeneration",
         "x-implementation-status": "implemented",
-        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GenerateRequest"}}}},
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "202": {"description": "Generation job accepted or idempotently replayed"},
-          "422": {"description": "Invalid generation scope or request"}
+          "202": {
+            "description": "Generation job accepted or idempotently replayed"
+          },
+          "422": {
+            "description": "Invalid generation scope or request"
+          }
         }
       }
     },
     "/v1/practice/generations/{generation_id}": {
-      "parameters": [{"$ref": "#/components/parameters/GenerationId"}],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/GenerationId"
+        }
+      ],
       "get": {
         "operationId": "getPracticeGeneration",
         "x-implementation-status": "implemented",
-        "responses": {"200": {"description": "Learner-owned generation status"}, "404": {"description": "Generation not found"}}
+        "responses": {
+          "200": {
+            "description": "Learner-owned generation status"
+          },
+          "404": {
+            "description": "Generation not found"
+          }
+        }
       }
     },
     "/v1/practice/generations/{generation_id}/cancel": {
-      "parameters": [{"$ref": "#/components/parameters/GenerationId"}],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/GenerationId"
+        }
+      ],
       "post": {
         "operationId": "cancelPracticeGeneration",
         "x-implementation-status": "implemented",
-        "responses": {"200": {"description": "Cancelled or terminal generation"}, "404": {"description": "Generation not found"}}
+        "responses": {
+          "200": {
+            "description": "Cancelled or terminal generation"
+          },
+          "404": {
+            "description": "Generation not found"
+          }
+        }
       }
     },
     "/v1/practice/sets/{set_id}": {
-      "parameters": [{"$ref": "#/components/parameters/PracticeSetId"}],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/PracticeSetId"
+        }
+      ],
       "get": {
         "operationId": "getPracticeSet",
         "x-implementation-status": "implemented",
         "responses": {
-          "200": {"description": "Learner-safe PracticeSet with resolved textbook citation labels and excerpts, without protected answers"},
-          "404": {"description": "PracticeSet not found"}
+          "200": {
+            "description": "Learner-safe PracticeSet with resolved textbook citation labels and excerpts, without protected answers"
+          },
+          "404": {
+            "description": "PracticeSet not found"
+          }
         }
       }
     },
     "/v1/practice/sets/{set_id}/exercises/{exercise_id}/attempts": {
-      "parameters": [{"$ref": "#/components/parameters/PracticeSetId"}, {"$ref": "#/components/parameters/ExerciseId"}, {"$ref": "#/components/parameters/IdempotencyKey"}],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/PracticeSetId"
+        },
+        {
+          "$ref": "#/components/parameters/ExerciseId"
+        },
+        {
+          "$ref": "#/components/parameters/IdempotencyKey"
+        }
+      ],
       "post": {
         "operationId": "submitPracticeAnswer",
         "x-implementation-status": "implemented",
-        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SubmitAnswer"}}}},
-        "responses": {"200": {"description": "Feedback with staged hint or released answer", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AttemptFeedback"}}}}, "404": {"description": "Exercise is not owned or no longer authorized"}, "409": {"description": "Idempotency conflict or completed exercise"}, "422": {"description": "Invalid answer"}, "503": {"description": "Rubric evaluator unavailable"}}
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitAnswer"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Feedback with staged hint or released answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptFeedback"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Exercise is not owned or no longer authorized"
+          },
+          "409": {
+            "description": "Idempotency conflict or completed exercise"
+          },
+          "422": {
+            "description": "Invalid answer"
+          },
+          "503": {
+            "description": "Rubric evaluator unavailable"
+          }
+        }
       }
     },
     "/v1/practice/sets/{set_id}/exercises/{exercise_id}/give-up": {
-      "parameters": [{"$ref": "#/components/parameters/PracticeSetId"}, {"$ref": "#/components/parameters/ExerciseId"}, {"$ref": "#/components/parameters/IdempotencyKey"}],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/PracticeSetId"
+        },
+        {
+          "$ref": "#/components/parameters/ExerciseId"
+        },
+        {
+          "$ref": "#/components/parameters/IdempotencyKey"
+        }
+      ],
       "post": {
         "operationId": "giveUpPracticeExercise",
         "x-implementation-status": "implemented",
-        "responses": {"200": {"description": "Answer and rationale released", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AttemptFeedback"}}}}, "404": {"description": "Exercise not found"}, "409": {"description": "Exercise already complete"}}
+        "responses": {
+          "200": {
+            "description": "Answer and rationale released",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptFeedback"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Exercise not found"
+          },
+          "409": {
+            "description": "Exercise already complete"
+          }
+        }
       }
     },
     "/v1/practice/exercises/{exercise_id}/reports": {
-      "parameters": [{"$ref": "#/components/parameters/ExerciseId"}, {"$ref": "#/components/parameters/IdempotencyKey"}],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ExerciseId"
+        },
+        {
+          "$ref": "#/components/parameters/IdempotencyKey"
+        }
+      ],
       "post": {
         "operationId": "reportPracticeExercise",
         "x-implementation-status": "implemented",
-        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExerciseReportRequest"}}}},
-        "responses": {"200": {"description": "Question report accepted without answer material"}, "404": {"description": "Exercise not found"}, "409": {"description": "Idempotency conflict"}}
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExerciseReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Question report accepted without answer material"
+          },
+          "404": {
+            "description": "Exercise not found"
+          },
+          "409": {
+            "description": "Idempotency conflict"
+          }
+        }
       }
     },
     "/v1/practice/study-status": {
-      "get": {"operationId": "getStudyStatus", "x-implementation-status": "implemented", "responses": {"200": {"description": "Authorized learner progress with no answer keys", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/StudyStatus"}}}}}}
+      "get": {
+        "operationId": "getStudyStatus",
+        "x-implementation-status": "implemented",
+        "responses": {
+          "200": {
+            "description": "Authorized learner progress with no answer keys",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyStatus"
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "/v1/practice/resume": {
-      "get": {"operationId": "resumeStudy", "x-implementation-status": "implemented", "responses": {"200": {"description": "Latest authorized safe exercise or null", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Resume"}}}}}},
-      "delete": {"operationId": "resetResumeCursor", "x-implementation-status": "implemented", "parameters": [{"$ref": "#/components/parameters/IdempotencyKey"}], "responses": {"204": {"description": "Resume cursor cleared without deleting attempts"}}}
+      "get": {
+        "operationId": "resumeStudy",
+        "x-implementation-status": "implemented",
+        "responses": {
+          "200": {
+            "description": "Latest authorized safe exercise or null",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resume"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "resetResumeCursor",
+        "x-implementation-status": "implemented",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Resume cursor cleared without deleting attempts"
+          }
+        }
+      }
     },
     "/v1/practice/study-status/memory-consent": {
-      "put": {"operationId": "setStudyMemoryConsent", "x-implementation-status": "implemented", "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["enabled"], "properties": {"enabled": {"type": "boolean"}}}}}}, "responses": {"200": {"description": "Memory sharing preference updated"}}}
+      "put": {
+        "operationId": "setStudyMemoryConsent",
+        "x-implementation-status": "implemented",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Memory sharing preference updated"
+          }
+        }
+      }
     },
     "/v1/practice/study-status/memory-signals": {
-      "get": {"operationId": "getStudyMemorySignals", "x-implementation-status": "implemented", "responses": {"200": {"description": "Versioned compact consent-gated signals without answers"}, "403": {"description": "Consent disabled"}}}
+      "get": {
+        "operationId": "getStudyMemorySignals",
+        "x-implementation-status": "implemented",
+        "responses": {
+          "200": {
+            "description": "Versioned compact consent-gated signals without answers"
+          },
+          "403": {
+            "description": "Consent disabled"
+          }
+        }
+      }
     },
     "/v1/practice/courses/{course_id}/exercises:generate": {
       "parameters": [
-        {"$ref": "#/components/parameters/CourseId"},
-        {"$ref": "#/components/parameters/IdempotencyKey"}
+        {
+          "$ref": "#/components/parameters/CourseId"
+        },
+        {
+          "$ref": "#/components/parameters/IdempotencyKey"
+        }
       ],
       "post": {
         "operationId": "generatePracticeExercises",
         "deprecated": true,
         "x-implementation-status": "implemented",
-        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GenerateRequest"}}}},
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "401": {"description": "Authentication required"},
-          "403": {"description": "Course is outside the authenticated scope"},
-          "409": {"description": "Default Book StudyPlan has not been initialized"},
-          "422": {"description": "Invalid generation request"}
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Course is outside the authenticated scope"
+          },
+          "409": {
+            "description": "Default Book StudyPlan has not been initialized"
+          },
+          "422": {
+            "description": "Invalid generation request"
+          }
         }
+      }
+    },
+    "/v1/practice/instructor/access": {
+      "get": {
+        "tags": [
+          "instructor-preview"
+        ],
+        "summary": "Preview Access",
+        "operationId": "getInstructorPreviewAccess",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "type": "object",
+                  "title": "Response Getinstructorpreviewaccess"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-implementation-status": "implemented"
+      }
+    },
+    "/v1/practice/sets/{set_id}/preview": {
+      "get": {
+        "tags": [
+          "instructor-preview"
+        ],
+        "summary": "Preview Set",
+        "operationId": "previewPracticeSet",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Set Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstructorAPI_InstructorPracticePreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstructorAPI_HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-implementation-status": "implemented"
       }
     }
   },
   "components": {
-    "securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}},
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
     "parameters": {
-      "BookId": {"name": "book_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
-      "CourseId": {"name": "course_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
-      "GenerationId": {"name": "generation_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
-      "PracticeSetId": {"name": "set_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
-      "ExerciseId": {"name": "exercise_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
-      "IdempotencyKey": {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 255}}
+      "BookId": {
+        "name": "book_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "CourseId": {
+        "name": "course_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "GenerationId": {
+        "name": "generation_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "PracticeSetId": {
+        "name": "set_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "ExerciseId": {
+        "name": "exercise_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      }
     },
     "schemas": {
-      "Health": {"type": "object", "required": ["status", "service", "version", "revision"], "properties": {"status": {"const": "ok"}, "service": {"const": "practice-api"}, "version": {"type": "string"}, "revision": {"type": "string"}}},
-      "Capabilities": {"type": "object", "required": ["exercise_generation", "implemented_features"], "properties": {"exercise_generation": {"const": "asynchronous_jobs"}, "implemented_features": {"type": "array", "items": {"type": "string"}}}},
-      "GenerateRequest": {"type": "object", "additionalProperties": false, "properties": {"count": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5}, "course_id": {"type": ["string", "null"], "format": "uuid"}, "study_plan_id": {"type": ["string", "null"], "format": "uuid"}, "module_id": {"type": ["string", "null"], "format": "uuid"}, "topic": {"type": ["string", "null"]}, "difficulty": {"enum": ["introductory", "standard", "challenge"], "default": "standard"}, "question_types": {"type": "array", "items": {"enum": ["multiple_choice", "true_false", "fill_in_the_blank", "short_answer"]}}, "language": {"enum": ["zh", "en", "bilingual"], "default": "zh"}}},
-      "SubmitAnswer": {"type": "object", "additionalProperties": false, "required": ["answer"], "properties": {"answer": {"oneOf": [{"type": "string", "minLength": 1, "maxLength": 4000}, {"type": "boolean"}]}}},
-      "AnswerRelease": {"type": "object", "required": ["answer", "rationale", "evidence_citation_ids"], "properties": {"answer": {"oneOf": [{"type": "string"}, {"type": "boolean"}, {"type": "array", "items": {"type": "string"}}]}, "rationale": {"type": "string"}, "evidence_citation_ids": {"type": "array", "items": {"type": "string"}}}},
-      "AttemptFeedback": {"type": "object", "required": ["id", "exercise_id", "attempt_number", "outcome", "correct", "provisional", "evaluator", "evaluator_version", "created_at"], "properties": {"id": {"type": "string", "format": "uuid"}, "exercise_id": {"type": "string", "format": "uuid"}, "attempt_number": {"type": "integer", "minimum": 1}, "outcome": {"enum": ["correct", "incorrect", "provisional", "gave_up"]}, "correct": {"type": ["boolean", "null"]}, "score": {"type": ["number", "null"]}, "provisional": {"type": "boolean"}, "hint": {"type": ["string", "null"]}, "released_answer": {"anyOf": [{"$ref": "#/components/schemas/AnswerRelease"}, {"type": "null"}]}, "evaluator": {"type": "string"}, "evaluator_version": {"type": "string"}, "created_at": {"type": "string", "format": "date-time"}}},
-      "ExerciseReportRequest": {"type": "object", "required": ["reason"], "properties": {"reason": {"enum": ["incorrect", "ambiguous", "unsafe"]}, "detail": {"type": "string", "maxLength": 1000}}},
-      "StudyStatus": {"type": "object", "required": ["sets", "plans"], "properties": {"sets": {"type": "array", "items": {"type": "object"}, "description": "Per-set completion, mastery and next safe exercise; no answer material"}, "plans": {"type": "array", "items": {"type": "object"}, "description": "Per-plan aggregate progress and bounded topic mastery"}}},
-      "Resume": {"oneOf": [{"type": "object", "required": ["practice_set_id", "study_plan_id", "book_id", "course_id", "content_version_id", "exercise_id", "attempt_number", "released"], "properties": {"practice_set_id": {"type": "string", "format": "uuid"}, "study_plan_id": {"type": "string", "format": "uuid"}, "book_id": {"type": "string", "format": "uuid"}, "course_id": {"type": "string", "format": "uuid"}, "content_version_id": {"type": "string", "format": "uuid"}, "exercise_id": {"type": "string", "format": "uuid"}, "attempt_number": {"type": "integer"}, "released": {"type": "boolean"}}}, {"type": "null"}]}
+      "Health": {
+        "type": "object",
+        "required": [
+          "status",
+          "service",
+          "version",
+          "revision"
+        ],
+        "properties": {
+          "status": {
+            "const": "ok"
+          },
+          "service": {
+            "const": "practice-api"
+          },
+          "version": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        }
+      },
+      "Capabilities": {
+        "type": "object",
+        "required": [
+          "exercise_generation",
+          "implemented_features"
+        ],
+        "properties": {
+          "exercise_generation": {
+            "const": "asynchronous_jobs"
+          },
+          "implemented_features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "GenerateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 5
+          },
+          "course_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "study_plan_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "module_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "topic": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "difficulty": {
+            "enum": [
+              "introductory",
+              "standard",
+              "challenge"
+            ],
+            "default": "standard"
+          },
+          "question_types": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "multiple_choice",
+                "true_false",
+                "fill_in_the_blank",
+                "short_answer"
+              ]
+            }
+          },
+          "language": {
+            "enum": [
+              "zh",
+              "en",
+              "bilingual"
+            ],
+            "default": "zh"
+          }
+        }
+      },
+      "SubmitAnswer": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "answer"
+        ],
+        "properties": {
+          "answer": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          }
+        }
+      },
+      "AnswerRelease": {
+        "type": "object",
+        "required": [
+          "answer",
+          "rationale",
+          "evidence_citation_ids"
+        ],
+        "properties": {
+          "answer": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "evidence_citation_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AttemptFeedback": {
+        "type": "object",
+        "required": [
+          "id",
+          "exercise_id",
+          "attempt_number",
+          "outcome",
+          "correct",
+          "provisional",
+          "evaluator",
+          "evaluator_version",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "exercise_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attempt_number": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "outcome": {
+            "enum": [
+              "correct",
+              "incorrect",
+              "provisional",
+              "gave_up"
+            ]
+          },
+          "correct": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "provisional": {
+            "type": "boolean"
+          },
+          "hint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "released_answer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnswerRelease"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evaluator": {
+            "type": "string"
+          },
+          "evaluator_version": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ExerciseReportRequest": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "enum": [
+              "incorrect",
+              "ambiguous",
+              "unsafe"
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        }
+      },
+      "StudyStatus": {
+        "type": "object",
+        "required": [
+          "sets",
+          "plans"
+        ],
+        "properties": {
+          "sets": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Per-set completion, mastery and next safe exercise; no answer material"
+          },
+          "plans": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Per-plan aggregate progress and bounded topic mastery"
+          }
+        }
+      },
+      "Resume": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "practice_set_id",
+              "study_plan_id",
+              "book_id",
+              "course_id",
+              "content_version_id",
+              "exercise_id",
+              "attempt_number",
+              "released"
+            ],
+            "properties": {
+              "practice_set_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "study_plan_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "book_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "course_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "content_version_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "exercise_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "attempt_number": {
+                "type": "integer"
+              },
+              "released": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "InstructorAPI_AnchorType": {
+        "type": "string",
+        "enum": [
+          "page",
+          "slide",
+          "heading",
+          "timestamp",
+          "line_range"
+        ],
+        "title": "AnchorType",
+        "description": "How a citation points back into the original document."
+      },
+      "InstructorAPI_CatalogCitationView": {
+        "properties": {
+          "chunk_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Chunk Id"
+          },
+          "relative_path": {
+            "type": "string",
+            "title": "Relative Path"
+          },
+          "anchor_type": {
+            "$ref": "#/components/schemas/InstructorAPI_AnchorType"
+          },
+          "anchor_value": {
+            "type": "string",
+            "title": "Anchor Value"
+          },
+          "text_excerpt": {
+            "type": "string",
+            "title": "Text Excerpt"
+          },
+          "text_fragments": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Text Fragments",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "chunk_id",
+          "relative_path",
+          "anchor_type",
+          "anchor_value",
+          "text_excerpt"
+        ],
+        "title": "CatalogCitationView"
+      },
+      "InstructorAPI_ChoiceOption": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "text"
+        ],
+        "title": "ChoiceOption"
+      },
+      "InstructorAPI_FillInTheBlankExerciseDraft": {
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Prompt"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/InstructorAPI_PracticeDifficulty"
+          },
+          "language": {
+            "$ref": "#/components/schemas/InstructorAPI_PracticeLanguage"
+          },
+          "evidence_citation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Evidence Citation Ids"
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Rationale"
+          },
+          "type": {
+            "type": "string",
+            "const": "fill_in_the_blank",
+            "title": "Type",
+            "default": "fill_in_the_blank"
+          },
+          "acceptable_answers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Acceptable Answers"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prompt",
+          "difficulty",
+          "language",
+          "evidence_citation_ids",
+          "rationale",
+          "acceptable_answers"
+        ],
+        "title": "FillInTheBlankExerciseDraft"
+      },
+      "InstructorAPI_HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/InstructorAPI_ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InstructorAPI_InstructorExercisePreview": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "ordinal": {
+            "type": "integer",
+            "title": "Ordinal"
+          },
+          "revision": {
+            "type": "string",
+            "title": "Revision"
+          },
+          "question": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InstructorAPI_MultipleChoiceExerciseDraft"
+              },
+              {
+                "$ref": "#/components/schemas/InstructorAPI_TrueFalseExerciseDraft"
+              },
+              {
+                "$ref": "#/components/schemas/InstructorAPI_FillInTheBlankExerciseDraft"
+              },
+              {
+                "$ref": "#/components/schemas/InstructorAPI_ShortAnswerExerciseDraft"
+              }
+            ],
+            "title": "Question",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "fill_in_the_blank": "#/components/schemas/InstructorAPI_FillInTheBlankExerciseDraft",
+                "multiple_choice": "#/components/schemas/InstructorAPI_MultipleChoiceExerciseDraft",
+                "short_answer": "#/components/schemas/InstructorAPI_ShortAnswerExerciseDraft",
+                "true_false": "#/components/schemas/InstructorAPI_TrueFalseExerciseDraft"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "ordinal",
+          "revision",
+          "question"
+        ],
+        "title": "InstructorExercisePreview"
+      },
+      "InstructorAPI_InstructorPracticePreview": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "book_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Book Id"
+          },
+          "course_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Course Id"
+          },
+          "content_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Content Version Id"
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version"
+          },
+          "prompt_version": {
+            "type": "string",
+            "title": "Prompt Version"
+          },
+          "validator_version": {
+            "type": "string",
+            "title": "Validator Version"
+          },
+          "exercises": {
+            "items": {
+              "$ref": "#/components/schemas/InstructorAPI_InstructorExercisePreview"
+            },
+            "type": "array",
+            "title": "Exercises"
+          },
+          "evidence_sources": {
+            "items": {
+              "$ref": "#/components/schemas/InstructorAPI_CatalogCitationView"
+            },
+            "type": "array",
+            "title": "Evidence Sources"
+          },
+          "ai_generated": {
+            "type": "boolean",
+            "const": true,
+            "title": "Ai Generated",
+            "default": true
+          },
+          "official_assessment": {
+            "type": "boolean",
+            "const": false,
+            "title": "Official Assessment",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "book_id",
+          "course_id",
+          "content_version_id",
+          "model_version",
+          "prompt_version",
+          "validator_version",
+          "exercises",
+          "evidence_sources"
+        ],
+        "title": "InstructorPracticePreview"
+      },
+      "InstructorAPI_MultipleChoiceExerciseDraft": {
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Prompt"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/InstructorAPI_PracticeDifficulty"
+          },
+          "language": {
+            "$ref": "#/components/schemas/InstructorAPI_PracticeLanguage"
+          },
+          "evidence_citation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Evidence Citation Ids"
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Rationale"
+          },
+          "type": {
+            "type": "string",
+            "const": "multiple_choice",
+            "title": "Type",
+            "default": "multiple_choice"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/InstructorAPI_ChoiceOption"
+            },
+            "type": "array",
+            "maxItems": 6,
+            "minItems": 2,
+            "title": "Options"
+          },
+          "correct_option_id": {
+            "type": "string",
+            "title": "Correct Option Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prompt",
+          "difficulty",
+          "language",
+          "evidence_citation_ids",
+          "rationale",
+          "options",
+          "correct_option_id"
+        ],
+        "title": "MultipleChoiceExerciseDraft"
+      },
+      "InstructorAPI_PracticeDifficulty": {
+        "type": "string",
+        "enum": [
+          "introductory",
+          "standard",
+          "challenge"
+        ],
+        "title": "PracticeDifficulty"
+      },
+      "InstructorAPI_PracticeLanguage": {
+        "type": "string",
+        "enum": [
+          "zh",
+          "en",
+          "bilingual"
+        ],
+        "title": "PracticeLanguage"
+      },
+      "InstructorAPI_RubricCriterion": {
+        "properties": {
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Description"
+          },
+          "weight": {
+            "type": "number",
+            "maximum": 1,
+            "exclusiveMinimum": 0,
+            "title": "Weight"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "description",
+          "weight"
+        ],
+        "title": "RubricCriterion"
+      },
+      "InstructorAPI_ShortAnswerExerciseDraft": {
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Prompt"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/InstructorAPI_PracticeDifficulty"
+          },
+          "language": {
+            "$ref": "#/components/schemas/InstructorAPI_PracticeLanguage"
+          },
+          "evidence_citation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Evidence Citation Ids"
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Rationale"
+          },
+          "type": {
+            "type": "string",
+            "const": "short_answer",
+            "title": "Type",
+            "default": "short_answer"
+          },
+          "rubric": {
+            "items": {
+              "$ref": "#/components/schemas/InstructorAPI_RubricCriterion"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Rubric"
+          },
+          "exemplar_answer": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exemplar Answer"
+          },
+          "pass_threshold": {
+            "type": "number",
+            "maximum": 1,
+            "exclusiveMinimum": 0,
+            "title": "Pass Threshold",
+            "default": 0.7
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prompt",
+          "difficulty",
+          "language",
+          "evidence_citation_ids",
+          "rationale",
+          "rubric",
+          "exemplar_answer"
+        ],
+        "title": "ShortAnswerExerciseDraft"
+      },
+      "InstructorAPI_TrueFalseExerciseDraft": {
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Prompt"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/InstructorAPI_PracticeDifficulty"
+          },
+          "language": {
+            "$ref": "#/components/schemas/InstructorAPI_PracticeLanguage"
+          },
+          "evidence_citation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Evidence Citation Ids"
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Rationale"
+          },
+          "type": {
+            "type": "string",
+            "const": "true_false",
+            "title": "Type",
+            "default": "true_false"
+          },
+          "answer": {
+            "type": "boolean",
+            "title": "Answer"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prompt",
+          "difficulty",
+          "language",
+          "evidence_citation_ids",
+          "rationale",
+          "answer"
+        ],
+        "title": "TrueFalseExerciseDraft"
+      },
+      "InstructorAPI_ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
     }
   }
 }

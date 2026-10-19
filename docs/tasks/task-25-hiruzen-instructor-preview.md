@@ -1,6 +1,6 @@
 # TASK-25 — Hiruzen Instructor Preview
 
-**Status:** in progress (2026-10-19) — authorization boundary and implementation sequencing
+**Status:** completed (2026-10-19) — scoped implementation and local acceptance; hosted CI and live deployment not yet run
 **Priority:** P1
 **Depends on:** TASK-18–TASK-22
 **Can run in parallel with:** TASK-23
@@ -77,7 +77,10 @@ declared dependencies are present and does not block the first learner release g
 
 ## Verification
 
-When implemented, run the new preview unit/integration tests against disposable
+Acceptance evidence and build/deploy/manual API instructions:
+[2026-10-19 TASK-25 verification](../verification/2026-10-19-task-25.md).
+
+Run the new preview unit/integration tests against disposable
 Practice storage, then run:
 
 ```bash
