@@ -166,6 +166,8 @@ const bookPath = (bookId: string) => `/catalog/books/${encodeURIComponent(bookId
 const setPath = (setId: string) => `/sets/${encodeURIComponent(setId)}`;
 
 export const practiceApi = {
+  instructorAccess: () => request<{ enabled: boolean }>('/instructor/access', { cache: 'no-store' }),
+  preview: (id: string) => request<InstructorPreview>(`${setPath(id)}/preview`, { cache: 'no-store' }),
   categories: () => request<Category[]>('/catalog/categories'),
   books: (filters: SearchFilters) => {
     const query = new URLSearchParams();
@@ -190,3 +192,33 @@ export const practiceApi = {
   report: (exerciseId: string, reason: 'incorrect' | 'ambiguous' | 'unsafe', detail: string) =>
     request<void>(`/exercises/${encodeURIComponent(exerciseId)}/reports`, { method: 'POST', body: JSON.stringify({ reason, detail }) }),
 };
+
+export interface InstructorPreview {
+  id: string;
+  book_id: string;
+  course_id: string;
+  content_version_id: string;
+  model_version: string;
+  prompt_version: string;
+  validator_version: string;
+  ai_generated: true;
+  official_assessment: false;
+  exercises: {
+    id: string;
+    ordinal: number;
+    revision: string;
+    question: {
+      type: QuestionType;
+      prompt: string;
+      rationale: string;
+      evidence_citation_ids: string[];
+      options?: { id: string; text: string }[];
+      correct_option_id?: string;
+      answer?: boolean;
+      acceptable_answers?: string[];
+      exemplar_answer?: string;
+      rubric?: { description: string; weight: number }[];
+    };
+  }[];
+  evidence_sources: { chunk_id: string; relative_path: string; anchor_value: string; text_excerpt: string }[];
+}

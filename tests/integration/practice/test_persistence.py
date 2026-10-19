@@ -8,8 +8,11 @@ import uuid
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException, Response
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
@@ -25,10 +28,12 @@ from course_tutor_contracts import (
 from course_tutor_contracts.enums import AccessLabel, UserRole
 from course_tutor_practice.application.generation import GenerationService
 from course_tutor_practice.db import Base, GenerationJob, PracticeOutboxEvent, PracticeSet
+from course_tutor_practice.db.models import PreviewAudit
 from course_tutor_practice.db.repository import SqlPracticeRepository
 from course_tutor_practice.domain import ModuleRecord, StudyPlanRecord
 from course_tutor_practice.generation.errors import GenerationFailure
 from course_tutor_practice.generation.schemas import GenerationObjective
+from course_tutor_practice.routes import preview
 from tests.support.postgres import assert_safe_test_database_dsn, reset_test_schema
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -83,6 +88,7 @@ def test_practice_migration_upgrade_downgrade_upgrade_round_trip() -> None:
 @pytest.mark.asyncio
 async def test_sql_repository_commits_job_and_outbox_atomically(
     integration_db_engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async with integration_db_engine.begin() as connection:
         await connection.execute(text("CREATE SCHEMA IF NOT EXISTS practice"))
@@ -175,6 +181,32 @@ async def test_sql_repository_commits_job_and_outbox_atomically(
             select(PracticeSet).where(PracticeSet.generation_job_id == first.id)
         )
         assert stored is not None
+        # A different user assigned as instructor can inspect the exact set;
+        # student read models remain separate and answer-free.
+        teacher = replace(
+            principal,
+            user_id=uuid.uuid4(),
+            role=UserRole.INSTRUCTOR,
+            course_ids=frozenset({plan.course_id}),
+        )
+        monkeypatch.setattr(preview, "ensure_published_access", AsyncMock(return_value=True))
+        catalog = SimpleNamespace(resolve_citations=AsyncMock(return_value=[]))
+        protected = await preview.preview_set(
+            stored.id, Response(), teacher, "Bearer test", session, catalog
+        )
+        assert protected.exercises[0].question.rationale == draft.rationale
+        audit = await session.scalar(select(PreviewAudit).where(PreviewAudit.set_id == stored.id))
+        assert audit is not None and audit.actor_id == teacher.user_id
+        assert audit.content_version_id == plan.content_version_id
+        for unauthorized in (
+            replace(teacher, tenant_id=uuid.uuid4()),
+            replace(teacher, course_ids=frozenset()),
+        ):
+            with pytest.raises(HTTPException) as denied:
+                await preview.preview_set(
+                    stored.id, Response(), unauthorized, "Bearer test", session, catalog
+                )
+            assert denied.value.status_code == 404
         assert stored.retrieval_trace_id == trace_id
         assert stored.seed == 42
         assert stored.objective_metadata == [

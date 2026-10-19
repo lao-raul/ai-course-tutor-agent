@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, Response, status
+from fastapi import Depends, FastAPI, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -25,7 +25,7 @@ from course_tutor_practice.adapters.memory_repository import InMemoryPracticeRep
 from course_tutor_practice.adapters.rubric import OpenAICompatibleRubricEvaluator
 from course_tutor_practice.application.evaluation import RubricEvaluator
 from course_tutor_practice.ports import OutlineProvider, PracticeRepository
-from course_tutor_practice.routes import attempts, catalog, generations, progress, reports
+from course_tutor_practice.routes import attempts, catalog, generations, preview, progress, reports
 from course_tutor_shared import (
     CorrelationIdMiddleware,
     PrometheusMiddleware,
@@ -122,6 +122,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+
+    @app.middleware("http")
+    async def protected_preview_cache(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        if (
+            request.url.path.endswith("/preview")
+            or request.url.path == "/v1/practice/instructor/access"
+        ):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Vary"] = "Authorization"
+        return response
+
     app.state.dependencies = dependencies
     app.add_middleware(CorrelationIdMiddleware)
     if settings.metrics_enabled:
@@ -152,4 +166,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(attempts.router)
     app.include_router(progress.router)
     app.include_router(reports.router)
+    app.include_router(preview.router)
     return app

@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { InstructorPreview } from './features/instructor/InstructorPreview';
 import { practiceApi } from './api/practice';
 import type { Language, Resume } from './api/practice';
 import { Catalog } from './features/catalog/Catalog';
@@ -9,9 +10,15 @@ import { TutorChat } from './features/tutor/TutorChat';
 import { getLabels, loadLanguage, saveLanguage } from './i18n';
 import './Hiruzen.css';
 
-type View = 'catalog' | 'study' | 'tutor' | 'book';
+type View = 'catalog' | 'study' | 'tutor' | 'book' | 'instructor';
 
 export default function HiruzenApp() {
+  const [instructor, setInstructor] = useState(false);
+  useEffect(() => {
+    let active = true;
+    practiceApi.instructorAccess().then((value) => { if (active) setInstructor(value.enabled); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
   const [language, setLanguage] = useState<Language>(loadLanguage);
   const [view, setView] = useState<View>('catalog');
   const [bookId, setBookId] = useState('');
@@ -31,6 +38,7 @@ export default function HiruzenApp() {
     <header className="hiruzen-header">
       <div><h1>Hiruzen</h1><p>{labels.aiNotice}</p></div>
       <nav aria-label="Hiruzen" className="hiruzen-nav">
+        {instructor && <button type="button" onClick={() => setView('instructor')}>教师预览 / Instructor preview</button>}
         <button type="button" aria-current={view === 'catalog' || view === 'book' ? 'page' : undefined} onClick={() => setView('catalog')}>{labels.discover}</button>
         <button type="button" aria-current={view === 'study' ? 'page' : undefined} onClick={() => setView('study')}>{labels.study}</button>
         <button type="button" aria-current={view === 'tutor' ? 'page' : undefined} onClick={() => setView('tutor')}>{labels.tutor}</button>
@@ -38,6 +46,7 @@ export default function HiruzenApp() {
       <LanguageSelector language={language} onChange={changeLanguage} labels={labels} />
     </header>
     <main className="hiruzen-main">
+      {view === 'instructor' && instructor && <InstructorPreview />}
       {view === 'catalog' && <Catalog labels={labels} onOpen={(id) => openBook(id)} />}
       {view === 'study' && <StudyDashboard labels={labels} revision={revision} onResume={(item) => openBook(item.book_id, item)} onOpenBook={(id) => openBook(id)} />}
       {view === 'book' && <PracticeWorkspace key={bookId + (resume?.practice_set_id ?? '')} bookId={bookId} language={language} labels={labels} resume={resume ? { setId: resume.practice_set_id, exerciseId: resume.exercise_id, attemptNumber: resume.attempt_number, released: resume.released } : undefined} onProgress={refresh} onBack={() => setView('catalog')} />}

@@ -125,6 +125,8 @@ def test_openapi_has_no_settings_or_secret_schema() -> None:
         "practiceHealth",
         "practiceReady",
         "getPracticeCapabilities",
+        "getInstructorPreviewAccess",
+        "previewPracticeSet",
         "getBookStudyPlan",
         "createPracticeGeneration",
         "getPracticeGeneration",
